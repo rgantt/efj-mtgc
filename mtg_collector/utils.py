@@ -1,0 +1,78 @@
+"""Shared utilities for MTG Collector."""
+
+import json
+from datetime import datetime, timezone
+from typing import Optional
+
+
+def now_iso() -> str:
+    """Return current time as ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def parse_json_array(value: Optional[str]) -> list:
+    """Parse a JSON array string, returning empty list for None/empty."""
+    if not value:
+        return []
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def to_json_array(value: Optional[list]) -> Optional[str]:
+    """Convert a list to JSON string, returning None for empty/None."""
+    if not value:
+        return None
+    return json.dumps(value)
+
+
+def normalize_condition(condition: str) -> str:
+    """Normalize condition strings to standard format."""
+    condition = condition.strip()
+
+    # Common abbreviations
+    abbrevs = {
+        "NM": "Near Mint",
+        "LP": "Lightly Played",
+        "MP": "Moderately Played",
+        "HP": "Heavily Played",
+        "D": "Damaged",
+        "DM": "Damaged",
+        "DMG": "Damaged",
+        "PL": "Lightly Played",
+        "SP": "Lightly Played",  # Slightly Played -> Lightly Played
+        "EX": "Lightly Played",  # Excellent -> Lightly Played
+        "GD": "Lightly Played",  # Good -> Lightly Played
+        "VG": "Lightly Played",  # Very Good -> Lightly Played
+    }
+
+    upper = condition.upper()
+    if upper in abbrevs:
+        return abbrevs[upper]
+
+    # Already in full form
+    valid = ["Near Mint", "Lightly Played", "Moderately Played", "Heavily Played", "Damaged"]
+    for v in valid:
+        if v.lower() == condition.lower():
+            return v
+
+    # Default to Near Mint if unrecognized
+    return "Near Mint"
+
+
+def normalize_finish(finish: str) -> str:
+    """Normalize finish strings to standard format."""
+    finish = finish.strip().lower()
+
+    if finish in ("foil", "f", "yes", "true", "1"):
+        return "foil"
+    elif finish in ("etched", "e"):
+        return "etched"
+    else:
+        return "nonfoil"
+
+
+def format_box(title: str, width: int = 100) -> str:
+    """Format a box title for CLI output."""
+    return f"{'═' * width}\n{title.center(width)}\n{'═' * width}"

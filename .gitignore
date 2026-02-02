@@ -1,5 +1,22 @@
+# Virtual environment
 .venv/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+
+# Environment
 .env
+
+# Output files
 moxfield_collection.csv
+*.sqlite
+
+# IDE
+.idea/
+.vscode/
+*.swp
