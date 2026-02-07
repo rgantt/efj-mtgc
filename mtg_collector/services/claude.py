@@ -122,7 +122,7 @@ Each corner has tiny printed text with collector info. Look for the pattern:
   SET ★ EN    (foil)
 
 Where:
-- RARITY: a single letter — C (common), U (uncommon), R (rare), M (mythic rare)
+- RARITY: a single letter — C (common), U (uncommon), R (rare), M (mythic rare), P (promo)
 - COLLECTOR_NUMBER: 3-4 digits, often with leading zeros (e.g. 0075, 0187, 0200)
 - SET: 3-4 letter set code (e.g. EOE, ECL, MKM) — appears BEFORE "EN"
 - "EN" is the language marker (English) — NOT part of the set code
@@ -183,6 +183,9 @@ Return ONLY a JSON array:
             except json.JSONDecodeError as e:
                 last_error = f"JSON parse error: {e}"
                 print(f"  {last_error}")
+            except anthropic.BadRequestError as e:
+                print(f"  Error: {e}")
+                return []
             except Exception as e:
                 last_error = str(e)
                 if "api_key" in str(e).lower() or "authentication" in str(e).lower():

@@ -18,7 +18,7 @@ from mtg_collector.services.scryfall import (
 )
 from mtg_collector.utils import normalize_condition, normalize_finish
 
-RARITY_MAP = {"C": "common", "U": "uncommon", "R": "rare", "M": "mythic"}
+RARITY_MAP = {"C": "common", "U": "uncommon", "R": "rare", "M": "mythic", "P": "promo"}
 
 
 def resolve_and_add_ids(
@@ -163,7 +163,7 @@ def run(args):
 
         if rarity_code not in RARITY_MAP:
             print(
-                f"Error: Invalid rarity '{rarity_code}'. Use C (common), U (uncommon), R (rare), M (mythic)."
+                f"Error: Invalid rarity '{rarity_code}'. Use C (common), U (uncommon), R (rare), M (mythic), P (promo)."
             )
             sys.exit(1)
 
