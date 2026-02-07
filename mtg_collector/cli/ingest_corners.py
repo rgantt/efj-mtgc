@@ -52,6 +52,11 @@ def register(subparsers):
         action="store_true",
         help="Review detected cards before adding (toggle foil, remove cards)",
     )
+    parser.add_argument(
+        "--source-image",
+        default=None,
+        help="Override source image path (default: use image file path being ingested)",
+    )
     parser.set_defaults(func=run)
 
 
@@ -229,6 +234,7 @@ def run(args):
                 "name": card_data.get("name", "Unknown"),
                 "rarity_code": d["rarity"],
                 "foil": d.get("foil", False),
+                "_source_image": d.get("_source_image"),
             })
 
         if failed:
@@ -251,12 +257,14 @@ def run(args):
         added = 0
         for r in resolved:
             finish = normalize_finish("foil" if r["foil"] else "nonfoil")
+            si = args.source_image if args.source_image else r.get("_source_image")
             entry = CollectionEntry(
                 id=None,
                 scryfall_id=r["card_data"]["id"],
                 finish=finish,
                 condition=condition,
                 source=args.source,
+                source_image=si,
             )
             entry_id = collection_repo.add(entry)
             print(
@@ -281,6 +289,9 @@ def run(args):
             "foil": d.get("foil", False),
         })
 
+    # Default source_image: CLI override, or the first image path
+    si = args.source_image if args.source_image else args.images[0]
+
     added, failed = resolve_and_add_ids(
         entries=entries,
         scryfall=scryfall,
@@ -291,6 +302,7 @@ def run(args):
         conn=conn,
         condition=condition,
         source=args.source,
+        source_image=si,
     )
 
     if failed:

@@ -31,6 +31,7 @@ def resolve_and_add_ids(
     conn,
     condition,
     source,
+    source_image=None,
 ):
     """
     Resolve card IDs and add them to the collection.
@@ -101,6 +102,7 @@ def resolve_and_add_ids(
             finish=finish,
             condition=condition,
             source=source,
+            source_image=source_image,
         )
         entry_id = collection_repo.add(collection_entry)
         card_name = card_data.get("name", "Unknown")
@@ -141,6 +143,11 @@ def register(subparsers):
         "--condition",
         default="Near Mint",
         help="Condition for all cards (default: Near Mint)",
+    )
+    parser.add_argument(
+        "--source-image",
+        default=None,
+        help="File path of the source image these cards came from",
     )
     parser.set_defaults(func=run)
 
@@ -216,6 +223,7 @@ def run(args):
         conn=conn,
         condition=condition,
         source=args.source,
+        source_image=args.source_image,
     )
 
     # Commit or rollback

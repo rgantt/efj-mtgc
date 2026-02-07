@@ -51,6 +51,7 @@ def test_db():
     if CACHE_DB.exists():
         shutil.copy2(str(CACHE_DB), db_path)
         conn = get_connection(db_path)
+        init_db(conn)  # Apply any pending migrations
     else:
         conn = get_connection(db_path)
         init_db(conn)
@@ -161,6 +162,35 @@ class TestValidIngestion:
         assert "Comet Crawler" in names
         assert "Mightform Harmonizer" in names
         assert "Systems Override" in names
+
+    def test_source_image_stored(self, cached_repos, scryfall):
+        """source_image should be stored and retrievable from collection entries."""
+        entries = [{
+            "rarity_code": "C",
+            "rarity": "common",
+            "collector_number": "0187",
+            "set_code": "eoe",
+            "foil": False,
+        }]
+
+        added, failed = resolve_and_add_ids(
+            entries=entries,
+            scryfall=scryfall,
+            card_repo=cached_repos["card_repo"],
+            set_repo=cached_repos["set_repo"],
+            printing_repo=cached_repos["printing_repo"],
+            collection_repo=cached_repos["collection_repo"],
+            conn=cached_repos["conn"],
+            condition="Near Mint",
+            source="test",
+            source_image="/photos/test.jpg",
+        )
+
+        assert added == 1
+
+        # Verify source_image is stored
+        entry = cached_repos["collection_repo"].get(1)
+        assert entry.source_image == "/photos/test.jpg"
 
     def test_leading_zeros_stripped(self, cached_repos, scryfall):
         """Collector numbers with leading zeros should still resolve."""

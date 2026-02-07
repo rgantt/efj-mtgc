@@ -67,6 +67,7 @@ class CollectionEntry:
     purchase_price: Optional[float] = None
     acquired_at: Optional[str] = None
     source: str = "manual"
+    source_image: Optional[str] = None
     notes: Optional[str] = None
     tags: Optional[str] = None
     tradelist: bool = False
@@ -313,8 +314,8 @@ class CollectionRepository:
             """
             INSERT INTO collection
             (scryfall_id, finish, condition, language, purchase_price,
-             acquired_at, source, notes, tags, tradelist, is_alter, proxy, signed, misprint)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             acquired_at, source, source_image, notes, tags, tradelist, is_alter, proxy, signed, misprint)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.scryfall_id,
@@ -324,6 +325,7 @@ class CollectionRepository:
                 entry.purchase_price,
                 entry.acquired_at,
                 entry.source,
+                entry.source_image,
                 entry.notes,
                 entry.tags,
                 1 if entry.tradelist else 0,
@@ -361,6 +363,7 @@ class CollectionRepository:
                 purchase_price = ?,
                 acquired_at = ?,
                 source = ?,
+                source_image = ?,
                 notes = ?,
                 tags = ?,
                 tradelist = ?,
@@ -378,6 +381,7 @@ class CollectionRepository:
                 entry.purchase_price,
                 entry.acquired_at,
                 entry.source,
+                entry.source_image,
                 entry.notes,
                 entry.tags,
                 1 if entry.tradelist else 0,
@@ -514,6 +518,13 @@ class CollectionRepository:
         return stats
 
     def _row_to_entry(self, row: sqlite3.Row) -> CollectionEntry:
+        # Handle source_image which might not exist in older databases
+        source_image = None
+        try:
+            source_image = row["source_image"]
+        except (IndexError, KeyError):
+            pass
+
         return CollectionEntry(
             id=row["id"],
             scryfall_id=row["scryfall_id"],
@@ -523,6 +534,7 @@ class CollectionRepository:
             purchase_price=row["purchase_price"],
             acquired_at=row["acquired_at"],
             source=row["source"],
+            source_image=source_image,
             notes=row["notes"],
             tags=row["tags"],
             tradelist=bool(row["tradelist"]),

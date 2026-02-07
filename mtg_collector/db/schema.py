@@ -3,7 +3,7 @@
 import sqlite3
 from typing import Optional
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS collection (
     purchase_price REAL,
     acquired_at TEXT NOT NULL,  -- ISO 8601 timestamp
     source TEXT NOT NULL,       -- 'photo_ingest', 'moxfield_import', 'archidekt_import', 'deckbox_import', 'manual'
+    source_image TEXT,          -- file path of the source image (for photo-based ingestion)
     notes TEXT,
     tags TEXT,                  -- JSON array or comma-separated
     tradelist INTEGER DEFAULT 0,
@@ -121,6 +122,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v1_to_v2(conn)
         if current < 3:
             _migrate_v2_to_v3(conn)
+        if current < 4:
+            _migrate_v3_to_v4(conn)
 
     # Record schema version
     conn.execute(
@@ -149,6 +152,15 @@ def _migrate_v2_to_v3(conn: sqlite3.Connection):
 
     if "raw_json" not in columns:
         conn.execute("ALTER TABLE printings ADD COLUMN raw_json TEXT")
+
+
+def _migrate_v3_to_v4(conn: sqlite3.Connection):
+    """Add source_image column to collection table."""
+    cursor = conn.execute("PRAGMA table_info(collection)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "source_image" not in columns:
+        conn.execute("ALTER TABLE collection ADD COLUMN source_image TEXT")
 
 
 def drop_all_tables(conn: sqlite3.Connection):

@@ -1,5 +1,13 @@
 # TODO
 
+## Up Next
+
+6. **Crack a Pack** — UI to choose a set + booster type, then generate a virtual pack using MTGJSON sheet weights and booster definitions from AllPrintings.json.
+
+7. **Move bling odds calculator into repo** — `~/mtg/blingodds.py` + `bling.yml` + AllPrintings.json data. Calculates probability of opening special cards (borderless, showcase, extended art, etc.) per pack/box.
+
+8. **Move local OCR into repo** — `local-ocr/ocr_cli.py` uses easyocr to read collector numbers from card corner photos without Claude API. Replace Claude Vision in the ingest pipeline for cards with visible collector numbers.
+
 ## Future Enhancements
 
 1. **Enable mobile usage (phone camera workflow)**
