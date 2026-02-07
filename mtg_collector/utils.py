@@ -91,18 +91,16 @@ def store_source_image(image_path: str) -> str:
     if dest.resolve() == src:
         return str(dest)
 
-    # Handle name collisions by appending a counter
-    if dest.exists() and dest.read_bytes() != src.read_bytes():
-        stem = src.stem
-        suffix = src.suffix
-        counter = 1
-        while dest.exists():
-            dest = dest_dir / f"{stem}_{counter}{suffix}"
-            counter += 1
+    # Error on name collision with different content — likely a duplicate ingest
+    if dest.exists():
+        if dest.read_bytes() == src.read_bytes():
+            return str(dest)
+        raise FileExistsError(
+            f"Source image '{src.name}' already exists in {dest_dir} with different content. "
+            f"This may be a duplicate ingest — check before proceeding."
+        )
 
-    if not dest.exists():
-        shutil.copy2(str(src), str(dest))
-
+    shutil.copy2(str(src), str(dest))
     return str(dest)
 
 
