@@ -6,21 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 MTG Card Collection Builder - A Python CLI tool that uses Claude's Vision API to identify Magic: The Gathering cards from images and queries the Scryfall API to build a collection database. Supports import/export to Moxfield, Archidekt, and Deckbox formats.
 
+## Environment
+- **Always use `uv`** for all Python operations (not pip/venv/make). Examples:
+  - `uv sync` to install deps
+  - `uv run pytest ...` to run tests
+  - `uv run mtg ...` to run CLI
+
+## Error Handling Philosophy
+- **NEVER add fallback logic.** Errors should propagate to the user.
+- No fallback content, no silent defaults, no swallowed exceptions.
+- As few error paths as possible. Let it crash visibly.
+
 ## Commands
 
 ```bash
 # Setup
-make setup && source .venv/bin/activate
+uv sync
 
 # Run tests (integration tests require ANTHROPIC_API_KEY)
-make test                                    # All tests
-pytest tests/test_ingest_integration.py -v   # Single test file
-pytest tests/test_ingest_integration.py::TestIngestIntegration::test_ingest_command_batch_mode -v  # Single test
+uv run pytest                                # All tests
+uv run pytest tests/test_ingest_ids.py -v    # Single test file
 
 # Linting
-make lint
-ruff check mtg_collector/                    # Just ruff
-black --check mtg_collector/                 # Just black
+uv run ruff check mtg_collector/
+uv run black --check mtg_collector/
 
 # CLI usage
 mtg db init                        # Initialize database
