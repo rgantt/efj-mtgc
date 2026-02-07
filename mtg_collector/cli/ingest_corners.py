@@ -16,7 +16,7 @@ from mtg_collector.services.scryfall import (
     ScryfallAPI,
     ensure_set_cached,
 )
-from mtg_collector.utils import normalize_condition
+from mtg_collector.utils import normalize_condition, store_source_image
 from mtg_collector.cli.ingest_ids import RARITY_MAP, resolve_and_add_ids
 
 
@@ -257,7 +257,8 @@ def run(args):
         added = 0
         for r in resolved:
             finish = normalize_finish("foil" if r["foil"] else "nonfoil")
-            si = args.source_image if args.source_image else r.get("_source_image")
+            raw_si = args.source_image if args.source_image else r.get("_source_image")
+            si = store_source_image(raw_si) if raw_si else None
             entry = CollectionEntry(
                 id=None,
                 scryfall_id=r["card_data"]["id"],
@@ -290,7 +291,8 @@ def run(args):
         })
 
     # Default source_image: CLI override, or the first image path
-    si = args.source_image if args.source_image else args.images[0]
+    raw_si = args.source_image if args.source_image else args.images[0]
+    si = store_source_image(raw_si)
 
     added, failed = resolve_and_add_ids(
         entries=entries,

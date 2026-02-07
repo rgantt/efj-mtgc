@@ -1,7 +1,9 @@
 """Shared utilities for MTG Collector."""
 
 import json
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 
@@ -71,6 +73,37 @@ def normalize_finish(finish: str) -> str:
         return "etched"
     else:
         return "nonfoil"
+
+
+def store_source_image(image_path: str) -> str:
+    """
+    Copy a source image into ~/.mtgc/source_images/ and return the stored path.
+
+    If the image is already in the source_images dir, returns its path as-is.
+    """
+    src = Path(image_path).expanduser().resolve()
+    dest_dir = Path.home() / ".mtgc" / "source_images"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    dest = dest_dir / src.name
+
+    # Avoid copying over itself
+    if dest.resolve() == src:
+        return str(dest)
+
+    # Handle name collisions by appending a counter
+    if dest.exists() and dest.read_bytes() != src.read_bytes():
+        stem = src.stem
+        suffix = src.suffix
+        counter = 1
+        while dest.exists():
+            dest = dest_dir / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    if not dest.exists():
+        shutil.copy2(str(src), str(dest))
+
+    return str(dest)
 
 
 def format_box(title: str, width: int = 100) -> str:

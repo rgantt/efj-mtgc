@@ -2,7 +2,12 @@
 
 ## Up Next
 
-6. **Crack a Pack** — UI to choose a set + booster type, then generate a virtual pack using MTGJSON sheet weights and booster definitions from AllPrintings.json.
+6. **Crack a Pack**
+   - [ ] **6a. Pack generation engine** — Given a set code + booster type, generate a virtual pack. Use MTGJSON AllPrintings.json booster definitions: pick a pack variant by weight, then for each slot draw from the correct sheet using card weights. Output: list of card UUIDs/names with finish, rarity, treatments.
+   - [ ] **6b. Basic UI** — Web UI to pick a set and booster type, generate a pack, and display the cards with images (Scryfall image URIs or downloaded). Flip/reveal animation optional but nice.
+   - [ ] **6c. "Save" cards from packs** — Tap a card in the UI to mark it as a pick. Open multiple packs, pick cards from each. Persist picks across packs in a session.
+   - [ ] **6d. Highlight owned cards** — Cross-reference generated pack against the collection DB. Visually flag cards you already own.
+   - [ ] **6e. Add to cart** — For picked cards, generate links or auto-add to TCGPlayer/CardKingdom cart.
 
 7. **Move bling odds calculator into repo** — `~/mtg/blingodds.py` + `bling.yml` + AllPrintings.json data. Calculates probability of opening special cards (borderless, showcase, extended art, etc.) per pack/box.
 

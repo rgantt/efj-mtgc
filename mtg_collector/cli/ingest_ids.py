@@ -16,7 +16,7 @@ from mtg_collector.services.scryfall import (
     cache_scryfall_data,
     ensure_set_cached,
 )
-from mtg_collector.utils import normalize_condition, normalize_finish
+from mtg_collector.utils import normalize_condition, normalize_finish, store_source_image
 
 RARITY_MAP = {"C": "common", "U": "uncommon", "R": "rare", "M": "mythic", "P": "promo"}
 
@@ -223,7 +223,7 @@ def run(args):
         conn=conn,
         condition=condition,
         source=args.source,
-        source_image=args.source_image,
+        source_image=store_source_image(args.source_image) if args.source_image else None,
     )
 
     # Commit or rollback

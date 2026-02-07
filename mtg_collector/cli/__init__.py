@@ -25,9 +25,9 @@ def main():
     # Import subcommand modules and register them
     # These imports are done here to allow partial functionality
     # even if some dependencies (like anthropic) are missing
-    from mtg_collector.cli import db_cmd, list_cmd, show, edit, delete, stats, export, ingest_ids
+    from mtg_collector.cli import db_cmd, data_cmd, list_cmd, show, edit, delete, stats, export, ingest_ids, crack_pack
 
-    modules = [db_cmd, list_cmd, show, edit, delete, stats, export, ingest_ids]
+    modules = [db_cmd, data_cmd, list_cmd, show, edit, delete, stats, export, ingest_ids, crack_pack]
 
     # Try to import modules that require external dependencies
     try:
