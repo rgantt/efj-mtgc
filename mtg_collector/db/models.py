@@ -87,9 +87,17 @@ class CardRepository:
         """Insert or update a card."""
         self.conn.execute(
             """
-            INSERT OR REPLACE INTO cards
+            INSERT INTO cards
             (oracle_id, name, type_line, mana_cost, cmc, oracle_text, colors, color_identity)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(oracle_id) DO UPDATE SET
+                name = excluded.name,
+                type_line = excluded.type_line,
+                mana_cost = excluded.mana_cost,
+                cmc = excluded.cmc,
+                oracle_text = excluded.oracle_text,
+                colors = excluded.colors,
+                color_identity = excluded.color_identity
             """,
             (
                 card.oracle_id,
@@ -154,8 +162,13 @@ class SetRepository:
         """Insert or update a set."""
         self.conn.execute(
             """
-            INSERT OR REPLACE INTO sets (set_code, set_name, set_type, released_at, cards_fetched_at)
+            INSERT INTO sets (set_code, set_name, set_type, released_at, cards_fetched_at)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(set_code) DO UPDATE SET
+                set_name = excluded.set_name,
+                set_type = excluded.set_type,
+                released_at = excluded.released_at,
+                cards_fetched_at = COALESCE(excluded.cards_fetched_at, sets.cards_fetched_at)
             """,
             (s.set_code, s.set_name, s.set_type, s.released_at, s.cards_fetched_at),
         )
@@ -211,11 +224,25 @@ class PrintingRepository:
         """Insert or update a printing."""
         self.conn.execute(
             """
-            INSERT OR REPLACE INTO printings
+            INSERT INTO printings
             (scryfall_id, oracle_id, set_code, collector_number, rarity,
              frame_effects, border_color, full_art, promo, promo_types,
              finishes, artist, image_uri, raw_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(scryfall_id) DO UPDATE SET
+                oracle_id = excluded.oracle_id,
+                set_code = excluded.set_code,
+                collector_number = excluded.collector_number,
+                rarity = excluded.rarity,
+                frame_effects = excluded.frame_effects,
+                border_color = excluded.border_color,
+                full_art = excluded.full_art,
+                promo = excluded.promo,
+                promo_types = excluded.promo_types,
+                finishes = excluded.finishes,
+                artist = excluded.artist,
+                image_uri = excluded.image_uri,
+                raw_json = excluded.raw_json
             """,
             (
                 p.scryfall_id,

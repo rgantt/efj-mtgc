@@ -430,8 +430,12 @@ def ensure_set_cached(
         card = api.to_card_model(card_data)
         card_repo.upsert(card)
 
-        printing = api.to_printing_model(card_data)
-        printing_repo.upsert(printing)
+        # Don't overwrite printings that already exist from direct API lookups —
+        # /cards/{set}/{cn} returns the canonical scryfall_id, search results may not.
+        cn = card_data["collector_number"]
+        if not printing_repo.get_by_set_cn(set_code, cn):
+            printing = api.to_printing_model(card_data)
+            printing_repo.upsert(printing)
 
     # Mark set as cached
     set_repo.mark_cards_cached(set_code)
