@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 build/
 dist/
+uv.lock
 
 # Environment
 .env
@@ -20,3 +21,6 @@ moxfield_collection.csv
 .idea/
 .vscode/
 *.swp
+
+# Claude
+.claude/
