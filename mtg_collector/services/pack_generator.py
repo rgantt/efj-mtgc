@@ -175,6 +175,7 @@ class PackGenerator:
         pack.sort(key=lambda c: _RARITY_ORDER.get(c["rarity"], 1))
 
         return {
+            "set_code": set_code,
             "seed": seed,
             "variant_index": variant_index,
             "variant_weight": variant.get("weight", 1),

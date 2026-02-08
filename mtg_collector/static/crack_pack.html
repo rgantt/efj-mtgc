@@ -223,6 +223,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   position: relative;
   transform-style: preserve-3d;
   transition: transform 0.5s;
+  --rarity-color: #111;
+  --set-color: #111;
+  background: linear-gradient(to bottom, var(--rarity-color), var(--set-color));
 }
 
 .card-slot.face-down .card-img-wrap {
@@ -231,11 +234,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .card-front, .card-back {
   position: absolute;
-  top: 0; left: 0;
-  width: 100%;
-  height: 100%;
+  top: 2px; left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
   backface-visibility: hidden;
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -274,10 +277,6 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   text-transform: uppercase;
 }
 
-.badge.mythic { background: #e94560; color: #fff; }
-.badge.rare { background: #d4a017; color: #000; }
-.badge.uncommon { background: #8a8a8a; color: #fff; }
-.badge.common { background: #444; color: #ccc; }
 .badge.foil {
   background: linear-gradient(135deg, #ff6ec7, #7873f5, #4ade80);
   color: #fff;
@@ -338,10 +337,25 @@ a.badge.link:hover { color: #fff; background: #555; }
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+  padding-left: 12px;
   background: #1a1a2e;
   border-radius: 6px;
   font-size: 0.8rem;
   cursor: pointer;
+  position: relative;
+  --rarity-color: #111;
+  --set-color: #111;
+}
+
+.pick-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(to bottom, var(--rarity-color), var(--set-color));
 }
 
 .pick-item:hover { background: #222244; }
@@ -448,6 +462,7 @@ let activeDropdownIndex = -1;
 let picks = JSON.parse(localStorage.getItem('crackPackPicks') || '[]');
 let currentPack = [];
 let currentPackSeed = null;
+let currentPackSetCode = null;
 
 // --- Prices status ---
 
@@ -494,6 +509,16 @@ pricesStatus.addEventListener('click', async () => {
   pricesStatus.classList.remove('loading');
 });
 
+// --- Border colors ---
+
+const RARITY_COLORS = {common: '#111', uncommon: '#6a6a6a', rare: '#c9a816', mythic: '#d4422a'};
+
+function getRarityColor(rarity) { return RARITY_COLORS[rarity] || '#111'; }
+function getSetColor(cardSetCode, packSetCode) {
+  if (!packSetCode) return '#111';
+  return cardSetCode.toUpperCase() !== packSetCode.toUpperCase() ? '#5c2d91' : '#111';
+}
+
 // --- Picks ---
 
 function savePicks() {
@@ -511,12 +536,14 @@ function renderPicks() {
   picks.forEach((card, i) => {
     const li = document.createElement('li');
     li.className = 'pick-item';
+    li.style.setProperty('--rarity-color', getRarityColor(card.rarity));
+    li.style.setProperty('--set-color', getSetColor(card.set_code, card._packSetCode));
     li.innerHTML = `
       <img src="${card.image_uri}" alt="" loading="lazy">
       <div>
         <div class="pick-name">${card.name}</div>
         <div class="pick-set">${card.set_code} #${card.collector_number}</div>
-        <div class="pick-badges">${buildCardBadges(card)}</div>
+        <div class="pick-badges">${buildCardBadges(card, card._packSetCode)}</div>
       </div>
       <span class="remove-pick" data-index="${i}">&times;</span>
     `;
@@ -541,7 +568,7 @@ function syncPickState() {
 
 // --- Badges ---
 
-function buildCardBadges(card) {
+function buildCardBadges(card, packSetCode) {
   let html = '';
   if (card.scryfall_id) {
     const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
@@ -550,10 +577,6 @@ function buildCardBadges(card) {
       const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
       html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
     }
-  }
-  if (card.rarity && card.rarity !== 'common') {
-    const abbrev = {mythic: 'M', rare: 'R', uncommon: 'U'};
-    html += `<span class="badge ${card.rarity}">${abbrev[card.rarity] || card.rarity[0].toUpperCase()}</span>`;
   }
   if (card.foil) html += '<span class="badge foil">F</span>';
   if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
@@ -565,8 +588,8 @@ function buildCardBadges(card) {
   return html;
 }
 
-function buildBadges(card) {
-  return '<span class="badge zoom-badge">&#128269;</span>' + buildCardBadges(card);
+function buildBadges(card, packSetCode) {
+  return '<span class="badge zoom-badge">&#128269;</span>' + buildCardBadges(card, packSetCode);
 }
 
 // --- Searchable set selector ---
@@ -781,6 +804,7 @@ async function openPack(seed, hashRevealed) {
 
   currentPack = result.cards || [];
   currentPackSeed = result.seed;
+  currentPackSetCode = result.set_code;
 
   const pct = ((result.variant_weight / result.total_weight) * 100).toFixed(1);
   const packTotal = currentPack.reduce((sum, c) => sum + (parseFloat(c.tcg_price) || 0), 0);
@@ -813,12 +837,16 @@ async function openPack(seed, hashRevealed) {
     div.className = 'card-slot' + (faceDown ? ' face-down' : '');
     div.dataset.scryfallId = card.scryfall_id;
     div.dataset.index = i;
+
+    const rarityColor = getRarityColor(card.rarity);
+    const setColor = getSetColor(card.set_code, currentPackSetCode);
+
     div.innerHTML = `
-      <div class="card-img-wrap">
+      <div class="card-img-wrap" style="--rarity-color:${rarityColor};--set-color:${setColor}">
         <div class="card-front"><img src="${card.image_uri}" alt="${card.name}" loading="lazy"></div>
         <div class="card-back"><img src="/static/card_back.jpeg" alt=""></div>
       </div>
-      <div class="card-info">${buildBadges(card)}</div>
+      <div class="card-info">${buildBadges(card, currentPackSetCode)}</div>
     `;
     // Zoom badge click
     div.querySelector('.zoom-badge').addEventListener('click', (e) => {
@@ -851,7 +879,7 @@ function togglePick(card, packIndex) {
   if (existing >= 0) {
     picks.splice(existing, 1);
   } else {
-    picks.push({...card, _packIndex: packIndex});
+    picks.push({...card, _packIndex: packIndex, _packSetCode: currentPackSetCode});
   }
   savePicks();
   syncPickState();

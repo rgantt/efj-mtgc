@@ -17,9 +17,13 @@ DONE6.4 if i click "create" and then refresh the page, i want the same pack to r
 
 DONE 6.5 add pricing information from somewhere
 
-6.5 cards need to be drawn without replacement
+DONE 6.5 cards need to be drawn without replacement
 
-6.5.1 fix CK prices, still aren't showing up
+DONE 6.5.1 fix CK prices, still aren't showing up
+
+6.5.3 move crack a pack to /crack, add a basic homepage.
+
+6.5.4 add highlighting for non-primary sets (like EOS drawn in an EOE pack)
 
 6.6 MTG.WTF/PACK: A better UI.
 
@@ -30,6 +34,8 @@ there should be a button next to "Open Pack" that says "Explore Sheets". once a 
 7. **Move bling odds calculator into repo** — `~/mtg/blingodds.py` + `bling.yml` + AllPrintings.json data. Calculates probability of opening special cards (borderless, showcase, extended art, etc.) per pack/box.
 
 7.5 **A basic Collection UI**: Like Moxfield. Use the same assets from crack a pack.
+
+the collection UI should be straightforward, with a card name search, various sort options for card types/colors/price/etc, filter options for the same, table or full-card-image views.
 
 8. **Move local OCR into repo** — `local-ocr/ocr_cli.py` uses easyocr to read collector numbers from card corner photos without Claude API. Replace Claude Vision in the ingest pipeline for cards with visible collector numbers.
 

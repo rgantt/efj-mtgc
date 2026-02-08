@@ -116,7 +116,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path == "/":
-            self._serve_html()
+            self._serve_homepage()
+        elif path == "/crack":
+            self._serve_static("crack_pack.html")
         elif path == "/api/sets":
             self._api_sets()
         elif path == "/api/products":
@@ -153,8 +155,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         ".png": "image/png",
     }
 
-    def _serve_html(self):
-        self._serve_static("crack_pack.html")
+    def _serve_homepage(self):
+        self._serve_static("index.html")
 
     def _serve_static(self, filename: str):
         filepath = self.static_dir / filename
@@ -293,7 +295,8 @@ def run(args):
     handler = partial(CrackPackHandler, gen, static_dir)
 
     server = HTTPServer(("", args.port), handler)
-    print(f"Crack-a-Pack server running at http://localhost:{args.port}")
+    print(f"Server running at http://localhost:{args.port}")
+    print(f"Crack-a-Pack: http://localhost:{args.port}/crack")
     print("Press Ctrl+C to stop.")
 
     try:

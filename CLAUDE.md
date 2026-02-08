@@ -84,3 +84,8 @@ Both feed into `resolve_and_add_ids()` which:
 - RARITY_MAP: C (common), U (uncommon), R (rare), M (mythic), P (promo)
 - Fuzzy match threshold: 0.75 (difflib, used for name matching against cached set lists)
 - Tests use a pre-populated `tests/fixtures/scryfall-cache.sqlite` for offline testing
+
+## Web UI Shared Conventions (crack_pack.html)
+
+- **Rarity/set border gradients**: Cards use CSS custom properties `--rarity-color` and `--set-color` with `linear-gradient(to bottom, ...)` to show rarity (top) and guest-set status (bottom). Shared JS helpers `getRarityColor(rarity)` and `getSetColor(cardSetCode, packSetCode)` return the colors. Use these for any new card display (lists, grids, etc.).
+- **Badge builder**: `buildCardBadges(card, packSetCode)` returns HTML for SF/CK links with prices, foil, and treatment badges. `buildBadges(card, packSetCode)` wraps it with a zoom badge for the pack grid.
