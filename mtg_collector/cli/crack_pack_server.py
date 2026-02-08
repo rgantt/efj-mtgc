@@ -3,6 +3,7 @@
 import gzip
 import json
 import shutil
+import sqlite3
 import sys
 import threading
 import time
@@ -15,6 +16,7 @@ from urllib.parse import urlparse, parse_qs
 import requests
 
 from mtg_collector.cli.data_cmd import MTGJSON_PRICES_URL, get_allpricestoday_path, _download
+from mtg_collector.db.connection import get_db_path
 from mtg_collector.services.pack_generator import PackGenerator
 
 # In-memory price cache: scryfall_id -> (timestamp, prices_dict)
@@ -79,10 +81,12 @@ def _fetch_prices(scryfall_ids: list[str]) -> dict[str, dict]:
         else:
             to_fetch.append(sid)
 
-    if to_fetch:
+    # Scryfall collection endpoint accepts max 75 identifiers per request
+    for i in range(0, len(to_fetch), 75):
+        batch = to_fetch[i:i + 75]
         resp = requests.post(
             "https://api.scryfall.com/cards/collection",
-            json={"identifiers": [{"id": sid} for sid in to_fetch]},
+            json={"identifiers": [{"id": sid} for sid in batch]},
             headers={"User-Agent": "MTGCollectionTool/2.0"},
         )
         resp.raise_for_status()
@@ -90,6 +94,8 @@ def _fetch_prices(scryfall_ids: list[str]) -> dict[str, dict]:
             prices = card.get("prices", {})
             _price_cache[card["id"]] = (now, prices)
             result[card["id"]] = prices
+        if i + 75 < len(to_fetch):
+            time.sleep(0.1)  # rate limit
 
     return result
 
@@ -113,9 +119,10 @@ def _download_prices():
 class CrackPackHandler(BaseHTTPRequestHandler):
     """HTTP handler for crack-a-pack web UI."""
 
-    def __init__(self, generator: PackGenerator, static_dir: Path, *args, **kwargs):
+    def __init__(self, generator: PackGenerator, static_dir: Path, db_path: str, *args, **kwargs):
         self.generator = generator
         self.static_dir = static_dir
+        self.db_path = db_path
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
@@ -128,6 +135,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._serve_static("crack_pack.html")
         elif path == "/sheets":
             self._serve_static("explore_sheets.html")
+        elif path == "/collection":
+            self._serve_static("collection.html")
         elif path == "/api/sets":
             self._api_sets()
         elif path == "/api/products":
@@ -139,6 +148,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             set_code = params.get("set", [""])[0]
             product = params.get("product", [""])[0]
             self._api_sheets(set_code, product)
+        elif path == "/api/collection":
+            params = parse_qs(parsed.query)
+            self._api_collection(params)
         elif path == "/api/prices-status":
             self._api_prices_status()
         elif path.startswith("/static/"):
@@ -241,6 +253,143 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         self._send_json(result)
 
+    def _api_collection(self, params: dict):
+        """Return aggregated collection data with optional search/sort/filter."""
+        q = params.get("q", [""])[0]
+        sort = params.get("sort", ["name"])[0]
+        order = params.get("order", ["asc"])[0]
+        filter_colors = params.get("filter_color", [])
+        filter_rarities = params.get("filter_rarity", [])
+        filter_sets = params.get("filter_set", [])
+        filter_type = params.get("filter_type", [""])[0]
+        filter_finish = params.get("filter_finish", [])
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        where_clauses = []
+        sql_params = []
+
+        if q:
+            where_clauses.append("card.name LIKE ?")
+            sql_params.append(f"%{q}%")
+
+        if filter_colors:
+            color_conditions = []
+            for color in filter_colors:
+                if color == "C":
+                    color_conditions.append("(card.colors IS NULL OR card.colors = '[]')")
+                else:
+                    color_conditions.append("card.colors LIKE ?")
+                    sql_params.append(f'%"{color}"%')
+            where_clauses.append(f"({' OR '.join(color_conditions)})")
+
+        if filter_rarities:
+            placeholders = ",".join("?" * len(filter_rarities))
+            where_clauses.append(f"p.rarity IN ({placeholders})")
+            sql_params.extend(filter_rarities)
+
+        if filter_sets:
+            placeholders = ",".join("?" * len(filter_sets))
+            where_clauses.append(f"p.set_code IN ({placeholders})")
+            sql_params.extend(filter_sets)
+
+        if filter_type:
+            where_clauses.append("card.type_line LIKE ?")
+            sql_params.append(f"%{filter_type}%")
+
+        if filter_finish:
+            placeholders = ",".join("?" * len(filter_finish))
+            where_clauses.append(f"c.finish IN ({placeholders})")
+            sql_params.extend(filter_finish)
+
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+
+        # Map sort param to SQL column
+        sort_map = {
+            "name": "card.name",
+            "cmc": "card.cmc",
+            "rarity": "CASE p.rarity WHEN 'common' THEN 0 WHEN 'uncommon' THEN 1 WHEN 'rare' THEN 2 WHEN 'mythic' THEN 3 ELSE 4 END",
+            "set": "p.set_code",
+            "color": "card.color_identity",
+            "qty": "qty",
+            "price": "0",  # sorted client-side since prices are attached after
+            "collector_number": "CAST(p.collector_number AS INTEGER)",
+        }
+        sort_col = sort_map.get(sort, "card.name")
+        order_dir = "DESC" if order == "desc" else "ASC"
+
+        query = f"""
+            SELECT
+                card.name, card.type_line, card.mana_cost, card.cmc,
+                card.colors, card.color_identity,
+                p.set_code, s.set_name, p.collector_number, p.rarity,
+                p.scryfall_id, p.image_uri, p.artist,
+                p.frame_effects, p.border_color, p.full_art, p.promo,
+                p.promo_types, p.finishes,
+                c.finish, c.condition,
+                COUNT(*) as qty
+            FROM collection c
+            JOIN printings p ON c.scryfall_id = p.scryfall_id
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code
+            WHERE {where_sql}
+            GROUP BY p.scryfall_id, c.finish, c.condition
+            ORDER BY {sort_col} {order_dir}, card.name ASC
+        """
+
+        cursor = conn.execute(query, sql_params)
+        rows = cursor.fetchall()
+
+        results = []
+        for row in rows:
+            card = {
+                "name": row["name"],
+                "type_line": row["type_line"],
+                "mana_cost": row["mana_cost"],
+                "cmc": row["cmc"],
+                "colors": row["colors"],
+                "color_identity": row["color_identity"],
+                "set_code": row["set_code"],
+                "set_name": row["set_name"],
+                "collector_number": row["collector_number"],
+                "rarity": row["rarity"],
+                "scryfall_id": row["scryfall_id"],
+                "image_uri": row["image_uri"],
+                "artist": row["artist"],
+                "frame_effects": row["frame_effects"],
+                "border_color": row["border_color"],
+                "full_art": bool(row["full_art"]),
+                "promo": bool(row["promo"]),
+                "promo_types": row["promo_types"],
+                "finishes": row["finishes"],
+                "finish": row["finish"],
+                "condition": row["condition"],
+                "qty": row["qty"],
+            }
+            # Attach prices from AllPricesToday
+            foil = card["finish"] in ("foil", "etched")
+            # We don't have uuid here, but we can look up by scryfall_id in the MTGJSON data
+            # For now, attach Scryfall-based prices
+            card["tcg_price"] = None
+            card["ck_price"] = None
+            card["ck_url"] = None
+            results.append(card)
+
+        # Batch fetch Scryfall prices
+        scryfall_ids = list({r["scryfall_id"] for r in results})
+        prices = _fetch_prices(scryfall_ids)
+        for card in results:
+            card_prices = prices.get(card["scryfall_id"], {})
+            foil = card["finish"] in ("foil", "etched")
+            if foil:
+                card["tcg_price"] = card_prices.get("usd_foil") or card_prices.get("usd")
+            else:
+                card["tcg_price"] = card_prices.get("usd") or card_prices.get("usd_foil")
+
+        conn.close()
+        self._send_json(results)
+
     def _api_prices_status(self):
         path = get_allpricestoday_path()
         if path.exists():
@@ -291,12 +440,18 @@ def register(subparsers):
         default=None,
         help="Path to AllPrintings.json (default: ~/.mtgc/AllPrintings.json)",
     )
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="Path to collection SQLite database (default: ~/.mtgc/collection.sqlite)",
+    )
     parser.set_defaults(func=run)
 
 
 def run(args):
     """Run the crack-pack-server command."""
     mtgjson_path = Path(args.mtgjson) if args.mtgjson else None
+    db_path = get_db_path(getattr(args, "db", None))
 
     gen = PackGenerator(mtgjson_path)
 
@@ -322,12 +477,13 @@ def run(args):
     prices_thread.start()
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
-    handler = partial(CrackPackHandler, gen, static_dir)
+    handler = partial(CrackPackHandler, gen, static_dir, db_path)
 
     server = HTTPServer(("", args.port), handler)
     print(f"Server running at http://localhost:{args.port}")
     print(f"Crack-a-Pack: http://localhost:{args.port}/crack")
     print(f"Explore Sheets: http://localhost:{args.port}/sheets")
+    print(f"Collection: http://localhost:{args.port}/collection")
     print("Press Ctrl+C to stop.")
 
     try:

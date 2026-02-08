@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Collection Browser</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+header {
+  background: #16213e;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid #0f3460;
+}
+
+header h1 {
+  font-size: 1.3rem;
+  color: #e94560;
+  margin-right: 16px;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+input[type="text"], select, button {
+  padding: 8px 14px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+}
+
+input[type="text"]:focus, select:focus { outline: 2px solid #e94560; }
+
+button {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover { background: #c73651; }
+
+button.secondary {
+  background: #333;
+  border-color: #555;
+}
+button.secondary:hover { background: #e94560; border-color: #e94560; }
+button.secondary.active { background: #0f3460; border-color: #e94560; }
+
+#search-input { width: 220px; }
+
+#status {
+  font-size: 0.85rem;
+  color: #888;
+  margin-left: auto;
+}
+
+/* Layout */
+.layout {
+  display: flex;
+  min-height: calc(100vh - 70px);
+}
+
+/* Sidebar */
+.sidebar {
+  width: 240px;
+  background: #16213e;
+  border-right: 1px solid #0f3460;
+  padding: 16px;
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar.collapsed { display: none; }
+
+.sidebar h3 {
+  font-size: 0.85rem;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 16px 0 8px;
+}
+
+.sidebar h3:first-child { margin-top: 0; }
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-group label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.filter-group label:hover { color: #fff; }
+
+.filter-group input[type="checkbox"] {
+  accent-color: #e94560;
+}
+
+#filter-type, #filter-set {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+}
+
+/* Main content */
+.main {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+/* Table view */
+.collection-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.collection-table th {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 2px solid #0f3460;
+  color: #888;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.collection-table th:hover { color: #e94560; }
+.collection-table th.sorted { color: #e94560; }
+
+.collection-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #0f346033;
+  vertical-align: middle;
+}
+
+.collection-table tr:hover { background: rgba(15, 52, 96, 0.2); }
+.collection-table tr { cursor: pointer; }
+
+.card-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.card-thumb {
+  width: 36px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.card-name { font-weight: 500; }
+
+.mana-cost { font-family: monospace; font-size: 0.8rem; color: #aaa; white-space: nowrap; }
+
+.rarity-common { color: #888; }
+.rarity-uncommon { color: #8ec5d6; }
+.rarity-rare { color: #d4a62a; }
+.rarity-mythic { color: #e94560; }
+
+.price-cell {
+  display: flex;
+  gap: 4px;
+}
+
+/* Card grid */
+.card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sheet-card {
+  width: 264px;
+  position: relative;
+  cursor: pointer;
+}
+
+.sheet-card-img-wrap {
+  width: 264px;
+  aspect-ratio: 488 / 680;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  --rarity-color: #111;
+  --set-color: #111;
+  background: linear-gradient(to bottom, var(--rarity-color), var(--set-color));
+}
+
+.sheet-card-img-wrap img {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: cover;
+  border-radius: 6px;
+  image-rendering: high-quality;
+}
+
+.sheet-card-img-wrap.foil::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255,0,0,0.08),
+    rgba(255,165,0,0.08) 5%,
+    rgba(255,255,0,0.08) 10%,
+    rgba(0,200,0,0.08) 15%,
+    rgba(0,140,255,0.08) 20%,
+    rgba(130,0,255,0.08) 25%,
+    rgba(255,0,200,0.08) 30%,
+    rgba(255,0,0,0.08) 33.33%
+  );
+  mix-blend-mode: color;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sheet-card-img-wrap.foil::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(255,255,255,0.12) 49%, rgba(255,255,255,0.12) 51%, transparent 54%)
+    100% 100% / 240% 240%;
+  pointer-events: none;
+  z-index: 2;
+  animation: foil-streak 3s ease-in-out infinite;
+}
+
+@keyframes foil-streak {
+  0% { background-position: 100% 100%; }
+  15%, 100% { background-position: 0 0; }
+}
+
+.sheet-card-info {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.qty-badge {
+  position: absolute;
+  top: 6px; right: 6px;
+  background: rgba(233, 69, 96, 0.9);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 10px;
+  z-index: 3;
+}
+
+.badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.badge.treatment { background: #0f3460; color: #7ec8e3; }
+a.badge.link { background: #333; color: #aaa; text-decoration: none; font-variant-numeric: tabular-nums; }
+a.badge.link:hover { color: #fff; background: #555; }
+
+.foil-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #2a1a3e, #1a2a4e);
+  border: 1px solid #5c2d91;
+  color: #c8a0e8;
+}
+
+.empty-state {
+  color: #555;
+  font-style: italic;
+  font-size: 0.9rem;
+  padding: 32px;
+  text-align: center;
+}
+
+/* Zoom overlay */
+#zoom-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+#zoom-overlay.active { display: flex; }
+
+#zoom-overlay img {
+  max-height: 85vh;
+  max-width: 90vw;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+}
+
+/* Sort arrow */
+.sort-arrow { font-size: 0.7rem; margin-left: 2px; }
+
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .sheet-card { width: 168px; }
+  .sheet-card-img-wrap { width: 168px; }
+  #search-input { width: 140px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Collection</h1>
+  <div class="controls">
+    <input type="text" id="search-input" placeholder="Search cards...">
+    <select id="sort-select">
+      <option value="name">Name</option>
+      <option value="cmc">CMC</option>
+      <option value="rarity">Rarity</option>
+      <option value="set">Set</option>
+      <option value="color">Color</option>
+      <option value="qty">Quantity</option>
+      <option value="price">Price</option>
+      <option value="collector_number">Collector #</option>
+    </select>
+    <button class="secondary" id="order-btn" title="Toggle sort order">A-Z</button>
+    <button class="secondary" id="view-table-btn" title="Table view">Table</button>
+    <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
+    <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
+  </div>
+  <div id="status"></div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h3>Color</h3>
+    <div class="filter-group" id="color-filters">
+      <label><input type="checkbox" value="W"> White</label>
+      <label><input type="checkbox" value="U"> Blue</label>
+      <label><input type="checkbox" value="B"> Black</label>
+      <label><input type="checkbox" value="R"> Red</label>
+      <label><input type="checkbox" value="G"> Green</label>
+      <label><input type="checkbox" value="C"> Colorless</label>
+    </div>
+
+    <h3>Rarity</h3>
+    <div class="filter-group" id="rarity-filters">
+      <label><input type="checkbox" value="common"> Common</label>
+      <label><input type="checkbox" value="uncommon"> Uncommon</label>
+      <label><input type="checkbox" value="rare"> Rare</label>
+      <label><input type="checkbox" value="mythic"> Mythic</label>
+    </div>
+
+    <h3>Set</h3>
+    <select id="filter-set" multiple size="5"></select>
+
+    <h3>Type</h3>
+    <input type="text" id="filter-type" placeholder="e.g. creature, instant...">
+
+    <h3>Finish</h3>
+    <div class="filter-group" id="finish-filters">
+      <label><input type="checkbox" value="nonfoil"> Nonfoil</label>
+      <label><input type="checkbox" value="foil"> Foil</label>
+      <label><input type="checkbox" value="etched"> Etched</label>
+    </div>
+
+    <button style="margin-top:16px;width:100%" id="clear-filters-btn">Clear Filters</button>
+  </aside>
+
+  <div class="main" id="main">
+    <div class="empty-state">Loading collection...</div>
+  </div>
+</div>
+
+<div id="zoom-overlay"><img id="zoom-img" src="" alt=""></div>
+
+<script>
+const searchInput = document.getElementById('search-input');
+const sortSelect = document.getElementById('sort-select');
+const orderBtn = document.getElementById('order-btn');
+const viewTableBtn = document.getElementById('view-table-btn');
+const viewGridBtn = document.getElementById('view-grid-btn');
+const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
+const sidebar = document.getElementById('sidebar');
+const main = document.getElementById('main');
+const statusEl = document.getElementById('status');
+const zoomOverlay = document.getElementById('zoom-overlay');
+const zoomImg = document.getElementById('zoom-img');
+const filterSetEl = document.getElementById('filter-set');
+const filterTypeEl = document.getElementById('filter-type');
+const clearFiltersBtn = document.getElementById('clear-filters-btn');
+
+let currentView = 'table';
+let sortOrder = 'asc';
+let allCards = [];
+let debounceTimer = null;
+
+// --- Rarity/set border colors ---
+const RARITY_COLORS = {common: '#111', uncommon: '#6a6a6a', rare: '#c9a816', mythic: '#d4422a'};
+function getRarityColor(rarity) { return RARITY_COLORS[rarity] || '#111'; }
+
+// --- Zoom ---
+zoomOverlay.addEventListener('click', () => zoomOverlay.classList.remove('active'));
+function showZoom(imgSrc) {
+  zoomImg.src = imgSrc;
+  zoomOverlay.classList.add('active');
+}
+
+// --- Badge builder (from crack_pack patterns) ---
+function buildCardBadges(card) {
+  let html = '';
+  if (card.scryfall_id) {
+    const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
+  }
+  if (card.ck_url) {
+    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+  }
+  const fe = parseJsonField(card.frame_effects);
+  if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
+  if (fe.includes('showcase')) html += '<span class="badge treatment">SC</span>';
+  if (fe.includes('extendedart')) html += '<span class="badge treatment">EA</span>';
+  if (card.full_art) html += '<span class="badge treatment">FA</span>';
+  if (card.finish === 'foil') html += '<span class="foil-tag">Foil</span>';
+  if (card.finish === 'etched') html += '<span class="foil-tag">Etched</span>';
+  return html;
+}
+
+function parseJsonField(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  try { return JSON.parse(val); } catch { return []; }
+}
+
+// --- View toggle ---
+viewTableBtn.addEventListener('click', () => { currentView = 'table'; updateViewButtons(); render(); });
+viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewButtons(); render(); });
+
+function updateViewButtons() {
+  viewTableBtn.classList.toggle('active', currentView === 'table');
+  viewGridBtn.classList.toggle('active', currentView === 'grid');
+}
+updateViewButtons();
+
+// --- Sort order toggle ---
+orderBtn.addEventListener('click', () => {
+  sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+  orderBtn.textContent = sortOrder === 'asc' ? 'A-Z' : 'Z-A';
+  fetchCollection();
+});
+
+// --- Sidebar toggle ---
+sidebarToggleBtn.addEventListener('click', () => {
+  sidebar.classList.toggle('collapsed');
+  sidebarToggleBtn.classList.toggle('active', !sidebar.classList.contains('collapsed'));
+});
+sidebarToggleBtn.classList.add('active');
+
+// --- Fetch ---
+function getFilterParams() {
+  const params = new URLSearchParams();
+  const q = searchInput.value.trim();
+  if (q) params.set('q', q);
+  params.set('sort', sortSelect.value);
+  params.set('order', sortOrder);
+
+  document.querySelectorAll('#color-filters input:checked').forEach(cb => {
+    params.append('filter_color', cb.value);
+  });
+  document.querySelectorAll('#rarity-filters input:checked').forEach(cb => {
+    params.append('filter_rarity', cb.value);
+  });
+  Array.from(filterSetEl.selectedOptions).forEach(opt => {
+    params.append('filter_set', opt.value);
+  });
+  const typeVal = filterTypeEl.value.trim();
+  if (typeVal) params.set('filter_type', typeVal);
+
+  document.querySelectorAll('#finish-filters input:checked').forEach(cb => {
+    params.append('filter_finish', cb.value);
+  });
+
+  return params.toString();
+}
+
+async function fetchCollection() {
+  const params = getFilterParams();
+  statusEl.textContent = 'Loading...';
+  const res = await fetch(`/api/collection?${params}`);
+  allCards = await res.json();
+
+  // Client-side price sort if needed
+  if (sortSelect.value === 'price') {
+    allCards.sort((a, b) => {
+      const pa = parseFloat(a.tcg_price) || 0;
+      const pb = parseFloat(b.tcg_price) || 0;
+      return sortOrder === 'asc' ? pa - pb : pb - pa;
+    });
+  }
+
+  // Populate set filter from data
+  populateSetFilter();
+
+  statusEl.textContent = `${allCards.length} entries, ${allCards.reduce((s, c) => s + c.qty, 0)} cards`;
+  render();
+}
+
+function populateSetFilter() {
+  const sets = new Map();
+  for (const card of allCards) {
+    if (!sets.has(card.set_code)) {
+      sets.set(card.set_code, card.set_name);
+    }
+  }
+  const currentSelected = new Set(Array.from(filterSetEl.selectedOptions).map(o => o.value));
+  filterSetEl.innerHTML = '';
+  const sorted = Array.from(sets.entries()).sort((a, b) => a[1].localeCompare(b[1]));
+  for (const [code, name] of sorted) {
+    const opt = document.createElement('option');
+    opt.value = code;
+    opt.textContent = `${name} (${code.toUpperCase()})`;
+    if (currentSelected.has(code)) opt.selected = true;
+    filterSetEl.appendChild(opt);
+  }
+}
+
+// --- Render ---
+function render() {
+  if (currentView === 'table') renderTable();
+  else renderGrid();
+}
+
+function renderTable() {
+  if (allCards.length === 0) {
+    main.innerHTML = '<div class="empty-state">No cards found</div>';
+    return;
+  }
+
+  const sortKey = sortSelect.value;
+  let html = '<table class="collection-table"><thead><tr>';
+  const cols = [
+    { key: 'qty', label: 'Qty' },
+    { key: 'name', label: 'Card' },
+    { key: 'type', label: 'Type' },
+    { key: 'mana', label: 'Mana' },
+    { key: 'rarity', label: 'Rarity' },
+    { key: 'set', label: 'Set' },
+    { key: 'finish', label: 'Finish' },
+    { key: 'condition', label: 'Cond.' },
+    { key: 'price', label: 'Price' },
+  ];
+  for (const col of cols) {
+    const sortable = ['qty', 'name', 'rarity', 'set', 'price'].includes(col.key);
+    const sorted = (col.key === sortKey || (col.key === 'name' && sortKey === 'name')) ? ' sorted' : '';
+    html += `<th class="${sorted}">${col.label}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const card of allCards) {
+    const rarityClass = `rarity-${card.rarity || 'common'}`;
+    const imgSrc = card.image_uri || '';
+    const manaCost = card.mana_cost || '';
+    const price = card.tcg_price ? `$${parseFloat(card.tcg_price).toFixed(2)}` : '';
+    const finishLabel = card.finish === 'foil' ? '<span class="foil-tag">Foil</span>'
+                      : card.finish === 'etched' ? '<span class="foil-tag">Etched</span>'
+                      : 'Nonfoil';
+
+    html += `<tr data-img="${imgSrc}" onclick="showZoom('${imgSrc}')">`;
+    html += `<td>${card.qty}</td>`;
+    html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<span class="card-name">${card.name}</span></div></td>`;
+    html += `<td>${card.type_line || ''}</td>`;
+    html += `<td class="mana-cost">${manaCost}</td>`;
+    html += `<td class="${rarityClass}">${(card.rarity || '').charAt(0).toUpperCase() + (card.rarity || '').slice(1)}</td>`;
+    html += `<td>${card.set_code.toUpperCase()}</td>`;
+    html += `<td>${finishLabel}</td>`;
+    html += `<td>${card.condition}</td>`;
+    html += `<td>${price}</td>`;
+    html += '</tr>';
+  }
+
+  html += '</tbody></table>';
+  main.innerHTML = html;
+}
+
+function renderGrid() {
+  if (allCards.length === 0) {
+    main.innerHTML = '<div class="empty-state">No cards found</div>';
+    return;
+  }
+
+  const grid = document.createElement('div');
+  grid.className = 'card-grid';
+
+  for (const card of allCards) {
+    const cardEl = document.createElement('div');
+    cardEl.className = 'sheet-card';
+
+    const rarityColor = getRarityColor(card.rarity);
+    const foilClass = (card.finish === 'foil' || card.finish === 'etched') ? ' foil' : '';
+    const badges = buildCardBadges(card);
+    const qtyBadge = card.qty > 1 ? `<span class="qty-badge">${card.qty}x</span>` : '';
+
+    cardEl.innerHTML = `
+      <div class="sheet-card-img-wrap${foilClass}" style="--rarity-color:${rarityColor};--set-color:#111">
+        <img src="${card.image_uri || ''}" alt="${card.name}" loading="lazy">
+        ${qtyBadge}
+      </div>
+      <div class="sheet-card-info">${badges}</div>
+    `;
+    cardEl.addEventListener('click', () => showZoom(card.image_uri));
+    grid.appendChild(cardEl);
+  }
+
+  main.innerHTML = '';
+  main.appendChild(grid);
+}
+
+// --- Event listeners ---
+searchInput.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+
+sortSelect.addEventListener('change', fetchCollection);
+
+document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input').forEach(cb => {
+  cb.addEventListener('change', fetchCollection);
+});
+
+filterSetEl.addEventListener('change', fetchCollection);
+
+filterTypeEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+
+clearFiltersBtn.addEventListener('click', () => {
+  document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input').forEach(cb => {
+    cb.checked = false;
+  });
+  filterSetEl.selectedIndex = -1;
+  filterTypeEl.value = '';
+  searchInput.value = '';
+  fetchCollection();
+});
+
+// --- Init ---
+fetchCollection();
+</script>
+
+</body>
+</html>
