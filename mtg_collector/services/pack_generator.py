@@ -130,8 +130,8 @@ class PackGenerator:
                 image_uri = ""
                 if scryfall_id:
                     image_uri = (
-                        f"https://api.scryfall.com/cards/{scryfall_id}"
-                        f"?format=image&version=normal"
+                        f"https://cards.scryfall.io/normal/front/"
+                        f"{scryfall_id[0]}/{scryfall_id[1]}/{scryfall_id}.jpg"
                     )
 
                 pack.append({

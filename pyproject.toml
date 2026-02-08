@@ -44,6 +44,9 @@ mtg = "mtg_collector.cli:main"
 [project.urls]
 Repository = "https://github.com/ryangantt/efj-mtgc"
 
+[tool.setuptools.package-data]
+mtg_collector = ["static/*.html"]
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["mtg_collector*"]

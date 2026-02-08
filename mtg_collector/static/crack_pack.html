@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crack-a-Pack</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+header {
+  background: #16213e;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid #0f3460;
+}
+
+header h1 {
+  font-size: 1.3rem;
+  color: #e94560;
+  margin-right: 16px;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+select, button {
+  padding: 8px 14px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+select:focus, button:focus { outline: 2px solid #e94560; }
+
+button {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+}
+
+button:hover { background: #c73651; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+#status {
+  font-size: 0.85rem;
+  color: #888;
+  margin-left: auto;
+}
+
+.main {
+  display: flex;
+  gap: 0;
+  min-height: calc(100vh - 64px);
+}
+
+.pack-area {
+  flex: 1;
+  padding: 24px;
+}
+
+.pack-area h2 {
+  font-size: 1rem;
+  color: #888;
+  margin-bottom: 16px;
+}
+
+.pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.card-slot {
+  position: relative;
+  cursor: pointer;
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.card-slot:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+
+.card-slot.picked {
+  box-shadow: 0 0 0 3px #e94560, 0 0 16px rgba(233,69,96,0.4);
+}
+
+.card-slot.picked::after {
+  content: "PICKED";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #e94560;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.card-slot img {
+  width: 100%;
+  display: block;
+  border-radius: 12px;
+}
+
+.card-info {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px;
+  background: linear-gradient(transparent, rgba(0,0,0,0.85));
+  border-radius: 0 0 12px 12px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.badge.mythic { background: #e94560; color: #fff; }
+.badge.rare { background: #d4a017; color: #000; }
+.badge.uncommon { background: #8a8a8a; color: #fff; }
+.badge.common { background: #444; color: #ccc; }
+.badge.foil {
+  background: linear-gradient(135deg, #ff6ec7, #7873f5, #4ade80);
+  color: #fff;
+}
+.badge.treatment { background: #0f3460; color: #7ec8e3; }
+
+.picks-panel {
+  width: 300px;
+  background: #16213e;
+  border-left: 2px solid #0f3460;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.picks-panel h2 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.picks-panel h2 span {
+  color: #888;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+#clear-picks {
+  font-size: 0.75rem;
+  padding: 4px 10px;
+  background: #333;
+  border-color: #555;
+}
+
+#clear-picks:hover { background: #e94560; border-color: #e94560; }
+
+.pick-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #1a1a2e;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.pick-item:hover { background: #222244; }
+
+.pick-item img {
+  width: 40px;
+  border-radius: 4px;
+}
+
+.pick-item .pick-name {
+  flex: 1;
+  line-height: 1.2;
+}
+
+.pick-item .pick-set {
+  color: #888;
+  font-size: 0.7rem;
+}
+
+.pick-item .remove-pick {
+  color: #888;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.pick-item .remove-pick:hover { color: #e94560; }
+
+.empty-state {
+  color: #555;
+  font-style: italic;
+  font-size: 0.85rem;
+  margin-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .main { flex-direction: column; }
+  .picks-panel { width: 100%; border-left: none; border-top: 2px solid #0f3460; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Crack-a-Pack</h1>
+  <div class="controls">
+    <select id="set-select" disabled><option>Loading sets...</option></select>
+    <select id="product-select" disabled><option>Select a set first</option></select>
+    <button id="open-btn" disabled>Open Pack</button>
+  </div>
+  <div id="status"></div>
+</header>
+
+<div class="main">
+  <div class="pack-area">
+    <h2 id="pack-header">Select a set and open a pack</h2>
+    <div class="pack-grid" id="pack-grid"></div>
+  </div>
+
+  <div class="picks-panel">
+    <h2>Picks <span id="pick-count">(0)</span></h2>
+    <button id="clear-picks">Clear All</button>
+    <ul class="pick-list" id="pick-list"></ul>
+  </div>
+</div>
+
+<script>
+const setSelect = document.getElementById('set-select');
+const productSelect = document.getElementById('product-select');
+const openBtn = document.getElementById('open-btn');
+const status = document.getElementById('status');
+const packGrid = document.getElementById('pack-grid');
+const packHeader = document.getElementById('pack-header');
+const pickList = document.getElementById('pick-list');
+const pickCount = document.getElementById('pick-count');
+const clearBtn = document.getElementById('clear-picks');
+
+let picks = JSON.parse(localStorage.getItem('crackPackPicks') || '[]');
+let currentPack = [];
+
+function savePicks() {
+  localStorage.setItem('crackPackPicks', JSON.stringify(picks));
+  renderPicks();
+}
+
+function renderPicks() {
+  pickCount.textContent = `(${picks.length})`;
+  pickList.innerHTML = '';
+  if (picks.length === 0) {
+    pickList.innerHTML = '<li class="empty-state">Click cards to pick them</li>';
+    return;
+  }
+  picks.forEach((card, i) => {
+    const li = document.createElement('li');
+    li.className = 'pick-item';
+    li.innerHTML = `
+      <img src="${card.image_uri}" alt="" loading="lazy">
+      <div>
+        <div class="pick-name">${card.name}</div>
+        <div class="pick-set">${card.set_code} #${card.collector_number}</div>
+      </div>
+      <span class="remove-pick" data-index="${i}">&times;</span>
+    `;
+    li.querySelector('.remove-pick').addEventListener('click', (e) => {
+      e.stopPropagation();
+      picks.splice(i, 1);
+      savePicks();
+      syncPickState();
+    });
+    pickList.appendChild(li);
+  });
+}
+
+function syncPickState() {
+  document.querySelectorAll('.card-slot').forEach(slot => {
+    const id = slot.dataset.scryfallId;
+    const idx = parseInt(slot.dataset.index);
+    const isPicked = picks.some(p => p.scryfall_id === id && p._packIndex === idx);
+    slot.classList.toggle('picked', isPicked);
+  });
+}
+
+function buildBadges(card) {
+  let html = '';
+  if (card.rarity && card.rarity !== 'common') {
+    html += `<span class="badge ${card.rarity}">${card.rarity}</span>`;
+  }
+  if (card.foil) html += '<span class="badge foil">Foil</span>';
+  if (card.border_color === 'borderless') html += '<span class="badge treatment">Borderless</span>';
+  if (card.frame_effects && card.frame_effects.includes('showcase'))
+    html += '<span class="badge treatment">Showcase</span>';
+  if (card.frame_effects && card.frame_effects.includes('extendedart'))
+    html += '<span class="badge treatment">Extended</span>';
+  if (card.is_full_art) html += '<span class="badge treatment">Full Art</span>';
+  return html;
+}
+
+async function loadSets() {
+  status.textContent = 'Loading sets...';
+  const res = await fetch('/api/sets');
+  const sets = await res.json();
+  setSelect.innerHTML = '<option value="">-- Select Set --</option>';
+  sets.forEach(s => {
+    const opt = document.createElement('option');
+    opt.value = s.code;
+    opt.textContent = `${s.name} (${s.code})`;
+    setSelect.appendChild(opt);
+  });
+  setSelect.disabled = false;
+  status.textContent = `${sets.length} sets loaded`;
+}
+
+async function loadProducts(setCode) {
+  productSelect.innerHTML = '<option>Loading...</option>';
+  productSelect.disabled = true;
+  openBtn.disabled = true;
+  const res = await fetch(`/api/products?set=${encodeURIComponent(setCode)}`);
+  const products = await res.json();
+  productSelect.innerHTML = '';
+  products.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    productSelect.appendChild(opt);
+  });
+  productSelect.disabled = false;
+  openBtn.disabled = false;
+}
+
+async function openPack() {
+  const setCode = setSelect.value;
+  const product = productSelect.value;
+  if (!setCode || !product) return;
+
+  openBtn.disabled = true;
+  status.textContent = 'Generating pack...';
+
+  const res = await fetch('/api/generate', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({set_code: setCode, product: product}),
+  });
+  const result = await res.json();
+
+  currentPack = result.cards || [];
+  const pct = ((result.variant_weight / result.total_weight) * 100).toFixed(1);
+  packHeader.textContent = `${setCode} ${product} — ${currentPack.length} cards (variant ${result.variant_index}, ${pct}%)`;
+
+  packGrid.innerHTML = '';
+  currentPack.forEach((card, i) => {
+    card._packIndex = i;
+    const div = document.createElement('div');
+    div.className = 'card-slot';
+    div.dataset.scryfallId = card.scryfall_id;
+    div.dataset.index = i;
+    div.innerHTML = `
+      <img src="${card.image_uri}" alt="${card.name}" loading="lazy">
+      <div class="card-info">${buildBadges(card)}</div>
+    `;
+    div.addEventListener('click', () => togglePick(card, i));
+    packGrid.appendChild(div);
+  });
+
+  syncPickState();
+  openBtn.disabled = false;
+  status.textContent = '';
+}
+
+function togglePick(card, packIndex) {
+  const existing = picks.findIndex(p => p.scryfall_id === card.scryfall_id && p._packIndex === packIndex);
+  if (existing >= 0) {
+    picks.splice(existing, 1);
+  } else {
+    picks.push({...card, _packIndex: packIndex});
+  }
+  savePicks();
+  syncPickState();
+}
+
+setSelect.addEventListener('change', () => {
+  if (setSelect.value) loadProducts(setSelect.value);
+});
+
+openBtn.addEventListener('click', openPack);
+
+clearBtn.addEventListener('click', () => {
+  picks = [];
+  savePicks();
+  syncPickState();
+});
+
+renderPicks();
+loadSets();
+</script>
+
+</body>
+</html>

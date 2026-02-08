@@ -9,6 +9,10 @@
    - [ ] **6d. Highlight owned cards** — Cross-reference generated pack against the collection DB. Visually flag cards you already own.
    - [ ] **6e. Add to cart** — For picked cards, generate links or auto-add to TCGPlayer/CardKingdom cart.
 
+6.1 MTG.WTF/PACK: A better UI
+
+Now that we have the math and images, we can recreate the MTG.WTF/PACK UI but better. Let's do that.
+
 7. **Move bling odds calculator into repo** — `~/mtg/blingodds.py` + `bling.yml` + AllPrintings.json data. Calculates probability of opening special cards (borderless, showcase, extended art, etc.) per pack/box.
 
 8. **Move local OCR into repo** — `local-ocr/ocr_cli.py` uses easyocr to read collector numbers from card corner photos without Claude API. Replace Claude Vision in the ingest pipeline for cards with visible collector numbers.
