@@ -3,12 +3,49 @@
 import json
 import sys
 import threading
+import time
 from functools import partial
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+import requests
+
 from mtg_collector.services.pack_generator import PackGenerator
+
+# In-memory price cache: scryfall_id -> (timestamp, prices_dict)
+_price_cache: dict[str, tuple[float, dict]] = {}
+_PRICE_TTL = 86400  # 24 hours
+
+
+def _fetch_prices(scryfall_ids: list[str]) -> dict[str, dict]:
+    """Fetch prices from Scryfall collection endpoint, using cache."""
+    now = time.time()
+    result = {}
+    to_fetch = []
+
+    for sid in scryfall_ids:
+        if not sid:
+            continue
+        cached = _price_cache.get(sid)
+        if cached and now - cached[0] < _PRICE_TTL:
+            result[sid] = cached[1]
+        else:
+            to_fetch.append(sid)
+
+    if to_fetch:
+        resp = requests.post(
+            "https://api.scryfall.com/cards/collection",
+            json={"identifiers": [{"id": sid} for sid in to_fetch]},
+            headers={"User-Agent": "MTGCollectionTool/2.0"},
+        )
+        resp.raise_for_status()
+        for card in resp.json().get("data", []):
+            prices = card.get("prices", {})
+            _price_cache[card["id"]] = (now, prices)
+            result[card["id"]] = prices
+
+    return result
 
 
 class CrackPackHandler(BaseHTTPRequestHandler):
@@ -78,6 +115,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if seed is not None:
             seed = int(seed)
         result = self.generator.generate_pack(set_code, product, seed=seed)
+
+        # Attach prices from Scryfall
+        scryfall_ids = [c["scryfall_id"] for c in result["cards"] if c.get("scryfall_id")]
+        prices = _fetch_prices(scryfall_ids)
+        for card in result["cards"]:
+            card_prices = prices.get(card.get("scryfall_id"), {})
+            if card.get("foil"):
+                card["price"] = card_prices.get("usd_foil") or card_prices.get("usd")
+            else:
+                card["price"] = card_prices.get("usd") or card_prices.get("usd_foil")
+
         self._send_json(result)
 
     def _send_json(self, obj, status=200):

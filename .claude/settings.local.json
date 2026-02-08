@@ -33,7 +33,8 @@
       "Bash(uv run pytest:*)",
       "Bash(uv run mtg ingest-ids:*)",
       "Bash(uv run:*)",
-      "WebFetch(domain:mtgjson.com)"
+      "WebFetch(domain:mtgjson.com)",
+      "WebFetch(domain:scryfall.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

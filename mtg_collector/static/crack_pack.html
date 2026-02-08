@@ -157,20 +157,41 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card-slot {
   position: relative;
   cursor: pointer;
-  border-radius: 12px;
-  overflow: hidden;
   transition: transform 0.15s, box-shadow 0.15s;
   height: calc((100vh - 174px) / var(--pack-rows, 2));
-  aspect-ratio: 488 / 680;
+  /* width driven by image aspect ratio; badges allowed to overflow below */
 }
 
-.card-slot:hover {
+.card-slot.zoomed {
   transform: scale(1.8);
   box-shadow: 0 12px 32px rgba(0,0,0,0.7);
   z-index: 10;
 }
 
-.card-slot.picked {
+.zoom-btn {
+  position: absolute;
+  bottom: 24px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  color: rgba(255,255,255,0.6);
+  font-size: 14px;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+  z-index: 2;
+  padding: 0;
+}
+
+.zoom-btn:hover {
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+}
+
+.card-slot.picked .card-img-wrap {
   box-shadow: 0 0 0 3px #e94560, 0 0 16px rgba(233,69,96,0.4);
 }
 
@@ -185,6 +206,14 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 4px;
+  z-index: 1;
+}
+
+.card-img-wrap {
+  height: calc(100% - 20px);
+  aspect-ratio: 488 / 680;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .card-slot img {
@@ -192,21 +221,15 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   height: 100%;
   object-fit: cover;
   display: block;
-  border-radius: 12px;
 }
 
 .card-info {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  padding: 8px;
-  background: linear-gradient(transparent, rgba(0,0,0,0.85));
-  border-radius: 0 0 12px 12px;
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
-  align-items: flex-end;
+  padding: 2px 0 0;
+  align-items: center;
+  height: 18px;
 }
 
 .badge {
@@ -226,6 +249,9 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   color: #fff;
 }
 .badge.treatment { background: #0f3460; color: #7ec8e3; }
+.badge.price { background: rgba(0,0,0,0.6); color: #4ade80; font-variant-numeric: tabular-nums; }
+a.badge.link { background: #333; color: #aaa; text-decoration: none; }
+a.badge.link:hover { color: #fff; background: #555; }
 
 .picks-panel {
   width: 300px;
@@ -382,7 +408,7 @@ function renderPicks() {
       <img src="${card.image_uri}" alt="" loading="lazy">
       <div>
         <div class="pick-name">${card.name}</div>
-        <div class="pick-set">${card.set_code} #${card.collector_number}</div>
+        <div class="pick-set">${card.set_code} #${card.collector_number}${card.price ? ` — $${parseFloat(card.price).toFixed(2)}` : ''}</div>
       </div>
       <span class="remove-pick" data-index="${i}">&times;</span>
     `;
@@ -409,16 +435,23 @@ function syncPickState() {
 
 function buildBadges(card) {
   let html = '';
-  if (card.rarity && card.rarity !== 'common') {
-    html += `<span class="badge ${card.rarity}">${card.rarity}</span>`;
+  // Links first
+  if (card.scryfall_id) {
+    html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF</a>`;
+    if (card.ck_url) html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK</a>`;
   }
-  if (card.foil) html += '<span class="badge foil">Foil</span>';
-  if (card.border_color === 'borderless') html += '<span class="badge treatment">Borderless</span>';
+  if (card.rarity && card.rarity !== 'common') {
+    const abbrev = {mythic: 'M', rare: 'R', uncommon: 'U'};
+    html += `<span class="badge ${card.rarity}">${abbrev[card.rarity] || card.rarity[0].toUpperCase()}</span>`;
+  }
+  if (card.foil) html += '<span class="badge foil">F</span>';
+  if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
   if (card.frame_effects && card.frame_effects.includes('showcase'))
-    html += '<span class="badge treatment">Showcase</span>';
+    html += '<span class="badge treatment">SC</span>';
   if (card.frame_effects && card.frame_effects.includes('extendedart'))
-    html += '<span class="badge treatment">Extended</span>';
-  if (card.is_full_art) html += '<span class="badge treatment">Full Art</span>';
+    html += '<span class="badge treatment">EA</span>';
+  if (card.is_full_art) html += '<span class="badge treatment">FA</span>';
+  if (card.price) html += `<span class="badge price">$${parseFloat(card.price).toFixed(2)}</span>`;
   return html;
 }
 
@@ -599,7 +632,9 @@ async function openPack(seed) {
 
   currentPack = result.cards || [];
   const pct = ((result.variant_weight / result.total_weight) * 100).toFixed(1);
-  packHeader.textContent = `${setCode} ${product} — ${currentPack.length} cards (variant ${result.variant_index}, ${pct}%)`;
+  const packTotal = currentPack.reduce((sum, c) => sum + (parseFloat(c.price) || 0), 0);
+  const totalStr = packTotal > 0 ? ` — $${packTotal.toFixed(2)}` : '';
+  packHeader.textContent = `${setCode} ${product} — ${currentPack.length} cards (variant ${result.variant_index}, ${pct}%)${totalStr}`;
 
   packGrid.innerHTML = '';
 
@@ -623,9 +658,14 @@ async function openPack(seed) {
     div.dataset.scryfallId = card.scryfall_id;
     div.dataset.index = i;
     div.innerHTML = `
-      <img src="${card.image_uri}" alt="${card.name}" loading="lazy">
+      <div class="card-img-wrap"><img src="${card.image_uri}" alt="${card.name}" loading="lazy"></div>
+      <span class="zoom-btn">&#128269;</span>
       <div class="card-info">${buildBadges(card)}</div>
     `;
+    div.querySelector('.zoom-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      div.classList.toggle('zoomed');
+    });
     div.addEventListener('click', () => togglePick(card, i));
     packGrid.appendChild(div);
   });

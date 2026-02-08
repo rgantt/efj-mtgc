@@ -126,7 +126,7 @@ class PackGenerator:
 
             drawn_uuids = rng.choices(card_uuids, weights=card_weights, k=count)
 
-            is_foil = "foil" in sheet_name.lower()
+            is_foil = sheet.get("foil", False)
 
             for uuid in drawn_uuids:
                 card = card_index.get(uuid)
@@ -141,6 +141,11 @@ class PackGenerator:
                         f"{scryfall_id[0]}/{scryfall_id[1]}/{scryfall_id}.jpg"
                     )
 
+                purchase_urls = card.get("purchaseUrls", {})
+                ck_url = purchase_urls.get("cardKingdomFoil" if is_foil else "cardKingdom", "")
+                if not ck_url:
+                    ck_url = purchase_urls.get("cardKingdom", "")
+
                 pack.append({
                     "name": card.get("name", "Unknown"),
                     "set_code": card.get("setCode", set_code),
@@ -153,6 +158,7 @@ class PackGenerator:
                     "border_color": card.get("borderColor", "black"),
                     "frame_effects": card.get("frameEffects") or [],
                     "is_full_art": card.get("isFullArt", False),
+                    "ck_url": ck_url,
                 })
 
         return {
