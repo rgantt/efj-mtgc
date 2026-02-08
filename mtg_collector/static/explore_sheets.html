@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore Sheets</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+
+header {
+  background: #16213e;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid #0f3460;
+}
+
+header h1 {
+  font-size: 1.3rem;
+  color: #e94560;
+  margin-right: 16px;
+  white-space: nowrap;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+select, button, .set-search-input {
+  padding: 8px 14px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+select:focus, button:focus, .set-search-input:focus { outline: 2px solid #e94560; }
+
+.set-search-wrap {
+  position: relative;
+}
+
+.set-search-input {
+  width: 260px;
+  cursor: text;
+}
+
+.set-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  z-index: 100;
+  list-style: none;
+}
+
+.set-dropdown.open { display: block; }
+
+.set-dropdown li {
+  padding: 6px 14px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.set-dropdown li:hover, .set-dropdown li.active {
+  background: #0f3460;
+}
+
+.product-radios {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.product-radios label {
+  display: inline-block;
+  padding: 6px 14px;
+  border: 1px solid #0f3460;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+
+.product-radios input[type="radio"] { display: none; }
+
+.product-radios input[type="radio"]:checked + label {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+
+button {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+}
+
+button:hover { background: #c73651; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+button.nav-secondary {
+  background: #333;
+  border-color: #555;
+}
+button.nav-secondary:hover { background: #e94560; border-color: #e94560; }
+
+#status {
+  font-size: 0.85rem;
+  color: #888;
+  margin-left: auto;
+}
+
+/* Content area */
+.content {
+  padding: 24px;
+}
+
+/* Collapsible sections */
+.section {
+  margin-bottom: 16px;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #16213e;
+  cursor: pointer;
+  user-select: none;
+}
+
+.section-header:hover { background: #1a2a4e; }
+
+.section-header .arrow {
+  transition: transform 0.2s;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.section.open .section-header .arrow {
+  transform: rotate(90deg);
+}
+
+.section-header h2 {
+  font-size: 1rem;
+  flex: 1;
+}
+
+.section-header .meta {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.section-body {
+  display: none;
+  padding: 16px;
+}
+
+.section.open .section-body {
+  display: block;
+}
+
+/* Variants table */
+.variants-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.variants-table th {
+  text-align: left;
+  padding: 6px 12px;
+  border-bottom: 1px solid #0f3460;
+  color: #888;
+  font-weight: 600;
+}
+
+.variants-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #0f346033;
+}
+
+.variant-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  margin: 1px 3px;
+  border-radius: 10px;
+  background: #0f3460;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.variant-pill.foil-pill {
+  background: linear-gradient(135deg, #2a1a3e, #1a2a4e);
+  border: 1px solid #5c2d91;
+}
+
+/* Sub-group containers */
+.subgroup {
+  margin-bottom: 12px;
+  padding: 12px;
+  background: rgba(15, 52, 96, 0.15);
+  border: 1px solid #0f346044;
+  border-radius: 6px;
+}
+
+.subgroup:last-child { margin-bottom: 0; }
+
+.subgroup-header {
+  font-size: 0.85rem;
+  margin: 0 0 10px;
+  padding: 0;
+  color: #bbb;
+  font-weight: 600;
+}
+
+/* Card grid */
+.card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sheet-card {
+  width: 264px;
+  position: relative;
+  cursor: pointer;
+}
+
+.sheet-card-img-wrap {
+  width: 264px;
+  aspect-ratio: 488 / 680;
+  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  --rarity-color: #111;
+  --set-color: #111;
+  background: linear-gradient(to bottom, var(--rarity-color), var(--set-color));
+}
+
+.sheet-card-img-wrap img {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  object-fit: cover;
+  border-radius: 6px;
+  image-rendering: high-quality;
+}
+
+/* Foil: rainbow wash */
+.sheet-card-img-wrap.foil::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255,0,0,0.08),
+    rgba(255,165,0,0.08) 5%,
+    rgba(255,255,0,0.08) 10%,
+    rgba(0,200,0,0.08) 15%,
+    rgba(0,140,255,0.08) 20%,
+    rgba(130,0,255,0.08) 25%,
+    rgba(255,0,200,0.08) 30%,
+    rgba(255,0,0,0.08) 33.33%
+  );
+  mix-blend-mode: color;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Foil: animated light streak */
+.sheet-card-img-wrap.foil::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(255,255,255,0.12) 49%, rgba(255,255,255,0.12) 51%, transparent 54%)
+    100% 100% / 240% 240%;
+  pointer-events: none;
+  z-index: 2;
+  animation: foil-streak 3s ease-in-out infinite;
+}
+
+@keyframes foil-streak {
+  0% { background-position: 100% 100%; }
+  15%, 100% { background-position: 0 0; }
+}
+
+.sheet-card-info {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.badge {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.badge.pull-rate { background: rgba(0,0,0,0.6); color: #7ec8e3; font-variant-numeric: tabular-nums; }
+.badge.treatment { background: #0f3460; color: #7ec8e3; }
+a.badge.link { background: #333; color: #aaa; text-decoration: none; font-variant-numeric: tabular-nums; }
+a.badge.link:hover { color: #fff; background: #555; }
+
+.foil-tag {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #2a1a3e, #1a2a4e);
+  border: 1px solid #5c2d91;
+  color: #c8a0e8;
+}
+
+.empty-state {
+  color: #555;
+  font-style: italic;
+  font-size: 0.9rem;
+  padding: 32px;
+  text-align: center;
+}
+
+/* Zoom overlay */
+#zoom-overlay {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+}
+
+#zoom-overlay.active { display: flex; }
+
+#zoom-overlay img {
+  max-height: 85vh;
+  max-width: 90vw;
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.8);
+}
+
+@media (max-width: 768px) {
+  .sheet-card { width: 168px; }
+  .sheet-card-img-wrap { width: 168px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Explore Sheets</h1>
+  <div class="controls">
+    <div class="set-search-wrap">
+      <input type="text" class="set-search-input" id="set-input" placeholder="Loading sets..." disabled autocomplete="off">
+      <ul class="set-dropdown" id="set-dropdown"></ul>
+    </div>
+    <div class="product-radios" id="product-radios"></div>
+    <button id="pack-btn" class="nav-secondary" disabled>Open Pack</button>
+  </div>
+  <div id="status"></div>
+</header>
+
+<div class="content" id="content">
+  <div class="empty-state">Select a set and product to explore booster sheets</div>
+</div>
+
+<div id="zoom-overlay"><img id="zoom-img" src="" alt=""></div>
+
+<script>
+const setInput = document.getElementById('set-input');
+const setDropdown = document.getElementById('set-dropdown');
+const productRadios = document.getElementById('product-radios');
+const packBtn = document.getElementById('pack-btn');
+const statusEl = document.getElementById('status');
+const content = document.getElementById('content');
+
+const zoomOverlay = document.getElementById('zoom-overlay');
+const zoomImg = document.getElementById('zoom-img');
+
+zoomOverlay.addEventListener('click', () => zoomOverlay.classList.remove('active'));
+
+function showZoom(imgSrc) {
+  zoomImg.src = imgSrc;
+  zoomOverlay.classList.add('active');
+}
+
+let allSets = [];
+let selectedSetCode = '';
+let activeDropdownIndex = -1;
+
+// --- Border colors ---
+
+const RARITY_COLORS = {common: '#111', uncommon: '#6a6a6a', rare: '#c9a816', mythic: '#d4422a'};
+
+function getRarityColor(rarity) { return RARITY_COLORS[rarity] || '#111'; }
+function getSetColor(cardSetCode, packSetCode) {
+  if (!packSetCode) return '#111';
+  return cardSetCode.toUpperCase() !== packSetCode.toUpperCase() ? '#5c2d91' : '#111';
+}
+
+// --- Sheet name prettification ---
+
+function prettifySheetName(name) {
+  return name.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
+}
+
+function gcd(a, b) { while (b) { [a, b] = [b, a % b]; } return a; }
+function reduceFrac(n, d) { const g = gcd(n, d); return [n / g, d / g]; }
+
+// --- Searchable set selector ---
+
+function filterSets(query) {
+  const q = query.toLowerCase();
+  if (!q) return allSets;
+  return allSets.filter(s =>
+    s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
+  );
+}
+
+function renderDropdown(sets) {
+  setDropdown.innerHTML = '';
+  activeDropdownIndex = -1;
+  sets.forEach((s, i) => {
+    const li = document.createElement('li');
+    li.textContent = `${s.name} (${s.code})`;
+    li.dataset.code = s.code;
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      selectSet(s);
+    });
+    setDropdown.appendChild(li);
+  });
+}
+
+function showDropdown() {
+  const filtered = filterSets(selectedSetCode ? '' : setInput.value);
+  renderDropdown(filtered);
+  setDropdown.classList.add('open');
+}
+
+function hideDropdown() {
+  setDropdown.classList.remove('open');
+  activeDropdownIndex = -1;
+}
+
+function selectSet(s) {
+  selectedSetCode = s.code;
+  setInput.value = `${s.name} (${s.code})`;
+  hideDropdown();
+  loadProducts(s.code);
+}
+
+setInput.addEventListener('focus', () => {
+  if (selectedSetCode) {
+    selectedSetCode = '';
+    setInput.value = '';
+  }
+  showDropdown();
+});
+
+setInput.addEventListener('input', () => {
+  selectedSetCode = '';
+  const filtered = filterSets(setInput.value);
+  renderDropdown(filtered);
+  setDropdown.classList.add('open');
+});
+
+setInput.addEventListener('blur', () => {
+  hideDropdown();
+});
+
+setInput.addEventListener('keydown', (e) => {
+  const items = setDropdown.querySelectorAll('li');
+  if (!items.length) return;
+
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    activeDropdownIndex = Math.min(activeDropdownIndex + 1, items.length - 1);
+    items.forEach((li, i) => li.classList.toggle('active', i === activeDropdownIndex));
+    items[activeDropdownIndex].scrollIntoView({block: 'nearest'});
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    activeDropdownIndex = Math.max(activeDropdownIndex - 1, 0);
+    items.forEach((li, i) => li.classList.toggle('active', i === activeDropdownIndex));
+    items[activeDropdownIndex].scrollIntoView({block: 'nearest'});
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (activeDropdownIndex >= 0 && activeDropdownIndex < items.length) {
+      const code = items[activeDropdownIndex].dataset.code;
+      const s = allSets.find(s => s.code === code);
+      if (s) selectSet(s);
+    }
+  } else if (e.key === 'Escape') {
+    hideDropdown();
+    setInput.blur();
+  }
+});
+
+// --- Set & product loading ---
+
+async function loadSets() {
+  statusEl.textContent = 'Loading sets...';
+  const res = await fetch('/api/sets');
+  const sets = await res.json();
+  allSets = sets;
+  setInput.disabled = false;
+  setInput.placeholder = 'Search sets...';
+  statusEl.textContent = `${sets.length} sets loaded`;
+}
+
+async function loadProducts(setCode) {
+  productRadios.innerHTML = '<span style="color:#888;font-size:0.85rem">Loading...</span>';
+  packBtn.disabled = true;
+  const res = await fetch(`/api/products?set=${encodeURIComponent(setCode)}`);
+  const products = await res.json();
+  productRadios.innerHTML = '';
+  products.forEach((p, i) => {
+    const id = `product-${p}`;
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'product';
+    radio.value = p;
+    radio.id = id;
+    if (i === 0) radio.checked = true;
+    radio.addEventListener('change', onSelectionChange);
+    const label = document.createElement('label');
+    label.htmlFor = id;
+    label.textContent = p;
+    productRadios.appendChild(radio);
+    productRadios.appendChild(label);
+  });
+  if (products.length > 0) {
+    packBtn.disabled = false;
+    onSelectionChange();
+  }
+}
+
+function getSelectedProduct() {
+  const checked = productRadios.querySelector('input[name="product"]:checked');
+  return checked ? checked.value : '';
+}
+
+function setSelectedProduct(value) {
+  const radio = productRadios.querySelector(`input[name="product"][value="${value}"]`);
+  if (radio) {
+    radio.checked = true;
+    onSelectionChange();
+  }
+}
+
+// --- URL hash ---
+
+function updateHash() {
+  if (!selectedSetCode) return;
+  const product = getSelectedProduct();
+  if (!product) return;
+  location.hash = `set=${encodeURIComponent(selectedSetCode)}&product=${encodeURIComponent(product)}`;
+}
+
+function parseHash() {
+  const hash = location.hash.replace(/^#/, '');
+  const params = new URLSearchParams(hash);
+  const set = params.get('set');
+  const product = params.get('product');
+  if (set && product) return { set, product };
+  return null;
+}
+
+// --- Nav ---
+
+packBtn.addEventListener('click', () => {
+  const product = getSelectedProduct();
+  if (selectedSetCode && product) {
+    location.href = `/crack#set=${encodeURIComponent(selectedSetCode)}&product=${encodeURIComponent(product)}`;
+  }
+});
+
+// --- Load sheets ---
+
+function onSelectionChange() {
+  updateHash();
+  loadSheets();
+}
+
+async function loadSheets() {
+  const setCode = selectedSetCode;
+  const product = getSelectedProduct();
+  if (!setCode || !product) return;
+
+  content.innerHTML = '<div class="empty-state">Loading sheets...</div>';
+  statusEl.textContent = 'Loading...';
+
+  const res = await fetch(`/api/sheets?set=${encodeURIComponent(setCode)}&product=${encodeURIComponent(product)}`);
+  const data = await res.json();
+
+  if (data.error) {
+    content.innerHTML = `<div class="empty-state">${data.error}</div>`;
+    statusEl.textContent = '';
+    return;
+  }
+
+  content.innerHTML = '';
+
+  // Figure out which variants use which sheets (for sheet headers)
+  const sheetUsage = {};
+  for (const v of data.variants) {
+    for (const sheetName of Object.keys(v.contents)) {
+      if (!sheetUsage[sheetName]) sheetUsage[sheetName] = [];
+      sheetUsage[sheetName].push(v.index);
+    }
+  }
+
+  // Variants section
+  const varSection = createSection('Variants', `${data.variants.length} variants`, true);
+  const table = document.createElement('table');
+  table.className = 'variants-table';
+  table.innerHTML = '<thead><tr><th>#</th><th>Probability</th><th>Contents</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  for (const v of data.variants) {
+    const tr = document.createElement('tr');
+    const pct = (v.probability * 100).toFixed(2);
+    const pills = Object.entries(v.contents).map(([sheet, count]) => {
+      const isFoil = data.sheets[sheet] && data.sheets[sheet].foil;
+      const cls = isFoil ? 'variant-pill foil-pill' : 'variant-pill';
+      return `<span class="${cls}">${count}&times; ${prettifySheetName(sheet)}</span>`;
+    }).join('');
+    tr.innerHTML = `<td>${v.index}</td><td>${pct}%</td><td>${pills}</td>`;
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  varSection.body.appendChild(table);
+  content.appendChild(varSection.el);
+
+  // Sheet sections
+  for (const [sheetName, sheet] of Object.entries(data.sheets)) {
+    const usedBy = sheetUsage[sheetName] || [];
+    const usedStr = usedBy.length <= 5
+      ? `variants: ${usedBy.join(', ')}`
+      : `${usedBy.length} variants`;
+    const foilStr = sheet.foil ? ' <span class="foil-tag">Foil</span>' : '';
+    const metaStr = `${sheet.card_count} cards${foilStr} | ${usedStr}`;
+
+    const sheetSection = createSection(prettifySheetName(sheetName), metaStr, false);
+
+    // Group cards by (set_code, rarity, weight) for exact odds
+    const groups = {};
+    for (const card of sheet.cards) {
+      const key = `${card.set_code}|||${card.rarity}|||${card.weight}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(card);
+    }
+
+    const rarityOrder = {common: 0, uncommon: 1, rare: 2, mythic: 3};
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+      const [setA, rarA, wA] = a.split('|||');
+      const [setB, rarB, wB] = b.split('|||');
+      const mainSet = data.set_code.toUpperCase();
+      const aIsMain = setA.toUpperCase() === mainSet ? 0 : 1;
+      const bIsMain = setB.toUpperCase() === mainSet ? 0 : 1;
+      if (aIsMain !== bIsMain) return aIsMain - bIsMain;
+      const rDiff = (rarityOrder[rarA] || 0) - (rarityOrder[rarB] || 0);
+      if (rDiff !== 0) return rDiff;
+      return Number(wB) - Number(wA); // higher weight first within same rarity
+    });
+
+    for (const key of sortedKeys) {
+      const groupCards = groups[key];
+      const [groupSetCode, rarity, weightStr] = key.split('|||');
+      const cardWeight = Number(weightStr);
+
+      // Build sub-section label
+      const isGuest = groupSetCode.toUpperCase() !== data.set_code.toUpperCase();
+      const setInfo = allSets.find(s => s.code.toUpperCase() === groupSetCode.toUpperCase());
+      const setLabel = isGuest ? (setInfo ? `${setInfo.name} (${groupSetCode.toUpperCase()})` : groupSetCode.toUpperCase()) : '';
+      const rarLabel = rarity.charAt(0).toUpperCase() + rarity.slice(1);
+      const groupLabel = isGuest ? `${setLabel} ${rarLabel}` : rarLabel;
+
+      // Sheet odds: sub-group weight / total sheet weight
+      const subWeight = groupCards.length * cardWeight;
+      const totalWeight = sheet.total_weight;
+      const [subN, subD] = reduceFrac(subWeight, totalWeight);
+      const sheetPct = ((subWeight / totalWeight) * 100).toFixed(2);
+
+      // Per-card odds (exact, since all cards in this group share the same weight)
+      const [cardN, cardD] = reduceFrac(cardWeight, totalWeight);
+      const cardPct = ((cardWeight / totalWeight) * 100).toFixed(2);
+
+      const subgroup = document.createElement('div');
+      subgroup.className = 'subgroup';
+
+      const subHeader = document.createElement('h3');
+      subHeader.className = 'subgroup-header';
+      subHeader.textContent = `${groupLabel}: ${subN}/${subD} (${sheetPct}%) [a card: ${cardN}/${cardD}; ${cardPct}%]`;
+      subgroup.appendChild(subHeader);
+
+      const grid = document.createElement('div');
+      grid.className = 'card-grid';
+
+      for (const card of groupCards) {
+        const cardEl = document.createElement('div');
+        cardEl.className = 'sheet-card';
+
+        const rarityColor = getRarityColor(card.rarity);
+        const setColor = getSetColor(card.set_code, data.set_code);
+        const foilClass = card.foil ? ' foil' : '';
+        const pullPct = (card.pull_rate * 100).toFixed(2);
+
+        let badges = `<span class="badge pull-rate">${pullPct}%</span>`;
+        if (card.scryfall_id) {
+          const sfUrl = `https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}`;
+          const tcgPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
+          badges += `<a class="badge link" href="${sfUrl}" target="_blank" rel="noopener">SF${tcgPrice}</a>`;
+        }
+        if (card.ck_url) {
+          const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+          badges += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener">CK${ckPrice}</a>`;
+        }
+        if (card.border_color === 'borderless') badges += '<span class="badge treatment">BL</span>';
+        if (card.frame_effects && card.frame_effects.includes('showcase'))
+          badges += '<span class="badge treatment">SC</span>';
+        if (card.frame_effects && card.frame_effects.includes('extendedart'))
+          badges += '<span class="badge treatment">EA</span>';
+        if (card.is_full_art) badges += '<span class="badge treatment">FA</span>';
+
+        cardEl.innerHTML = `
+          <div class="sheet-card-img-wrap${foilClass}" style="--rarity-color:${rarityColor};--set-color:${setColor}">
+            <img src="${card.image_uri}" alt="${card.name}" loading="lazy">
+          </div>
+          <div class="sheet-card-info">${badges}</div>
+        `;
+        cardEl.addEventListener('click', () => showZoom(card.image_uri));
+        grid.appendChild(cardEl);
+      }
+
+      subgroup.appendChild(grid);
+      sheetSection.body.appendChild(subgroup);
+    }
+
+    content.appendChild(sheetSection.el);
+  }
+
+  const totalCards = Object.values(data.sheets).reduce((s, sh) => s + sh.card_count, 0);
+  statusEl.textContent = `${Object.keys(data.sheets).length} sheets, ${totalCards} cards`;
+}
+
+function createSection(title, meta, defaultOpen) {
+  const section = document.createElement('div');
+  section.className = 'section' + (defaultOpen ? ' open' : '');
+
+  const header = document.createElement('div');
+  header.className = 'section-header';
+  header.innerHTML = `<span class="arrow">&#9654;</span><h2>${title}</h2><span class="meta">${meta}</span>`;
+  header.addEventListener('click', () => section.classList.toggle('open'));
+
+  const body = document.createElement('div');
+  body.className = 'section-body';
+
+  section.appendChild(header);
+  section.appendChild(body);
+
+  return { el: section, body };
+}
+
+// --- Init ---
+
+loadSets().then(async () => {
+  const hashParams = parseHash();
+  if (hashParams) {
+    const s = allSets.find(s => s.code.toLowerCase() === hashParams.set.toLowerCase());
+    if (s) {
+      selectSet(s);
+      await loadProducts(s.code);
+      setSelectedProduct(hashParams.product);
+    }
+  }
+});
+</script>
+
+</body>
+</html>
