@@ -5,6 +5,8 @@ import sqlite3
 from pathlib import Path
 from typing import Optional
 
+from mtg_collector.utils import get_mtgc_home
+
 # Global connection cache
 _connection: Optional[sqlite3.Connection] = None
 _db_path: Optional[str] = None
@@ -26,8 +28,7 @@ def get_db_path(override: Optional[str] = None) -> str:
     if env_path:
         return env_path
 
-    home = Path.home()
-    default_dir = home / ".mtgc"
+    default_dir = get_mtgc_home()
     return str(default_dir / "collection.sqlite")
 
 

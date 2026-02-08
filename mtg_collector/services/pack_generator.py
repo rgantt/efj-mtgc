@@ -5,13 +5,15 @@ import random
 from pathlib import Path
 from typing import Optional
 
+from mtg_collector.utils import get_mtgc_home
+
 
 class PackGenerator:
     """Generate virtual booster packs from MTGJSON data."""
 
     def __init__(self, mtgjson_path: Optional[Path] = None):
         if mtgjson_path is None:
-            mtgjson_path = Path.home() / ".mtgc" / "AllPrintings.json"
+            mtgjson_path = get_mtgc_home() / "AllPrintings.json"
         self.mtgjson_path = mtgjson_path
         self._data = None
         self._card_indexes: dict[str, dict[str, dict]] = {}  # set_code -> {uuid -> card}

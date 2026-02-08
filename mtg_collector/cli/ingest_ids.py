@@ -21,6 +21,39 @@ from mtg_collector.utils import normalize_condition, normalize_finish, store_sou
 RARITY_MAP = {"C": "common", "U": "uncommon", "R": "rare", "M": "mythic", "P": "promo"}
 
 
+def lookup_card(set_code, cn_raw, cn_stripped, rarity_expected, printing_repo, scryfall):
+    """Look up a card by set/CN, with promo set fallback for promo cards."""
+    card_data = None
+
+    # Promo cards: try p{set_code} set with {cn}p collector number first
+    if rarity_expected == "promo":
+        promo_set = f"p{set_code}"
+        printing = printing_repo.get_by_set_cn(promo_set, f"{cn_stripped}p")
+        if not printing:
+            printing = printing_repo.get_by_set_cn(promo_set, cn_stripped)
+        if printing and printing.raw_json:
+            card_data = printing.get_scryfall_data()
+        if not card_data:
+            card_data = scryfall.get_card_by_set_cn(promo_set, f"{cn_stripped}p")
+        if not card_data:
+            card_data = scryfall.get_card_by_set_cn(promo_set, cn_stripped)
+
+    # Regular lookup (also fallback for promo)
+    if not card_data:
+        printing = printing_repo.get_by_set_cn(set_code, cn_stripped)
+        if not printing:
+            printing = printing_repo.get_by_set_cn(set_code, cn_raw)
+        if printing and printing.raw_json:
+            card_data = printing.get_scryfall_data()
+
+    if not card_data:
+        card_data = scryfall.get_card_by_set_cn(set_code, cn_stripped)
+        if not card_data:
+            card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
+
+    return card_data
+
+
 def resolve_and_add_ids(
     entries,
     scryfall,
@@ -63,29 +96,25 @@ def resolve_and_add_ids(
         if is_foil:
             label += " foil"
 
-        # Try local cache first (printings table)
-        printing = printing_repo.get_by_set_cn(set_code, cn_stripped)
-        if not printing:
-            printing = printing_repo.get_by_set_cn(set_code, cn_raw)
-
-        card_data = None
-        if printing and printing.raw_json:
-            card_data = printing.get_scryfall_data()
-
-        # Fall back to Scryfall API
-        if not card_data:
-            card_data = scryfall.get_card_by_set_cn(set_code, cn_stripped)
-            if not card_data:
-                card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
+        card_data = lookup_card(
+            set_code, cn_raw, cn_stripped, rarity_expected,
+            printing_repo, scryfall,
+        )
 
         if not card_data:
             print(f"  FAILED: {label} — card not found")
             failed.append(label)
             continue
 
-        # Warn on rarity mismatch
+        # Warn on rarity mismatch (promos use a separate boolean, not a rarity string)
         actual_rarity = card_data.get("rarity", "")
-        if actual_rarity != rarity_expected:
+        if rarity_expected == "promo":
+            if not card_data.get("promo", False):
+                print(
+                    f"  Warning: {label} — expected promo, "
+                    f"Scryfall reports non-promo '{actual_rarity}'"
+                )
+        elif actual_rarity != rarity_expected:
             print(
                 f"  Warning: {label} — expected rarity '{rarity_expected}', "
                 f"Scryfall reports '{actual_rarity}'"

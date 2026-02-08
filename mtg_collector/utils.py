@@ -1,10 +1,19 @@
 """Shared utilities for MTG Collector."""
 
 import json
+import os
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+
+
+def get_mtgc_home() -> Path:
+    """Return the MTGC home directory (MTGC_HOME env or ~/.mtgc)."""
+    if "MTGC_HOME" in os.environ:
+        return Path(os.environ["MTGC_HOME"])
+    return Path.home() / ".mtgc"
 
 
 def now_iso() -> str:
@@ -77,28 +86,16 @@ def normalize_finish(finish: str) -> str:
 
 def store_source_image(image_path: str) -> str:
     """
-    Copy a source image into ~/.mtgc/source_images/ and return the stored path.
+    Copy a source image into <MTGC_HOME>/source_images/ and return the stored path.
 
-    If the image is already in the source_images dir, returns its path as-is.
+    Generates a unique filename using a UUID suffix to avoid collisions.
     """
     src = Path(image_path).expanduser().resolve()
-    dest_dir = Path.home() / ".mtgc" / "source_images"
+    dest_dir = get_mtgc_home() / "source_images"
     dest_dir.mkdir(parents=True, exist_ok=True)
 
-    dest = dest_dir / src.name
-
-    # Avoid copying over itself
-    if dest.resolve() == src:
-        return str(dest)
-
-    # Error on name collision with different content — likely a duplicate ingest
-    if dest.exists():
-        if dest.read_bytes() == src.read_bytes():
-            return str(dest)
-        raise FileExistsError(
-            f"Source image '{src.name}' already exists in {dest_dir} with different content. "
-            f"This may be a duplicate ingest — check before proceeding."
-        )
+    unique_name = f"{src.stem}_{uuid.uuid4().hex[:8]}{src.suffix}"
+    dest = dest_dir / unique_name
 
     shutil.copy2(str(src), str(dest))
     return str(dest)

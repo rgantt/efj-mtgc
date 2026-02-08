@@ -17,7 +17,7 @@ from mtg_collector.services.scryfall import (
     ensure_set_cached,
 )
 from mtg_collector.utils import normalize_condition, store_source_image
-from mtg_collector.cli.ingest_ids import RARITY_MAP, resolve_and_add_ids
+from mtg_collector.cli.ingest_ids import RARITY_MAP, lookup_card, resolve_and_add_ids
 
 
 def register(subparsers):
@@ -205,19 +205,12 @@ def run(args):
             set_code = d["set_code"]
             cn_raw = d["collector_number"]
             cn_stripped = cn_raw.lstrip("0") or "0"
+            rarity_expected = RARITY_MAP[d["rarity"]]
 
-            printing = printing_repo.get_by_set_cn(set_code, cn_stripped)
-            if not printing:
-                printing = printing_repo.get_by_set_cn(set_code, cn_raw)
-
-            card_data = None
-            if printing and printing.raw_json:
-                card_data = printing.get_scryfall_data()
-
-            if not card_data:
-                card_data = scryfall.get_card_by_set_cn(set_code, cn_stripped)
-                if not card_data:
-                    card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
+            card_data = lookup_card(
+                set_code, cn_raw, cn_stripped, rarity_expected,
+                printing_repo, scryfall,
+            )
 
             if not card_data:
                 label = f"{d['rarity']} {cn_raw} {set_code.upper()}"

@@ -6,13 +6,15 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from mtg_collector.utils import get_mtgc_home
+
 MTGJSON_URL = "https://mtgjson.com/api/v5/AllPrintings.json.gz"
 MTGJSON_PRICES_URL = "https://mtgjson.com/api/v5/AllPricesToday.json.gz"
 
 
-def get_data_dir() -> Path:
-    """Get the data directory (~/.mtgc/)."""
-    return Path.home() / ".mtgc"
+def get_data_dir():
+    """Get the data directory (~/.mtgc/ or MTGC_HOME)."""
+    return get_mtgc_home()
 
 
 def get_allprintings_path() -> Path:
