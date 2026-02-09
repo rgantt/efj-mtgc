@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Collection Browser</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/keyrune@latest/css/keyrune.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mana-font@latest/css/mana.min.css">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -184,14 +186,24 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
   flex-shrink: 0;
 }
 
-.card-name { font-weight: 500; }
+.card-name { font-weight: 500; margin-right: 1em; }
 
-.mana-cost { font-family: monospace; font-size: 0.8rem; color: #aaa; white-space: nowrap; }
+.type-cell {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-.rarity-common { color: #888; }
-.rarity-uncommon { color: #8ec5d6; }
-.rarity-rare { color: #d4a62a; }
-.rarity-mythic { color: #e94560; }
+.mana-cost { white-space: nowrap; }
+.mana-cost .ms { font-size: 0.85rem; }
+.mana-line { display: block; white-space: nowrap; }
+
+.card-face { display: block; }
+.card-face + .card-face { margin-top: 2px; }
+
+.set-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.set-cell .ss { font-size: 1.1em; }
 
 .price-cell {
   display: flex;
@@ -302,15 +314,37 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 a.badge.link { background: #333; color: #aaa; text-decoration: none; font-variant-numeric: tabular-nums; }
 a.badge.link:hover { color: #fff; background: #555; }
 
-.foil-tag {
+.foil-tag, .treat-tag, .promo-tag {
   display: inline-block;
   padding: 2px 6px;
   border-radius: 3px;
   font-size: 0.7rem;
   font-weight: 700;
+}
+
+.foil-tag {
   background: linear-gradient(135deg, #2a1a3e, #1a2a4e);
   border: 1px solid #5c2d91;
   color: #c8a0e8;
+}
+
+.treat-tag {
+  background: linear-gradient(135deg, #0f2a3e, #0f3460);
+  border: 1px solid #1a5276;
+  color: #7ec8e3;
+}
+
+.promo-tag {
+  background: linear-gradient(135deg, #3e2a0f, #4e3a1a);
+  border: 1px solid #76521a;
+  color: #e3c87e;
+}
+
+.card-tag {
+  padding: 1px 3px;
+  font-size: 0.6rem;
+  vertical-align: middle;
+  margin-left: 0px;
 }
 
 .empty-state {
@@ -345,6 +379,30 @@ a.badge.link:hover { color: #fff; background: #555; }
 /* Sort arrow */
 .sort-arrow { font-size: 0.7rem; margin-left: 2px; }
 
+/* Sort bar (grid view) */
+.sort-bar {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sort-btn {
+  padding: 4px 10px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #16213e;
+  color: #888;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.sort-btn:hover { color: #e94560; border-color: #e94560; }
+.sort-btn.active { color: #e94560; border-color: #e94560; background: #1a1a2e; }
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .sheet-card { width: 168px; }
@@ -359,17 +417,6 @@ a.badge.link:hover { color: #fff; background: #555; }
   <h1>Collection</h1>
   <div class="controls">
     <input type="text" id="search-input" placeholder="Search cards...">
-    <select id="sort-select">
-      <option value="name">Name</option>
-      <option value="cmc">CMC</option>
-      <option value="rarity">Rarity</option>
-      <option value="set">Set</option>
-      <option value="color">Color</option>
-      <option value="qty">Quantity</option>
-      <option value="price">Price</option>
-      <option value="collector_number">Collector #</option>
-    </select>
-    <button class="secondary" id="order-btn" title="Toggle sort order">A-Z</button>
     <button class="secondary" id="view-table-btn" title="Table view">Table</button>
     <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
@@ -422,8 +469,6 @@ a.badge.link:hover { color: #fff; background: #555; }
 
 <script>
 const searchInput = document.getElementById('search-input');
-const sortSelect = document.getElementById('sort-select');
-const orderBtn = document.getElementById('order-btn');
 const viewTableBtn = document.getElementById('view-table-btn');
 const viewGridBtn = document.getElementById('view-grid-btn');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
@@ -438,8 +483,36 @@ const clearFiltersBtn = document.getElementById('clear-filters-btn');
 
 let currentView = 'table';
 let sortOrder = 'asc';
+let sortColumn = 'name';
 let allCards = [];
 let debounceTimer = null;
+
+const SORT_COLS = [
+  { key: 'qty', label: 'Qty' },
+  { key: 'name', label: 'Card' },
+  { key: 'type', label: 'Type' },
+  { key: 'mana', label: 'Cost' },
+  { key: 'set', label: 'Set' },
+  { key: 'collector_number', label: '#' },
+  { key: 'condition', label: 'Cond.' },
+  { key: 'price', label: 'Price' },
+];
+
+const COL_SORT_MAP = {
+  qty: 'qty', name: 'name', type: 'name', mana: 'cmc',
+  set: 'set', collector_number: 'collector_number',
+  condition: 'name', price: 'price',
+};
+
+function handleSortClick(colKey) {
+  if (sortColumn === colKey) {
+    sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortColumn = colKey;
+    sortOrder = 'asc';
+  }
+  fetchCollection();
+}
 
 // --- Rarity/set border colors ---
 const RARITY_COLORS = {common: '#111', uncommon: '#6a6a6a', rare: '#c9a816', mythic: '#d4422a'};
@@ -479,6 +552,29 @@ function parseJsonField(val) {
   try { return JSON.parse(val); } catch { return []; }
 }
 
+function renderMana(cost) {
+  if (!cost) return '';
+  return cost.replace(/\{([^}]+)\}/g, (_, sym) => {
+    const cls = sym.toLowerCase().replace(/\//g, '');
+    return `<i class="ms ms-${cls} ms-cost ms-shadow"></i>`;
+  });
+}
+
+function buildInlineTags(card) {
+  let html = '';
+  if (card.finish === 'foil') html += '<span class="card-tag foil-tag" title="Foil">F</span>';
+  else if (card.finish === 'etched') html += '<span class="card-tag foil-tag" title="Etched foil">E</span>';
+  const fe = parseJsonField(card.frame_effects);
+  const isBorderless = card.border_color === 'borderless';
+  if (isBorderless) html += '<span class="card-tag treat-tag" title="Borderless">BL</span>';
+  if (fe.includes('showcase')) html += '<span class="card-tag treat-tag" title="Showcase frame">SC</span>';
+  if (fe.includes('extendedart')) html += '<span class="card-tag treat-tag" title="Extended art">EA</span>';
+  if (card.full_art && !isBorderless) html += '<span class="card-tag treat-tag" title="Full art">FA</span>';
+  if (fe.includes('inverted')) html += '<span class="card-tag treat-tag" title="Inverted frame">IN</span>';
+  if (card.promo) html += '<span class="card-tag promo-tag" title="Promo">P</span>';
+  return html;
+}
+
 // --- View toggle ---
 viewTableBtn.addEventListener('click', () => { currentView = 'table'; updateViewButtons(); render(); });
 viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewButtons(); render(); });
@@ -488,13 +584,6 @@ function updateViewButtons() {
   viewGridBtn.classList.toggle('active', currentView === 'grid');
 }
 updateViewButtons();
-
-// --- Sort order toggle ---
-orderBtn.addEventListener('click', () => {
-  sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-  orderBtn.textContent = sortOrder === 'asc' ? 'A-Z' : 'Z-A';
-  fetchCollection();
-});
 
 // --- Sidebar toggle ---
 sidebarToggleBtn.addEventListener('click', () => {
@@ -508,7 +597,7 @@ function getFilterParams() {
   const params = new URLSearchParams();
   const q = searchInput.value.trim();
   if (q) params.set('q', q);
-  params.set('sort', sortSelect.value);
+  params.set('sort', COL_SORT_MAP[sortColumn] || 'name');
   params.set('order', sortOrder);
 
   document.querySelectorAll('#color-filters input:checked').forEach(cb => {
@@ -537,7 +626,7 @@ async function fetchCollection() {
   allCards = await res.json();
 
   // Client-side price sort if needed
-  if (sortSelect.value === 'price') {
+  if (sortColumn === 'price') {
     allCards.sort((a, b) => {
       const pa = parseFloat(a.tcg_price) || 0;
       const pb = parseFloat(b.tcg_price) || 0;
@@ -583,56 +672,80 @@ function renderTable() {
     return;
   }
 
-  const sortKey = sortSelect.value;
   let html = '<table class="collection-table"><thead><tr>';
-  const cols = [
-    { key: 'qty', label: 'Qty' },
-    { key: 'name', label: 'Card' },
-    { key: 'type', label: 'Type' },
-    { key: 'mana', label: 'Mana' },
-    { key: 'rarity', label: 'Rarity' },
-    { key: 'set', label: 'Set' },
-    { key: 'finish', label: 'Finish' },
-    { key: 'condition', label: 'Cond.' },
-    { key: 'price', label: 'Price' },
-  ];
-  for (const col of cols) {
-    const sortable = ['qty', 'name', 'rarity', 'set', 'price'].includes(col.key);
-    const sorted = (col.key === sortKey || (col.key === 'name' && sortKey === 'name')) ? ' sorted' : '';
-    html += `<th class="${sorted}">${col.label}</th>`;
+  for (const col of SORT_COLS) {
+    const isActive = col.key === sortColumn;
+    const arrow = isActive ? `<span class="sort-arrow">${sortOrder === 'asc' ? '▲' : '▼'}</span>` : '';
+    html += `<th class="${isActive ? 'sorted' : ''}" data-col="${col.key}">${col.label}${arrow}</th>`;
   }
   html += '</tr></thead><tbody>';
 
+  const CONDITION_ABBREV = {
+    'Near Mint': 'NM', 'Lightly Played': 'LP', 'Moderately Played': 'MP',
+    'Heavily Played': 'HP', 'Damaged': 'D',
+  };
+
   for (const card of allCards) {
-    const rarityClass = `rarity-${card.rarity || 'common'}`;
     const imgSrc = card.image_uri || '';
-    const manaCost = card.mana_cost || '';
+    const rawMana = card.mana_cost || '';
+    const isDfc = card.name.includes(' // ');
+    let nameHtml, manaHtml;
+    if (isDfc) {
+      const names = card.name.split(' // ');
+      const manas = rawMana.split(' // ');
+      nameHtml = names.map(n => `<span class="card-face"><span class="card-name">${n}</span></span>`).join('');
+      manaHtml = manas.map(m => `<span class="mana-line">${renderMana(m)}</span>`).join('');
+    } else {
+      nameHtml = `<span class="card-name">${card.name}</span>`;
+      manaHtml = renderMana(rawMana);
+    }
     const price = card.tcg_price ? `$${parseFloat(card.tcg_price).toFixed(2)}` : '';
-    const finishLabel = card.finish === 'foil' ? '<span class="foil-tag">Foil</span>'
-                      : card.finish === 'etched' ? '<span class="foil-tag">Etched</span>'
-                      : 'Nonfoil';
+    const condAbbrev = CONDITION_ABBREV[card.condition] || card.condition;
+    const setCode = card.set_code.toLowerCase();
+    const rarityClass = `ss-${card.rarity || 'common'}`;
+    const setName = card.set_name || card.set_code.toUpperCase();
+    const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw"></i>`;
+    const tags = buildInlineTags(card);
 
     html += `<tr data-img="${imgSrc}" onclick="showZoom('${imgSrc}')">`;
     html += `<td>${card.qty}</td>`;
-    html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<span class="card-name">${card.name}</span></div></td>`;
-    html += `<td>${card.type_line || ''}</td>`;
-    html += `<td class="mana-cost">${manaCost}</td>`;
-    html += `<td class="${rarityClass}">${(card.rarity || '').charAt(0).toUpperCase() + (card.rarity || '').slice(1)}</td>`;
-    html += `<td>${card.set_code.toUpperCase()}</td>`;
-    html += `<td>${finishLabel}</td>`;
-    html += `<td>${card.condition}</td>`;
+    html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<span>${nameHtml}${tags}</span></div></td>`;
+    const fullType = card.type_line || '';
+    const shortType = fullType.replace(/Legendary /g, 'Lgd. ');
+    html += `<td class="type-cell" title="${fullType}">${shortType}</td>`;
+    html += `<td class="mana-cost">${manaHtml}</td>`;
+    html += `<td title="${setName}"><div class="set-cell">${setIcon} ${card.set_code.toUpperCase()}</div></td>`;
+    html += `<td>${(card.collector_number || '').padStart(4, '0')}</td>`;
+    html += `<td>${condAbbrev}</td>`;
     html += `<td>${price}</td>`;
     html += '</tr>';
   }
 
   html += '</tbody></table>';
   main.innerHTML = html;
+
+  // Column header click sorting
+  main.querySelectorAll('.collection-table th[data-col]').forEach(th => {
+    th.addEventListener('click', () => handleSortClick(th.dataset.col));
+  });
 }
 
 function renderGrid() {
   if (allCards.length === 0) {
     main.innerHTML = '<div class="empty-state">No cards found</div>';
     return;
+  }
+
+  // Sort bar
+  const bar = document.createElement('div');
+  bar.className = 'sort-bar';
+  for (const col of SORT_COLS) {
+    const btn = document.createElement('span');
+    btn.className = 'sort-btn' + (col.key === sortColumn ? ' active' : '');
+    const arrow = col.key === sortColumn ? ` ${sortOrder === 'asc' ? '▲' : '▼'}` : '';
+    btn.textContent = col.label + arrow;
+    btn.addEventListener('click', () => handleSortClick(col.key));
+    bar.appendChild(btn);
   }
 
   const grid = document.createElement('div');
@@ -659,6 +772,7 @@ function renderGrid() {
   }
 
   main.innerHTML = '';
+  main.appendChild(bar);
   main.appendChild(grid);
 }
 
@@ -667,8 +781,6 @@ searchInput.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(fetchCollection, 300);
 });
-
-sortSelect.addEventListener('change', fetchCollection);
 
 document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input').forEach(cb => {
   cb.addEventListener('change', fetchCollection);

@@ -424,7 +424,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             "set": "p.set_code",
             "color": "card.color_identity",
             "qty": "qty",
-            "price": "0",  # sorted client-side since prices are attached after
+            "price": "card.name",  # sorted client-side since prices are attached after
             "collector_number": "CAST(p.collector_number AS INTEGER)",
         }
         sort_col = sort_map.get(sort, "card.name")
