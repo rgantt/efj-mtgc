@@ -219,12 +219,13 @@ button.secondary:hover { background: #444; }
 .disambig-layout {
   display: flex;
   gap: 20px;
-  min-height: calc(100vh - 180px);
 }
 
-/* Left panel: image crop */
+/* Left panel: image crop — fixed to card aspect ratio, height-driven */
 .crop-panel {
-  flex: 0 0 45%;
+  flex: 0 0 auto;
+  height: min(calc(100vh - 200px), 600px);
+  aspect-ratio: 63 / 88;
   background: #0d1117;
   border-radius: 8px;
   overflow: hidden;
