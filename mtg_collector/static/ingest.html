@@ -204,6 +204,16 @@ button.secondary:hover { background: #444; }
   display: none;
   line-height: 1.6;
 }
+/* When inside disambig layout, become a left column */
+.disambig-layout #processing-log {
+  margin: 0;
+  flex: 0 0 400px;
+  align-self: flex-start;
+  position: sticky;
+  top: 10px;
+  max-height: calc(100vh - 200px);
+  border: 1px solid #0f3460;
+}
 #processing-log .log-line { color: #888; }
 #processing-log .log-line.running { color: #f0c040; }
 #processing-log .log-line.done { color: #4caf50; }
@@ -221,15 +231,18 @@ button.secondary:hover { background: #444; }
   gap: 20px;
 }
 
-/* Left panel: image crop — fixed to card aspect ratio, height-driven */
+/* Left panel: image crop — fixed to card aspect ratio, height-driven, sticky */
 .crop-panel {
   flex: 0 0 auto;
   height: min(calc(100vh - 200px), 600px);
   aspect-ratio: 63 / 88;
   background: #0d1117;
+  border: 1px solid #0f3460;
   border-radius: 8px;
   overflow: hidden;
-  position: relative;
+  position: sticky;
+  top: 10px;
+  align-self: flex-start;
   cursor: grab;
   user-select: none;
 }
@@ -293,7 +306,13 @@ button.secondary:hover { background: #444; }
 
 .candidate-row .set-icon {
   font-size: 1.1rem;
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
   flex-shrink: 0;
+  background: #efefef;
+  border-radius: 5px;
 }
 .candidate-row .card-name {
   font-weight: 600;
@@ -393,12 +412,12 @@ button.secondary:hover { background: #444; }
   </div>
 </div>
 
-<!-- Processing Log -->
+<!-- Processing Log (shown inline during upload, moves into disambig layout) -->
 <div id="processing-log"></div>
 
 <!-- Phase 2: Disambiguation -->
 <div id="disambig-view">
-  <div class="disambig-layout">
+  <div class="disambig-layout" id="disambig-layout">
     <div class="crop-panel" id="crop-panel">
       <img id="crop-img" src="">
     </div>
@@ -676,6 +695,10 @@ function appendLog(text, cls) {
 async function showDisambiguation() {
   document.getElementById('upload-phase').style.display = 'none';
   document.getElementById('disambig-view').style.display = 'block';
+  // Move log into the disambig layout as first child
+  const log = document.getElementById('processing-log');
+  const layout = document.getElementById('disambig-layout');
+  layout.insertBefore(log, layout.firstChild);
   await loadNextCard();
 }
 

@@ -17,6 +17,7 @@ class PackGenerator:
         self.mtgjson_path = mtgjson_path
         self._data = None
         self._card_indexes: dict[str, dict[str, dict]] = {}  # set_code -> {uuid -> card}
+        self._scryfall_to_uuid: dict[str, str] | None = None
 
     @property
     def data(self) -> dict:
@@ -57,6 +58,18 @@ class PackGenerator:
 
         self._card_indexes[set_code] = index
         return index
+
+    def get_uuid_for_scryfall_id(self, scryfall_id: str) -> str | None:
+        """Look up MTGJSON uuid for a Scryfall ID, building index on first call."""
+        if self._scryfall_to_uuid is None:
+            index = {}
+            for set_data in self.data["data"].values():
+                for card in set_data.get("cards", []):
+                    sid = card.get("identifiers", {}).get("scryfallId", "")
+                    if sid:
+                        index[sid] = card["uuid"]
+            self._scryfall_to_uuid = index
+        return self._scryfall_to_uuid.get(scryfall_id)
 
     def list_sets(self) -> list[tuple[str, str]]:
         """Return (code, name) for sets that have booster data, sorted by name."""

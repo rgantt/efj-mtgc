@@ -179,14 +179,17 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 }
 
 .card-thumb {
-  width: 36px;
-  height: 50px;
+  width: 146px;
+  height: 44px;
   object-fit: cover;
-  border-radius: 3px;
+  object-position: top center;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
-.card-name { font-weight: 500; margin-right: 1em; }
+.card-info { display: flex; flex-direction: column; gap: 2px; }
+.card-name { font-weight: 500; }
+.card-tags { display: flex; gap: 3px; flex-wrap: wrap; }
 
 .type-cell {
   max-width: 160px;
@@ -223,8 +226,9 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 }
 
 .price-cell {
-  display: flex;
-  gap: 4px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 3px;
 }
 .price-cell .badge {
   font-size: 0.75rem;
@@ -549,14 +553,11 @@ function showZoom(imgSrc) {
 // --- Price badges (for table price column) ---
 function buildPriceBadges(card) {
   let html = '';
-  if (card.scryfall_id) {
-    const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
-    html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
-  }
-  if (card.ck_url) {
-    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-    html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
-  }
+  const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
+  html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
+  const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
+  const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+  html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
   return html;
 }
 
@@ -567,10 +568,9 @@ function buildCardBadges(card) {
     const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
     html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
   }
-  if (card.ck_url) {
-    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-    html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
-  }
+  const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
+  const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+  html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
   const fe = parseJsonField(card.frame_effects);
   if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
   if (fe.includes('showcase')) html += '<span class="badge treatment">SC</span>';
@@ -721,7 +721,8 @@ function renderTable() {
   };
 
   for (const card of allCards) {
-    const imgSrc = card.image_uri || '';
+    const imgFull = card.image_uri || '';
+    const imgSrc = imgFull.replace('/normal/', '/small/');
     const rawMana = card.mana_cost || '';
     const isDfc = card.name.includes(' // ');
     let nameHtml, manaHtml;
@@ -742,9 +743,9 @@ function renderTable() {
     const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw"></i>`;
     const tags = buildInlineTags(card);
 
-    html += `<tr data-img="${imgSrc}" onclick="showZoom('${imgSrc}')">`;
+    html += `<tr data-img="${imgFull}" onclick="showZoom('${imgFull}')">`;
     html += `<td>${card.qty}</td>`;
-    html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<span>${nameHtml}${tags}</span></div></td>`;
+    html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<div class="card-info">${nameHtml}${tags ? `<div class="card-tags">${tags}</div>` : ''}</div></div></td>`;
     const fullType = card.type_line || '';
     const typeParts = fullType.split(' — ');
     const mainType = typeParts[0].replace(/Legendary /g, 'Lgdry. ');
