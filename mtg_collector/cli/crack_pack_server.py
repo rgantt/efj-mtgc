@@ -191,6 +191,40 @@ def _compute_card_crop(fragments, indices, image_w=None, image_h=None):
     return {"x": round(x1), "y": round(y1), "w": round(w), "h": round(h)}
 
 
+def _format_candidates(raw_cards):
+    """Format raw Scryfall card dicts into the candidate shape the client expects."""
+    formatted = []
+    for c in raw_cards:
+        image_uri = None
+        if "image_uris" in c:
+            image_uri = c["image_uris"].get("small") or c["image_uris"].get("normal")
+        elif "card_faces" in c and c["card_faces"]:
+            face = c["card_faces"][0]
+            if "image_uris" in face:
+                image_uri = face["image_uris"].get("small") or face["image_uris"].get("normal")
+
+        prices = c.get("prices", {})
+        price = prices.get("usd") or prices.get("usd_foil")
+
+        formatted.append({
+            "scryfall_id": c["id"],
+            "name": c.get("name", "???"),
+            "set_code": c.get("set", "???"),
+            "set_name": c.get("set_name", ""),
+            "collector_number": c.get("collector_number", "???"),
+            "rarity": c.get("rarity", "unknown"),
+            "image_uri": image_uri,
+            "foil": "foil" in c.get("finishes", []),
+            "finishes": c.get("finishes", []),
+            "promo": c.get("promo", False),
+            "full_art": c.get("full_art", False),
+            "border_color": c.get("border_color", ""),
+            "frame_effects": c.get("frame_effects", []),
+            "price": price,
+        })
+    return formatted
+
+
 def _log_ingest(msg):
     sys.stderr.write(f"[INGEST] {msg}\n")
     sys.stderr.flush()
@@ -281,6 +315,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_ingest_skip()
         elif path == "/api/ingest/next-card":
             self._api_ingest_next_card()
+        elif path == "/api/ingest/search-card":
+            self._api_ingest_search_card()
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -849,36 +885,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
 
-            # Format candidates for client
-            formatted = []
-            for c in candidates:
-                image_uri = None
-                if "image_uris" in c:
-                    image_uri = c["image_uris"].get("small") or c["image_uris"].get("normal")
-                elif "card_faces" in c and c["card_faces"]:
-                    face = c["card_faces"][0]
-                    if "image_uris" in face:
-                        image_uri = face["image_uris"].get("small") or face["image_uris"].get("normal")
-
-                prices = c.get("prices", {})
-                price = prices.get("usd") or prices.get("usd_foil")
-
-                formatted.append({
-                    "scryfall_id": c["id"],
-                    "name": c.get("name", "???"),
-                    "set_code": c.get("set", "???"),
-                    "set_name": c.get("set_name", ""),
-                    "collector_number": c.get("collector_number", "???"),
-                    "rarity": c.get("rarity", "unknown"),
-                    "image_uri": image_uri,
-                    "foil": "foil" in c.get("finishes", []),
-                    "finishes": c.get("finishes", []),
-                    "promo": c.get("promo", False),
-                    "full_art": c.get("full_art", False),
-                    "border_color": c.get("border_color", ""),
-                    "frame_effects": c.get("frame_effects", []),
-                    "price": price,
-                })
+            formatted = _format_candidates(candidates)
 
             all_matches.append(formatted)
             _log_ingest(f"Scryfall card {ci}: {len(formatted)} candidates for '{card_info.get('name', '???')}'")
@@ -1079,6 +1086,36 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         _log_ingest(f"Skipped card {card_idx} in image {img_idx}")
         self._send_json({"ok": True})
+
+    def _api_ingest_search_card(self):
+        """Manual card name search during disambiguation."""
+        from mtg_collector.services.scryfall import ScryfallAPI
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        sid = data.get("session_id", "")
+        img_idx = data.get("image_idx")
+        card_idx = data.get("card_idx")
+        query = (data.get("query") or "").strip()
+
+        if not query:
+            self._send_json({"error": "Empty query"}, 400)
+            return
+
+        scryfall = ScryfallAPI()
+        candidates = scryfall.search_card(query)
+        formatted = _format_candidates(candidates)
+
+        with _ingest_lock:
+            session = _ingest_sessions.get(sid)
+            if session and img_idx is not None and img_idx < len(session["images"]):
+                img = session["images"][img_idx]
+                if img["scryfall_matches"] and card_idx is not None and card_idx < len(img["scryfall_matches"]):
+                    img["scryfall_matches"][card_idx] = formatted
+
+        self._send_json({"candidates": formatted})
 
     def _read_json_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
