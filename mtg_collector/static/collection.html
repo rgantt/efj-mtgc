@@ -84,7 +84,7 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 
 /* Sidebar */
 .sidebar {
-  width: 240px;
+  width: 260px;
   background: #16213e;
   border-right: 1px solid #0f3460;
   padding: 16px;
@@ -104,28 +104,43 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 
 .sidebar h3:first-child { margin-top: 0; }
 
-.filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.filter-group label {
-  display: flex;
+/* Pill groups */
+.pill-group { display: flex; flex-wrap: wrap; gap: 4px; }
+.pill-group input[type="checkbox"] { display: none; }
+.pill-group label {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid #0f3460;
+  border-radius: 20px;
+  font-size: 0.8rem;
   cursor: pointer;
-  padding: 2px 0;
+  transition: background 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.pill-group label:hover { border-color: #e94560; }
+.pill-group input[type="checkbox"]:checked + label {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
 }
 
-.filter-group label:hover { color: #fff; }
+/* Color pill mana icons */
+.pill-group label .ms { font-size: 1rem; }
 
-.filter-group input[type="checkbox"] {
-  accent-color: #e94560;
+/* Rarity dots */
+.rarity-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
-#filter-type, #filter-set {
+/* Multi-select search component */
+.multi-select-wrap { position: relative; }
+.multi-search-input {
   width: 100%;
   padding: 6px 10px;
   border: 1px solid #0f3460;
@@ -134,6 +149,73 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
   color: #e0e0e0;
   font-size: 0.85rem;
 }
+.multi-search-input:focus { outline: 2px solid #e94560; }
+.multi-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  z-index: 50;
+  list-style: none;
+}
+.multi-dropdown.open { display: block; }
+.multi-dropdown li {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.multi-dropdown li:hover { background: #0f3460; }
+.multi-dropdown li.selected { color: #e94560; }
+.selected-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.selected-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #0f3460;
+  border: 1px solid #e94560;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  color: #e0e0e0;
+}
+.selected-pill .remove-pill {
+  cursor: pointer;
+  color: #e94560;
+  font-weight: bold;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+.selected-pill .remove-pill:hover { color: #fff; }
+
+/* Range filter inputs */
+.range-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.range-row input[type="number"] {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+.range-row input[type="number"]:focus { outline: 2px solid #e94560; }
+.range-row span { font-size: 0.8rem; color: #888; }
 
 /* Main content */
 .main {
@@ -452,34 +534,78 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <h3>Color</h3>
-    <div class="filter-group" id="color-filters">
-      <label><input type="checkbox" value="W"> White</label>
-      <label><input type="checkbox" value="U"> Blue</label>
-      <label><input type="checkbox" value="B"> Black</label>
-      <label><input type="checkbox" value="R"> Red</label>
-      <label><input type="checkbox" value="G"> Green</label>
-      <label><input type="checkbox" value="C"> Colorless</label>
+    <div class="pill-group" id="color-filters">
+      <input type="checkbox" id="cf-W" value="W"><label for="cf-W"><i class="ms ms-w ms-cost"></i></label>
+      <input type="checkbox" id="cf-U" value="U"><label for="cf-U"><i class="ms ms-u ms-cost"></i></label>
+      <input type="checkbox" id="cf-B" value="B"><label for="cf-B"><i class="ms ms-b ms-cost"></i></label>
+      <input type="checkbox" id="cf-R" value="R"><label for="cf-R"><i class="ms ms-r ms-cost"></i></label>
+      <input type="checkbox" id="cf-G" value="G"><label for="cf-G"><i class="ms ms-g ms-cost"></i></label>
+      <input type="checkbox" id="cf-C" value="C"><label for="cf-C"><i class="ms ms-c ms-cost"></i></label>
     </div>
 
     <h3>Rarity</h3>
-    <div class="filter-group" id="rarity-filters">
-      <label><input type="checkbox" value="common"> Common</label>
-      <label><input type="checkbox" value="uncommon"> Uncommon</label>
-      <label><input type="checkbox" value="rare"> Rare</label>
-      <label><input type="checkbox" value="mythic"> Mythic</label>
+    <div class="pill-group" id="rarity-filters">
+      <input type="checkbox" id="rf-common" value="common"><label for="rf-common"><span class="rarity-dot" style="background:#111"></span> C</label>
+      <input type="checkbox" id="rf-uncommon" value="uncommon"><label for="rf-uncommon"><span class="rarity-dot" style="background:#6a6a6a"></span> U</label>
+      <input type="checkbox" id="rf-rare" value="rare"><label for="rf-rare"><span class="rarity-dot" style="background:#c9a816"></span> R</label>
+      <input type="checkbox" id="rf-mythic" value="mythic"><label for="rf-mythic"><span class="rarity-dot" style="background:#d4422a"></span> M</label>
     </div>
 
     <h3>Set</h3>
-    <select id="filter-set" multiple size="5"></select>
+    <div class="multi-select-wrap" id="set-filter-wrap">
+      <input type="text" class="multi-search-input" id="set-search" placeholder="Search sets..." autocomplete="off">
+      <ul class="multi-dropdown" id="set-dropdown"></ul>
+      <div class="selected-pills" id="set-pills"></div>
+    </div>
 
     <h3>Type</h3>
-    <input type="text" id="filter-type" placeholder="e.g. creature, instant...">
+    <div class="pill-group" id="type-filters">
+      <input type="checkbox" id="tf-creature" value="Creature"><label for="tf-creature">Creature</label>
+      <input type="checkbox" id="tf-instant" value="Instant"><label for="tf-instant">Instant</label>
+      <input type="checkbox" id="tf-sorcery" value="Sorcery"><label for="tf-sorcery">Sorcery</label>
+      <input type="checkbox" id="tf-enchantment" value="Enchantment"><label for="tf-enchantment">Enchantment</label>
+      <input type="checkbox" id="tf-artifact" value="Artifact"><label for="tf-artifact">Artifact</label>
+      <input type="checkbox" id="tf-planeswalker" value="Planeswalker"><label for="tf-planeswalker">PW</label>
+      <input type="checkbox" id="tf-land" value="Land"><label for="tf-land">Land</label>
+      <input type="checkbox" id="tf-battle" value="Battle"><label for="tf-battle">Battle</label>
+      <input type="checkbox" id="tf-kindred" value="Kindred"><label for="tf-kindred">Kindred</label>
+    </div>
+
+    <h3>Subtype</h3>
+    <div class="multi-select-wrap" id="subtype-filter-wrap">
+      <input type="text" class="multi-search-input" id="subtype-search" placeholder="Search subtypes..." autocomplete="off">
+      <ul class="multi-dropdown" id="subtype-dropdown"></ul>
+      <div class="selected-pills" id="subtype-pills"></div>
+    </div>
+
+    <h3>Mana Value</h3>
+    <div class="range-row">
+      <input type="number" id="cmc-min" min="0" placeholder="Min">
+      <span>&ndash;</span>
+      <input type="number" id="cmc-max" min="0" placeholder="Max">
+    </div>
 
     <h3>Finish</h3>
-    <div class="filter-group" id="finish-filters">
-      <label><input type="checkbox" value="nonfoil"> Nonfoil</label>
-      <label><input type="checkbox" value="foil"> Foil</label>
-      <label><input type="checkbox" value="etched"> Etched</label>
+    <div class="pill-group" id="finish-filters">
+      <input type="checkbox" id="ff-nonfoil" value="nonfoil"><label for="ff-nonfoil">Nonfoil</label>
+      <input type="checkbox" id="ff-foil" value="foil"><label for="ff-foil">Foil</label>
+      <input type="checkbox" id="ff-etched" value="etched"><label for="ff-etched">Etched</label>
+    </div>
+
+    <h3>Treatment</h3>
+    <div class="pill-group" id="badge-filters">
+      <input type="checkbox" id="bf-borderless" value="borderless"><label for="bf-borderless">BL</label>
+      <input type="checkbox" id="bf-showcase" value="showcase"><label for="bf-showcase">SC</label>
+      <input type="checkbox" id="bf-extendedart" value="extendedart"><label for="bf-extendedart">EA</label>
+      <input type="checkbox" id="bf-fullart" value="fullart"><label for="bf-fullart">FA</label>
+      <input type="checkbox" id="bf-promo" value="promo"><label for="bf-promo">Promo</label>
+    </div>
+
+    <h3>Price (USD)</h3>
+    <div class="range-row">
+      <input type="number" id="price-min" min="0" step="0.01" placeholder="Min">
+      <span>&ndash;</span>
+      <input type="number" id="price-max" min="0" step="0.01" placeholder="Max">
     </div>
 
     <button style="margin-top:16px;width:100%" id="clear-filters-btn">Clear Filters</button>
@@ -502,15 +628,25 @@ const main = document.getElementById('main');
 const statusEl = document.getElementById('status');
 const zoomOverlay = document.getElementById('zoom-overlay');
 const zoomImg = document.getElementById('zoom-img');
-const filterSetEl = document.getElementById('filter-set');
-const filterTypeEl = document.getElementById('filter-type');
 const clearFiltersBtn = document.getElementById('clear-filters-btn');
+
+// Range inputs
+const cmcMinEl = document.getElementById('cmc-min');
+const cmcMaxEl = document.getElementById('cmc-max');
+const priceMinEl = document.getElementById('price-min');
+const priceMaxEl = document.getElementById('price-max');
 
 let currentView = 'table';
 let sortOrder = 'asc';
 let sortColumn = 'name';
 let allCards = [];
 let debounceTimer = null;
+
+// Multi-select state
+let selectedSets = new Map();   // code -> name
+let selectedSubtypes = new Set();
+let allSetOptions = [];         // [{code, name}]
+let allSubtypeOptions = [];     // [string]
 
 const SORT_COLS = [
   { key: 'qty', label: 'Qty' },
@@ -610,6 +746,100 @@ function buildInlineTags(card) {
   return html;
 }
 
+// --- Multi-select component ---
+function initMultiSelect(config) {
+  const searchEl = document.getElementById(config.searchId);
+  const dropdownEl = document.getElementById(config.dropdownId);
+  const pillsEl = document.getElementById(config.pillsId);
+
+  function renderDropdown(filter) {
+    const q = (filter || '').toLowerCase();
+    const items = config.getOptions().filter(item => {
+      const label = config.getLabel(item).toLowerCase();
+      return !q || label.includes(q);
+    });
+    dropdownEl.innerHTML = '';
+    for (const item of items.slice(0, 50)) {
+      const li = document.createElement('li');
+      const key = config.getKey(item);
+      li.textContent = config.getLabel(item);
+      if (config.isSelected(key)) li.classList.add('selected');
+      li.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        config.toggle(key, item);
+        renderPills();
+        renderDropdown(searchEl.value);
+        fetchCollection();
+      });
+      dropdownEl.appendChild(li);
+    }
+  }
+
+  function renderPills() {
+    pillsEl.innerHTML = '';
+    for (const [key, label] of config.getSelected()) {
+      const pill = document.createElement('span');
+      pill.className = 'selected-pill';
+      pill.innerHTML = `${label} <span class="remove-pill">&times;</span>`;
+      pill.querySelector('.remove-pill').addEventListener('click', () => {
+        config.remove(key);
+        renderPills();
+        renderDropdown(searchEl.value);
+        fetchCollection();
+      });
+      pillsEl.appendChild(pill);
+    }
+  }
+
+  searchEl.addEventListener('focus', () => {
+    renderDropdown(searchEl.value);
+    dropdownEl.classList.add('open');
+  });
+  searchEl.addEventListener('input', () => {
+    renderDropdown(searchEl.value);
+    dropdownEl.classList.add('open');
+  });
+  searchEl.addEventListener('blur', () => {
+    setTimeout(() => dropdownEl.classList.remove('open'), 150);
+  });
+
+  return { renderPills, renderDropdown };
+}
+
+// Set multi-select
+const setMultiSelect = initMultiSelect({
+  searchId: 'set-search',
+  dropdownId: 'set-dropdown',
+  pillsId: 'set-pills',
+  getOptions: () => allSetOptions,
+  getLabel: (item) => `${item.name} (${item.code.toUpperCase()})`,
+  getKey: (item) => item.code,
+  isSelected: (key) => selectedSets.has(key),
+  toggle: (key, item) => {
+    if (selectedSets.has(key)) selectedSets.delete(key);
+    else selectedSets.set(key, item.name);
+  },
+  remove: (key) => selectedSets.delete(key),
+  getSelected: () => Array.from(selectedSets.entries()).map(([k, v]) => [k, `${v} (${k.toUpperCase()})`]),
+});
+
+// Subtype multi-select
+const subtypeMultiSelect = initMultiSelect({
+  searchId: 'subtype-search',
+  dropdownId: 'subtype-dropdown',
+  pillsId: 'subtype-pills',
+  getOptions: () => allSubtypeOptions,
+  getLabel: (item) => item,
+  getKey: (item) => item,
+  isSelected: (key) => selectedSubtypes.has(key),
+  toggle: (key) => {
+    if (selectedSubtypes.has(key)) selectedSubtypes.delete(key);
+    else selectedSubtypes.add(key);
+  },
+  remove: (key) => selectedSubtypes.delete(key),
+  getSelected: () => Array.from(selectedSubtypes).map(s => [s, s]),
+});
+
 // --- View toggle ---
 viewTableBtn.addEventListener('click', () => { currentView = 'table'; updateViewButtons(); render(); });
 viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewButtons(); render(); });
@@ -641,15 +871,26 @@ function getFilterParams() {
   document.querySelectorAll('#rarity-filters input:checked').forEach(cb => {
     params.append('filter_rarity', cb.value);
   });
-  Array.from(filterSetEl.selectedOptions).forEach(opt => {
-    params.append('filter_set', opt.value);
+  for (const code of selectedSets.keys()) {
+    params.append('filter_set', code);
+  }
+  document.querySelectorAll('#type-filters input:checked').forEach(cb => {
+    params.append('filter_type[]', cb.value);
   });
-  const typeVal = filterTypeEl.value.trim();
-  if (typeVal) params.set('filter_type', typeVal);
-
+  for (const st of selectedSubtypes) {
+    params.append('filter_subtype[]', st);
+  }
   document.querySelectorAll('#finish-filters input:checked').forEach(cb => {
     params.append('filter_finish', cb.value);
   });
+  document.querySelectorAll('#badge-filters input:checked').forEach(cb => {
+    params.append('filter_badge[]', cb.value);
+  });
+
+  const cmcMin = cmcMinEl.value;
+  const cmcMax = cmcMaxEl.value;
+  if (cmcMin !== '') params.set('filter_cmc_min', cmcMin);
+  if (cmcMax !== '') params.set('filter_cmc_max', cmcMax);
 
   return params.toString();
 }
@@ -669,30 +910,52 @@ async function fetchCollection() {
     });
   }
 
-  // Populate set filter from data
-  populateSetFilter();
+  // Client-side price filtering
+  const pMin = parseFloat(priceMinEl.value);
+  const pMax = parseFloat(priceMaxEl.value);
+  if (!isNaN(pMin) || !isNaN(pMax)) {
+    allCards = allCards.filter(card => {
+      const price = parseFloat(card.tcg_price) || 0;
+      if (!isNaN(pMin) && price < pMin) return false;
+      if (!isNaN(pMax) && price > pMax) return false;
+      return true;
+    });
+  }
+
+  // Populate set filter options from data
+  populateSetOptions();
+  // Populate subtype options from data
+  populateSubtypeOptions();
 
   statusEl.textContent = `${allCards.length} entries, ${allCards.reduce((s, c) => s + c.qty, 0)} cards`;
   render();
 }
 
-function populateSetFilter() {
+function populateSetOptions() {
   const sets = new Map();
   for (const card of allCards) {
     if (!sets.has(card.set_code)) {
       sets.set(card.set_code, card.set_name);
     }
   }
-  const currentSelected = new Set(Array.from(filterSetEl.selectedOptions).map(o => o.value));
-  filterSetEl.innerHTML = '';
-  const sorted = Array.from(sets.entries()).sort((a, b) => a[1].localeCompare(b[1]));
-  for (const [code, name] of sorted) {
-    const opt = document.createElement('option');
-    opt.value = code;
-    opt.textContent = `${name} (${code.toUpperCase()})`;
-    if (currentSelected.has(code)) opt.selected = true;
-    filterSetEl.appendChild(opt);
+  allSetOptions = Array.from(sets.entries())
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function populateSubtypeOptions() {
+  const subtypes = new Set();
+  for (const card of allCards) {
+    const tl = card.type_line || '';
+    const dashIdx = tl.indexOf(' \u2014 ');
+    if (dashIdx !== -1) {
+      const sub = tl.substring(dashIdx + 3);
+      for (const s of sub.split(/\s+/)) {
+        if (s) subtypes.add(s);
+      }
+    }
   }
+  allSubtypeOptions = Array.from(subtypes).sort();
 }
 
 // --- Render ---
@@ -710,7 +973,7 @@ function renderTable() {
   let html = '<table class="collection-table"><thead><tr>';
   for (const col of SORT_COLS) {
     const isActive = col.key === sortColumn;
-    const arrow = isActive ? `<span class="sort-arrow">${sortOrder === 'asc' ? '▲' : '▼'}</span>` : '';
+    const arrow = isActive ? `<span class="sort-arrow">${sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>` : '';
     html += `<th class="${isActive ? 'sorted' : ''}" data-col="${col.key}">${col.label}${arrow}</th>`;
   }
   html += '</tr></thead><tbody>';
@@ -747,7 +1010,7 @@ function renderTable() {
     html += `<td>${card.qty}</td>`;
     html += `<td><div class="card-cell">${imgSrc ? `<img class="card-thumb" src="${imgSrc}" loading="lazy">` : ''}<div class="card-info">${nameHtml}${tags ? `<div class="card-tags">${tags}</div>` : ''}</div></div></td>`;
     const fullType = card.type_line || '';
-    const typeParts = fullType.split(' — ');
+    const typeParts = fullType.split(' \u2014 ');
     const mainType = typeParts[0].replace(/Legendary /g, 'Lgdry. ');
     const subType = typeParts[1] || '';
     html += `<td class="type-cell" title="${fullType}">${mainType}${subType ? `<span class="type-sub">${subType}</span>` : ''}</td>`;
@@ -780,7 +1043,7 @@ function renderGrid() {
   for (const col of SORT_COLS) {
     const btn = document.createElement('span');
     btn.className = 'sort-btn' + (col.key === sortColumn ? ' active' : '');
-    const arrow = col.key === sortColumn ? ` ${sortOrder === 'asc' ? '▲' : '▼'}` : '';
+    const arrow = col.key === sortColumn ? ` ${sortOrder === 'asc' ? '\u25B2' : '\u25BC'}` : '';
     btn.textContent = col.label + arrow;
     btn.addEventListener('click', () => handleSortClick(col.key));
     bar.appendChild(btn);
@@ -820,24 +1083,43 @@ searchInput.addEventListener('input', () => {
   debounceTimer = setTimeout(fetchCollection, 300);
 });
 
-document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input').forEach(cb => {
+document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input, #badge-filters input, #type-filters input').forEach(cb => {
   cb.addEventListener('change', fetchCollection);
 });
 
-filterSetEl.addEventListener('change', fetchCollection);
+// CMC range inputs
+cmcMinEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+cmcMaxEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
 
-filterTypeEl.addEventListener('input', () => {
+// Price range inputs (client-side)
+priceMinEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+priceMaxEl.addEventListener('input', () => {
   clearTimeout(debounceTimer);
   debounceTimer = setTimeout(fetchCollection, 300);
 });
 
 clearFiltersBtn.addEventListener('click', () => {
-  document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input').forEach(cb => {
+  document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input, #badge-filters input, #type-filters input').forEach(cb => {
     cb.checked = false;
   });
-  filterSetEl.selectedIndex = -1;
-  filterTypeEl.value = '';
+  selectedSets.clear();
+  selectedSubtypes.clear();
+  setMultiSelect.renderPills();
+  subtypeMultiSelect.renderPills();
   searchInput.value = '';
+  cmcMinEl.value = '';
+  cmcMaxEl.value = '';
+  priceMinEl.value = '';
+  priceMaxEl.value = '';
   fetchCollection();
 });
 

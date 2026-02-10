@@ -372,8 +372,12 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         filter_colors = params.get("filter_color", [])
         filter_rarities = params.get("filter_rarity", [])
         filter_sets = params.get("filter_set", [])
-        filter_type = params.get("filter_type", [""])[0]
+        filter_types = params.get("filter_type[]", [])
+        filter_subtypes = params.get("filter_subtype[]", [])
         filter_finish = params.get("filter_finish", [])
+        filter_badges = params.get("filter_badge[]", [])
+        filter_cmc_min = params.get("filter_cmc_min", [""])[0]
+        filter_cmc_max = params.get("filter_cmc_max", [""])[0]
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -405,14 +409,48 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             where_clauses.append(f"p.set_code IN ({placeholders})")
             sql_params.extend(filter_sets)
 
-        if filter_type:
-            where_clauses.append("card.type_line LIKE ?")
-            sql_params.append(f"%{filter_type}%")
+        if filter_types:
+            type_conditions = []
+            for t in filter_types:
+                type_conditions.append("card.type_line LIKE ?")
+                sql_params.append(f"%{t}%")
+            where_clauses.append(f"({' OR '.join(type_conditions)})")
+
+        if filter_subtypes:
+            subtype_conditions = []
+            for st in filter_subtypes:
+                subtype_conditions.append("card.type_line LIKE ?")
+                sql_params.append(f"%{st}%")
+            where_clauses.append(f"({' OR '.join(subtype_conditions)})")
 
         if filter_finish:
             placeholders = ",".join("?" * len(filter_finish))
             where_clauses.append(f"c.finish IN ({placeholders})")
             sql_params.extend(filter_finish)
+
+        if filter_badges:
+            badge_conditions = []
+            for badge in filter_badges:
+                if badge == "borderless":
+                    badge_conditions.append("p.border_color = 'borderless'")
+                elif badge == "showcase":
+                    badge_conditions.append("p.frame_effects LIKE '%showcase%'")
+                elif badge == "extendedart":
+                    badge_conditions.append("p.frame_effects LIKE '%extendedart%'")
+                elif badge == "fullart":
+                    badge_conditions.append("p.full_art = 1")
+                elif badge == "promo":
+                    badge_conditions.append("p.promo = 1")
+            if badge_conditions:
+                where_clauses.append(f"({' OR '.join(badge_conditions)})")
+
+        if filter_cmc_min:
+            where_clauses.append("card.cmc >= ?")
+            sql_params.append(float(filter_cmc_min))
+
+        if filter_cmc_max:
+            where_clauses.append("card.cmc <= ?")
+            sql_params.append(float(filter_cmc_max))
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 
