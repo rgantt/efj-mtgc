@@ -139,6 +139,7 @@ OCR TEXT:
         fragments: List[Dict],
         expected_count: int,
         hints: Dict = None,
+        status_callback: callable = None,
     ) -> tuple:
         """
         Extract structured card data from OCR fragments with bounding boxes.
@@ -187,63 +188,86 @@ Collector numbers — the printed format has changed over Magic's history:
 Known hints:
 {hint_block}
 
-Return a JSON array of exactly {expected_count} objects. Each object should include
-only the fields you can confidently identify from the OCR text:
-
-- "name": card name (string)
-- "mana_cost": mana cost like "{{2}}{{R}}" (string)
-- "mana_value": converted mana cost (integer)
-- "type": one of the valid card types listed above (string)
-- "subtype": creature subtype like "Insect Horror" (string)
-- "rules_text": rules/abilities text (string)
-- "collector_number": exactly 4 digits with leading zeros (string)
-- "set_code": 3-4 letter set code (string)
-- "artist": artist name (string)
-- "power": power for creatures (integer)
-- "toughness": toughness for creatures (integer)
-- "fragment_indices": array of integer indices of fragments belonging to this card
-
-Omit any field you are not confident about (except fragment_indices, always include that).
+Return exactly {expected_count} cards. For each card, include only the fields you can
+confidently identify from the OCR text. Always include fragment_indices.
+Omit any field you are not confident about.
 Do NOT guess or hallucinate.
 If a hint provides the set code, include "set_code" in every card object.
 
-Return ONLY the JSON array, no other text.
-
 OCR FRAGMENTS:
 {frag_blob}"""
+
+        card_schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "mana_cost": {"type": "string"},
+                "mana_value": {"type": "integer"},
+                "type": {"type": "string"},
+                "subtype": {"type": "string"},
+                "rules_text": {"type": "string"},
+                "collector_number": {"type": "string"},
+                "set_code": {"type": "string"},
+                "artist": {"type": "string"},
+                "power": {"type": "integer"},
+                "toughness": {"type": "integer"},
+                "fragment_indices": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                },
+            },
+            "required": ["fragment_indices"],
+            "additionalProperties": False,
+        }
+
+        def _status(msg):
+            if status_callback:
+                status_callback(msg)
+
+        _status(f"Sending {len(fragments)} fragments to Claude...")
 
         last_error = None
         for attempt in range(self.max_retries + 1):
             try:
                 if attempt > 0:
                     wait_time = 3 * (2 ** (attempt - 1))
+                    _status(f"Retry {attempt + 1}/{self.max_retries + 1} in {wait_time}s...")
                     print(f"  Retrying in {wait_time}s (attempt {attempt + 1}/{self.max_retries + 1})...")
                     time.sleep(wait_time)
 
+                _status(f"Waiting for Claude... (attempt {attempt + 1}/{self.max_retries + 1})")
                 response = self.client.messages.create(
                     model="claude-sonnet-4-5-20250929",
                     max_tokens=4000,
                     messages=[{"role": "user", "content": prompt}],
+                    output_config={
+                        "format": {
+                            "type": "json_schema",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "cards": {
+                                        "type": "array",
+                                        "items": card_schema,
+                                    },
+                                },
+                                "required": ["cards"],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
                 )
 
-                text_content = ""
-                for block in response.content:
-                    if block.type == "text":
-                        text_content += block.text
+                text_content = response.content[0].text
 
                 if not text_content.strip():
                     raise ValueError("Empty response from Claude")
 
-                cards = self._parse_json_response(text_content)
-
-                if not isinstance(cards, list):
-                    raise ValueError(f"Expected JSON array, got {type(cards)}")
+                _status("Parsing Claude response...")
+                result = json.loads(text_content)
+                cards = result["cards"]
 
                 return cards, response.usage
-
-            except json.JSONDecodeError as e:
-                last_error = f"JSON parse error: {e}"
-                print(f"  {last_error}")
             except anthropic.BadRequestError as e:
                 print(f"  Error: {e}")
                 return [], None

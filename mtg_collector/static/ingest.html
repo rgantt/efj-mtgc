@@ -91,6 +91,11 @@ button.secondary:hover { background: #444; }
   border-color: #4caf50;
   color: #4caf50;
 }
+#pill-bar .pill.error {
+  background: #5e1b1b;
+  border-color: #e94560;
+  color: #e94560;
+}
 #pill-bar .pill-label {
   color: #888;
   margin-right: 4px;
@@ -305,10 +310,10 @@ button.secondary:hover { background: #444; }
 .candidate-row.selected { border-color: #e94560; background: #1a1a3e; }
 
 .candidate-row .set-icon {
-  font-size: 1.1rem;
-  width: 26px;
-  height: 26px;
-  line-height: 26px;
+  font-size: 2.2rem;
+  width: 52px;
+  height: 52px;
+  line-height: 52px;
   text-align: center;
   flex-shrink: 0;
   background: #efefef;
@@ -442,7 +447,8 @@ button.secondary:hover { background: #444; }
   </div>
   <div id="image-list"></div>
   <div id="process-controls">
-    <button id="process-all-btn">Process All</button>
+    <button id="process-all-btn" disabled>Process All</button>
+    <span id="process-all-warning" style="color: #e94560; font-size: 0.85rem; margin-left: 12px;">Set card count for all images before processing</span>
   </div>
 </div>
 
@@ -536,7 +542,7 @@ async function handleFiles(fileList) {
       filename: uploaded.filename,
       storedName: uploaded.stored_name,
       index: uploaded.index,
-      cardCount: 1,
+      cardCount: 0,
       forceIngest: false,
       processed: false,
     };
@@ -558,7 +564,7 @@ function renderImageRow(img) {
     <div class="count-group">
       <button onclick="adjustCount(${img.index}, -5)">-5</button>
       <button onclick="adjustCount(${img.index}, -1)">-1</button>
-      <span class="count-display" id="count-${img.index}">${img.cardCount}</span>
+      <span class="count-display" id="count-${img.index}" style="color: ${img.cardCount === 0 ? '#e94560' : '#e0e0e0'}">${img.cardCount}</span>
       <button onclick="adjustCount(${img.index}, 1)">+1</button>
       <button onclick="adjustCount(${img.index}, 5)">+5</button>
     </div>
@@ -573,9 +579,18 @@ function renderImageRow(img) {
 function adjustCount(index, delta) {
   const img = state.images.find(i => i.index === index);
   if (!img) return;
-  img.cardCount = Math.max(1, Math.min(20, img.cardCount + delta));
-  document.getElementById(`count-${index}`).textContent = img.cardCount;
+  img.cardCount = Math.max(0, Math.min(20, img.cardCount + delta));
+  const countEl = document.getElementById(`count-${index}`);
+  countEl.textContent = img.cardCount;
+  countEl.style.color = img.cardCount === 0 ? '#e94560' : '#e0e0e0';
+  updateProcessAllState();
   syncCount(index);
+}
+
+function updateProcessAllState() {
+  const allSet = state.images.length > 0 && state.images.every(img => img.cardCount > 0);
+  document.getElementById('process-all-btn').disabled = !allSet;
+  document.getElementById('process-all-warning').style.display = allSet ? 'none' : 'inline';
 }
 
 function toggleForce(index, checked) {
@@ -638,6 +653,21 @@ async function processAll() {
 
     await processImageSSE(img);
 
+    if (img.countMismatch) {
+      statusEl.textContent = 'Count mismatch — retake photo';
+      statusEl.style.color = '#e94560';
+      pillImage.className = 'pill error';
+      appendLog(`Stopping: ${img.filename} card count mismatch. Remove this image and retake the photo.`, 'error');
+      state.processing = false;
+      document.getElementById('process-all-btn').disabled = false;
+      // Remove the failed image from state so user must re-upload
+      state.images = state.images.filter(i => i.index !== img.index);
+      const row = document.getElementById(`img-row-${img.index}`);
+      if (row) row.remove();
+      updateProcessAllState();
+      return;
+    }
+
     img.processed = true;
     statusEl.textContent = 'Done';
     statusEl.style.color = '#4caf50';
@@ -683,6 +713,14 @@ function processImageSSE(img) {
         msg += ` (${data.tokens.in} in / ${data.tokens.out} out tokens)`;
       }
       appendLog(msg, 'done');
+    });
+
+    es.addEventListener('count_mismatch', (e) => {
+      const data = JSON.parse(e.data);
+      appendLog(`  MISMATCH: ${data.message}`, 'error');
+      pillStep.textContent = 'Count mismatch';
+      pillStep.className = 'pill error';
+      img.countMismatch = true;
     });
 
     es.addEventListener('matches_ready', (e) => {

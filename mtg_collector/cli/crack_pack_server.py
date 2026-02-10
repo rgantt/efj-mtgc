@@ -772,7 +772,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             t0 = time.time()
             claude = ClaudeVision()
             claude_cards, usage = claude.extract_cards_from_ocr_with_positions(
-                ocr_fragments, card_count
+                ocr_fragments, card_count,
+                status_callback=lambda msg: send_event("status", {"message": msg}),
             )
             elapsed = time.time() - t0
             token_info = {}
@@ -784,6 +785,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 "cards": claude_cards,
                 "tokens": token_info,
             })
+
+            # Validate card count matches user expectation
+            if len(claude_cards) != card_count:
+                msg = (f"Expected {card_count} card(s) but Claude found {len(claude_cards)}. "
+                       f"Discard this image and take a better photo.")
+                _log_ingest(f"Card count mismatch: {msg}")
+                send_event("count_mismatch", {"message": msg, "expected": card_count, "found": len(claude_cards)})
+                send_event("done", {})
+                return
 
         # Save to cache
         conn.execute(
