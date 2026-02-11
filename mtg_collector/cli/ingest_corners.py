@@ -1,5 +1,6 @@
 """Ingest-corners command: mtg ingest-corners <image>"""
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -58,6 +59,17 @@ def register(subparsers):
         help="Override source image path (default: use image file path being ingested)",
     )
     parser.set_defaults(func=run)
+
+
+def _move_to_ingested(image_paths):
+    """Move processed image files into an 'ingested' subdirectory."""
+    for image_path in image_paths:
+        p = Path(image_path).resolve()
+        dest_dir = p.parent / "ingested"
+        dest_dir.mkdir(exist_ok=True)
+        dest = dest_dir / p.name
+        shutil.move(str(p), str(dest))
+        print(f"  Moved: {p.name} -> ingested/")
 
 
 def _review_cards(resolved):
@@ -268,6 +280,7 @@ def run(args):
             added += 1
 
         conn.commit()
+        _move_to_ingested(args.images)
         print()
         print(f"Done! Added {added} card(s) to collection.")
         return
@@ -310,5 +323,6 @@ def run(args):
         sys.exit(1)
     else:
         conn.commit()
+        _move_to_ingested(args.images)
         print()
         print(f"Done! Added {added} card(s) to collection.")
