@@ -24,6 +24,12 @@ def register(subparsers):
     )
     refresh_parser.set_defaults(func=run_refresh)
 
+    # db recache
+    recache_parser = db_subparsers.add_parser(
+        "recache", help="Fix non-English printings and clear set cache"
+    )
+    recache_parser.set_defaults(func=run_recache)
+
     db_parser.set_defaults(func=lambda args: db_parser.print_help())
 
 
@@ -39,6 +45,86 @@ def run_init(args):
     else:
         print(f"Database already up to date (version {SCHEMA_VERSION})")
         print(f"Location: {args.db_path}")
+
+
+def run_recache(args):
+    """Fix non-English printings in collection and clear set cache."""
+    import json
+    from mtg_collector.db import get_connection, init_db, PrintingRepository, CardRepository, SetRepository
+    from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
+
+    conn = get_connection(args.db_path)
+    init_db(conn)
+    api = ScryfallAPI()
+    card_repo = CardRepository(conn)
+    set_repo = SetRepository(conn)
+    printing_repo = PrintingRepository(conn)
+
+    # Step 1: Find non-English printings referenced by collection
+    cursor = conn.execute("""
+        SELECT DISTINCT p.scryfall_id, p.set_code, p.collector_number, p.raw_json
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        WHERE p.raw_json IS NOT NULL
+          AND json_extract(p.raw_json, '$.lang') != 'en'
+    """)
+    non_english = cursor.fetchall()
+
+    if non_english:
+        print(f"Found {len(non_english)} non-English printing(s) in collection. Fixing...")
+        conn.execute("PRAGMA foreign_keys = OFF")
+        fixed = 0
+        for row in non_english:
+            old_id = row["scryfall_id"]
+            set_code = row["set_code"]
+            cn = row["collector_number"]
+            old_lang = json.loads(row["raw_json"]).get("lang", "?")
+            old_name = json.loads(row["raw_json"]).get("name", "?")
+
+            # Fetch English version via /cards/{set}/{cn} (returns English by default)
+            en_data = api.get_card_by_set_cn(set_code, cn)
+            if not en_data:
+                print(f"  SKIP: {old_name} ({set_code.upper()} #{cn}) — English version not found")
+                continue
+
+            new_id = en_data["id"]
+            if new_id == old_id:
+                # Already English despite raw_json saying otherwise — skip
+                continue
+
+            # Delete the old non-English printing first (unique constraint on set_code+cn)
+            conn.execute("DELETE FROM printings WHERE scryfall_id = ?", (old_id,))
+
+            # Cache the English printing
+            cache_scryfall_data(api, card_repo, set_repo, printing_repo, en_data)
+
+            # Update collection entries to point to English printing
+            conn.execute(
+                "UPDATE collection SET scryfall_id = ? WHERE scryfall_id = ?",
+                (new_id, old_id),
+            )
+
+            print(f"  Fixed: {old_name} ({set_code.upper()} #{cn}) [{old_lang} -> en]")
+            fixed += 1
+
+        conn.execute("PRAGMA foreign_keys = ON")
+        print(f"Fixed {fixed} printing(s)")
+    else:
+        print("No non-English printings found in collection.")
+
+    # Step 2: Delete all printings not referenced by collection (cache cleanup)
+    cursor = conn.execute("""
+        DELETE FROM printings
+        WHERE scryfall_id NOT IN (SELECT DISTINCT scryfall_id FROM collection)
+    """)
+    print(f"Cleaned {cursor.rowcount} cached printing(s) not in collection")
+
+    # Step 3: Clear cache flags on all sets
+    conn.execute("UPDATE sets SET cards_fetched_at = NULL")
+    print("Cleared set cache flags (will re-cache on next use)")
+
+    conn.commit()
+    print("Done!")
 
 
 def run_refresh(args):
