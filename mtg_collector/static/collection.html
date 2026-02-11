@@ -262,10 +262,11 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 }
 
 .card-thumb {
-  width: 36px;
-  height: 50px;
+  width: 146px;
+  height: 44px;
   object-fit: cover;
-  border-radius: 3px;
+  object-position: top center;
+  border-radius: 4px;
   flex-shrink: 0;
 }
 
@@ -295,7 +296,15 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 .card-face + .card-face { margin-top: 2px; }
 
 .set-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
-.set-cell .ss { font-size: 1.1em; }
+.set-cell .ss {
+  font-size: 1.3em;
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
+  background: #efefef;
+  border-radius: 5px;
+}
 
 .price-cell { white-space: nowrap; color: #aaa; font-variant-numeric: tabular-nums; }
 
@@ -1572,7 +1581,7 @@ function applySettings() {
     css += '.sheet-card-img-wrap img { object-fit: contain !important; object-position: center !important; }\n';
   }
   if (_settings.icon_background === 'none') {
-    css += '.set-cell .ss { color: transparent !important; }\n';
+    css += '.set-cell .ss { background: transparent !important; }\n';
   }
   style.textContent = css;
 }
