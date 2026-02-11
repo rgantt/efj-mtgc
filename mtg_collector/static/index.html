@@ -12,21 +12,21 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
+  padding: 48px;
+  gap: 48px;
 }
-h1 {
-  font-size: 2rem;
-  color: #e94560;
-  margin-bottom: 32px;
-}
-.links {
+.nav-col {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  flex: 0 0 auto;
 }
-.links a {
+.nav-col h1 {
+  font-size: 2rem;
+  color: #e94560;
+  margin-bottom: 16px;
+}
+.nav-col a {
   display: block;
   padding: 16px 32px;
   background: #16213e;
@@ -38,26 +38,216 @@ h1 {
   font-weight: 600;
   transition: border-color 0.15s, background 0.15s;
 }
-.links a:hover {
+.nav-col a:hover {
   border-color: #e94560;
   background: #1a1a3e;
 }
-.links a span {
+.nav-col a span {
   display: block;
   font-size: 0.85rem;
   font-weight: 400;
   color: #888;
   margin-top: 4px;
 }
+
+.settings-col {
+  flex: 0 0 320px;
+  margin-left: auto;
+}
+.settings-col h2 {
+  font-size: 1.2rem;
+  color: #888;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+.setting-group {
+  margin-bottom: 20px;
+}
+.setting-group label.group-label {
+  display: block;
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.pill-row {
+  display: flex;
+  gap: 0;
+}
+.pill-row .pill {
+  padding: 8px 20px;
+  border: 1px solid #0f3460;
+  background: #16213e;
+  color: #888;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+.pill-row .pill:first-child { border-radius: 8px 0 0 8px; }
+.pill-row .pill:last-child { border-radius: 0 8px 8px 0; }
+.pill-row .pill + .pill { border-left: none; }
+.pill-row .pill.active {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+.pill-row .pill:hover:not(.active) {
+  border-color: #e94560;
+  color: #e0e0e0;
+}
+
+/* Checkbox pills for multi-select */
+.check-row {
+  display: flex;
+  gap: 8px;
+}
+.check-row .pill {
+  padding: 8px 20px;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  background: #16213e;
+  color: #888;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+.check-row .pill.active {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+.check-row .pill:hover:not(.active) {
+  border-color: #e94560;
+  color: #e0e0e0;
+}
+
+.save-status {
+  font-size: 0.8rem;
+  color: #4caf50;
+  margin-top: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.save-status.visible { opacity: 1; }
+
+@media (max-width: 768px) {
+  body { flex-direction: column; padding: 24px; }
+  .settings-col { margin-left: 0; flex: none; }
+}
 </style>
 </head>
 <body>
-<h1>MTG Collection Tools</h1>
-<div class="links">
+<div class="nav-col">
+  <h1>MTG Collection Tools</h1>
   <a href="/crack">Crack-a-Pack<span>Open virtual booster packs with prices and pick tracking</span></a>
   <a href="/sheets">Explore Sheets<span>View booster pack structure, sheets, and pull rates</span></a>
   <a href="/collection">Collection<span>Browse your card collection with search, filters, and prices</span></a>
-  <a href="/ingestor-ocr">Ingestor (OCR)<span>Identify cards from photos using OCR + AI with visual disambiguation</span></a>
+  <a href="/ingestor-ocr">Ingestor (OCR)<span>Identify cards from photos — full cards or stacked name bars</span></a>
 </div>
+
+<div class="settings-col">
+  <h2>Settings</h2>
+
+  <div class="setting-group">
+    <label class="group-label">Image Display</label>
+    <div class="pill-row" id="image-display-pills">
+      <div class="pill" data-value="crop">Crop</div>
+      <div class="pill" data-value="contain">Contain</div>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <label class="group-label">Icon Background</label>
+    <div class="pill-row" id="icon-bg-pills">
+      <div class="pill" data-value="white">White</div>
+      <div class="pill" data-value="none">None</div>
+    </div>
+  </div>
+
+  <div class="setting-group">
+    <label class="group-label">Price Sources</label>
+    <div class="check-row" id="price-source-checks">
+      <div class="pill" data-value="tcg">TCG</div>
+      <div class="pill" data-value="ck">CK</div>
+    </div>
+  </div>
+
+  <div class="save-status" id="save-status">Saved</div>
+</div>
+
+<script>
+let settings = {};
+
+async function loadSettings() {
+  const res = await fetch('/api/settings');
+  settings = await res.json();
+  applyToUI();
+}
+
+function applyToUI() {
+  // Image display
+  document.querySelectorAll('#image-display-pills .pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.value === settings.image_display);
+  });
+  // Icon background
+  document.querySelectorAll('#icon-bg-pills .pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.value === settings.icon_background);
+  });
+  // Price sources
+  const sources = (settings.price_sources || '').split(',');
+  document.querySelectorAll('#price-source-checks .pill').forEach(p => {
+    p.classList.toggle('active', sources.includes(p.dataset.value));
+  });
+}
+
+async function saveSetting(key, value) {
+  settings[key] = value;
+  await fetch('/api/settings', {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({[key]: value}),
+  });
+  const el = document.getElementById('save-status');
+  el.classList.add('visible');
+  setTimeout(() => el.classList.remove('visible'), 1500);
+}
+
+// Radio-style pills
+function initRadioPills(containerId, settingKey) {
+  document.querySelectorAll(`#${containerId} .pill`).forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll(`#${containerId} .pill`).forEach(p => p.classList.remove('active'));
+      pill.classList.add('active');
+      saveSetting(settingKey, pill.dataset.value);
+    });
+  });
+}
+
+// Checkbox-style pills
+function initCheckPills(containerId, settingKey) {
+  document.querySelectorAll(`#${containerId} .pill`).forEach(pill => {
+    pill.addEventListener('click', () => {
+      pill.classList.toggle('active');
+      const active = [];
+      document.querySelectorAll(`#${containerId} .pill.active`).forEach(p => {
+        active.push(p.dataset.value);
+      });
+      saveSetting(settingKey, active.join(','));
+    });
+  });
+}
+
+initRadioPills('image-display-pills', 'image_display');
+initRadioPills('icon-bg-pills', 'icon_background');
+initCheckPills('price-source-checks', 'price_sources');
+
+loadSettings();
+</script>
 </body>
 </html>

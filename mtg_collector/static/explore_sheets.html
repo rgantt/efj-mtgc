@@ -426,6 +426,7 @@ function showZoom(imgSrc) {
 let allSets = [];
 let selectedSetCode = '';
 let activeDropdownIndex = -1;
+let _settings = {};
 
 // --- Border colors ---
 
@@ -744,13 +745,14 @@ async function loadSheets() {
         const foilClass = card.foil ? ' foil' : '';
         const pullPct = (card.pull_rate * 100).toFixed(2);
 
+        const sources = (_settings.price_sources || 'tcg,ck').split(',');
         let badges = `<span class="badge pull-rate">${pullPct}%</span>`;
-        if (card.scryfall_id) {
+        if (sources.includes('tcg') && card.scryfall_id) {
           const sfUrl = `https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}`;
           const tcgPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
           badges += `<a class="badge link" href="${sfUrl}" target="_blank" rel="noopener">SF${tcgPrice}</a>`;
         }
-        if (card.ck_url) {
+        if (sources.includes('ck') && card.ck_url) {
           const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
           badges += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener">CK${ckPrice}</a>`;
         }
@@ -801,6 +803,8 @@ function createSection(title, meta, defaultOpen) {
 }
 
 // --- Init ---
+
+fetch('/api/settings').then(r => r.json()).then(s => { _settings = s; });
 
 loadSets().then(async () => {
   const hashParams = parseHash();

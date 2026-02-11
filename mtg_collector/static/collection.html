@@ -517,6 +517,7 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
   #search-input { width: 140px; }
 }
 </style>
+<style id="dynamic-settings-style"></style>
 </head>
 <body>
 
@@ -641,6 +642,7 @@ let sortOrder = 'asc';
 let sortColumn = 'name';
 let allCards = [];
 let debounceTimer = null;
+let _settings = {};
 
 // Multi-select state
 let selectedSets = new Map();   // code -> name
@@ -689,24 +691,32 @@ function showZoom(imgSrc) {
 // --- Price badges (for table price column) ---
 function buildPriceBadges(card) {
   let html = '';
-  const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
-  html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
-  const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
-  const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-  html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+  const sources = (_settings.price_sources || 'tcg,ck').split(',');
+  if (sources.includes('tcg')) {
+    const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
+  }
+  if (sources.includes('ck')) {
+    const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
+    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+  }
   return html;
 }
 
 // --- Badge builder (from crack_pack patterns) ---
 function buildCardBadges(card) {
   let html = '';
-  if (card.scryfall_id) {
+  const sources = (_settings.price_sources || 'tcg,ck').split(',');
+  if (sources.includes('tcg') && card.scryfall_id) {
     const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
     html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
   }
-  const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
-  const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-  html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+  if (sources.includes('ck')) {
+    const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
+    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+  }
   const fe = parseJsonField(card.frame_effects);
   if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
   if (fe.includes('showcase')) html += '<span class="badge treatment">SC</span>';
@@ -1123,8 +1133,26 @@ clearFiltersBtn.addEventListener('click', () => {
   fetchCollection();
 });
 
+function applySettings() {
+  // Image display: toggle card-thumb between crop and contain
+  const style = document.getElementById('dynamic-settings-style');
+  let css = '';
+  if (_settings.image_display === 'contain') {
+    css += '.card-thumb { object-fit: contain !important; object-position: center !important; }\n';
+  }
+  if (_settings.icon_background === 'none') {
+    css += '.set-cell .ss { background: transparent !important; }\n';
+  }
+  style.textContent = css;
+}
+
 // --- Init ---
-fetchCollection();
+(async () => {
+  const res = await fetch('/api/settings');
+  _settings = await res.json();
+  applySettings();
+  fetchCollection();
+})();
 </script>
 
 </body>

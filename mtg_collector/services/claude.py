@@ -281,6 +281,131 @@ OCR FRAGMENTS:
         print(f"  Failed after {self.max_retries + 1} attempts. Last error: {last_error}")
         return [], None
 
+    def extract_names_from_ocr(
+        self,
+        fragments: List[Dict],
+        expected_count: int,
+        status_callback: callable = None,
+    ) -> tuple:
+        """
+        Extract card names from OCR fragments of stacked cards with only name bars visible.
+
+        Each fragment has: text, bbox ({x, y, w, h}), confidence.
+        Returns (cards_list, usage) where each card has name, quantity, uncertain,
+        and fragment_indices (list of lists — one inner list per physical copy).
+        """
+        frag_lines = []
+        for i, f in enumerate(fragments):
+            b = f["bbox"]
+            frag_lines.append(
+                f'[{i}] (x={int(b["x"])},y={int(b["y"])} w={int(b["w"])},h={int(b["h"])}): "{f["text"]}"'
+            )
+        frag_blob = "\n".join(frag_lines)
+
+        prompt = f"""Below are numbered OCR text fragments from a photo of Magic: The Gathering cards
+stacked so only their NAME BARS are visible. The cards may be arranged in multiple
+columns side by side. Use the x-coordinates to distinguish columns and y-coordinates
+for vertical ordering within each column.
+
+The OCR is noisy — names may be misspelled, fragmented across multiple fragments,
+or partially obscured. Your job is to figure out the actual card name for each visible
+name bar, and count how many copies of each card appear.
+
+Two fragments that are at nearly the same y-position but very different x-positions
+are from different columns (different cards). Two fragments at similar x but different
+y are different cards in the same column.
+
+IMPORTANT: The total quantity across all cards MUST equal exactly {expected_count}.
+
+Rules:
+- Merge duplicate card names and sum their quantities.
+- Use the official English card name (correct any OCR misspellings).
+- If you cannot confidently identify a name, include it as-is with uncertain: true.
+- fragment_indices is a list of lists — one inner list per physical copy of that card.
+  Each inner list contains the OCR fragment indices that belong to that particular copy.
+
+OCR FRAGMENTS:
+{frag_blob}"""
+
+        card_schema = {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "quantity": {"type": "integer"},
+                "uncertain": {"type": "boolean"},
+                "fragment_indices": {
+                    "type": "array",
+                    "items": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                    },
+                },
+            },
+            "required": ["name", "quantity", "fragment_indices"],
+            "additionalProperties": False,
+        }
+
+        def _status(msg):
+            if status_callback:
+                status_callback(msg)
+
+        _status(f"Sending {len(fragments)} fragments to Claude (names mode)...")
+
+        last_error = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                if attempt > 0:
+                    wait_time = 3 * (2 ** (attempt - 1))
+                    _status(f"Retry {attempt + 1}/{self.max_retries + 1} in {wait_time}s...")
+                    print(f"  Retrying in {wait_time}s (attempt {attempt + 1}/{self.max_retries + 1})...")
+                    time.sleep(wait_time)
+
+                _status(f"Waiting for Claude... (attempt {attempt + 1}/{self.max_retries + 1})")
+                response = self.client.messages.create(
+                    model="claude-sonnet-4-5-20250929",
+                    max_tokens=4000,
+                    messages=[{"role": "user", "content": prompt}],
+                    output_config={
+                        "format": {
+                            "type": "json_schema",
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "cards": {
+                                        "type": "array",
+                                        "items": card_schema,
+                                    },
+                                },
+                                "required": ["cards"],
+                                "additionalProperties": False,
+                            },
+                        },
+                    },
+                )
+
+                text_content = response.content[0].text
+
+                if not text_content.strip():
+                    raise ValueError("Empty response from Claude")
+
+                _status("Parsing Claude response...")
+                result = json.loads(text_content)
+                cards = result["cards"]
+
+                return cards, response.usage
+            except anthropic.BadRequestError as e:
+                print(f"  Error: {e}")
+                return [], None
+            except Exception as e:
+                last_error = str(e)
+                if "api_key" in str(e).lower() or "authentication" in str(e).lower():
+                    print(f"  Error: {e}")
+                    return [], None
+                print(f"  Error: {e}")
+
+        print(f"  Failed after {self.max_retries + 1} attempts. Last error: {last_error}")
+        return [], None
+
     def encode_image(self, image_path: str) -> str:
         """Encode image to base64."""
         with open(image_path, "rb") as f:

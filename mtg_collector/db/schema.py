@@ -3,7 +3,7 @@
 import sqlite3
 from typing import Optional
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -90,6 +90,12 @@ CREATE TABLE IF NOT EXISTS ingest_lineage (
 CREATE INDEX IF NOT EXISTS idx_lineage_md5 ON ingest_lineage(image_md5);
 CREATE INDEX IF NOT EXISTS idx_lineage_collection ON ingest_lineage(collection_id);
 
+-- Global settings (key-value pairs)
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 -- Schema version tracking
 CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
@@ -172,6 +178,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
     if current == 0 or force:
         # Fresh install - create all tables
         conn.executescript(SCHEMA_SQL)
+        # Seed default settings
+        _seed_default_settings(conn)
     else:
         # Run migrations
         if current < 2:
@@ -184,6 +192,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v4_to_v5(conn)
         if current < 6:
             _migrate_v5_to_v6(conn)
+        if current < 7:
+            _migrate_v6_to_v7(conn)
 
     # Record schema version
     conn.execute(
@@ -287,10 +297,35 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection):
     """)
 
 
+def _seed_default_settings(conn: sqlite3.Connection):
+    """Insert default settings values (idempotent)."""
+    for key, value in [
+        ("image_display", "crop"),
+        ("icon_background", "white"),
+        ("price_sources", "tcg,ck"),
+    ]:
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+
+
+def _migrate_v6_to_v7(conn: sqlite3.Connection):
+    """Add settings table with default values."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+    """)
+    _seed_default_settings(conn)
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
         DROP VIEW IF EXISTS collection_view;
+        DROP TABLE IF EXISTS settings;
         DROP TABLE IF EXISTS ingest_lineage;
         DROP TABLE IF EXISTS ingest_cache;
         DROP TABLE IF EXISTS collection;

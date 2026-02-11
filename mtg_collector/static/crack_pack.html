@@ -517,6 +517,7 @@ let picks = JSON.parse(localStorage.getItem('crackPackPicks') || '[]');
 let currentPack = [];
 let currentPackSeed = null;
 let currentPackSetCode = null;
+let _settings = {};
 
 function fitGrid() {
   const cardCount = packGrid.children.length;
@@ -642,13 +643,14 @@ function syncPickState() {
 
 function buildCardBadges(card, packSetCode) {
   let html = '';
-  if (card.scryfall_id) {
+  const sources = (_settings.price_sources || 'tcg,ck').split(',');
+  if (sources.includes('tcg') && card.scryfall_id) {
     const sfPrice = card.tcg_price ? ` $${parseFloat(card.tcg_price).toFixed(2)}` : '';
     html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
-    if (card.ck_url) {
-      const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-      html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
-    }
+  }
+  if (sources.includes('ck') && card.ck_url) {
+    const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
+    html += `<a class="badge link" href="${card.ck_url}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
   }
   if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';
   if (card.frame_effects && card.frame_effects.includes('showcase'))
@@ -888,7 +890,12 @@ async function openPack(seed, hashRevealed) {
   currentPackSetCode = result.set_code;
 
   const pct = ((result.variant_weight / result.total_weight) * 100).toFixed(1);
-  const packTotal = currentPack.reduce((sum, c) => sum + (parseFloat(c.tcg_price) || 0), 0);
+  const sources = (_settings.price_sources || 'tcg,ck').split(',');
+  const packTotal = currentPack.reduce((sum, c) => {
+    if (sources.includes('tcg') && c.tcg_price) return sum + parseFloat(c.tcg_price);
+    if (sources.includes('ck') && c.ck_price) return sum + parseFloat(c.ck_price);
+    return sum;
+  }, 0);
   const totalStr = packTotal > 0 ? ` — $${packTotal.toFixed(2)}` : '';
   packHeader.textContent = `${setCode} ${product} — ${currentPack.length} cards (variant ${result.variant_index}, ${pct}%)${totalStr}`;
 
@@ -966,6 +973,8 @@ clearBtn.addEventListener('click', () => {
 
 renderPicks();
 loadPricesStatus();
+
+fetch('/api/settings').then(r => r.json()).then(s => { _settings = s; });
 
 loadSets().then(async () => {
   const hashParams = parseHash();

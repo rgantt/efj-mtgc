@@ -150,6 +150,29 @@ button.secondary:hover { background: #444; }
 .image-row label { font-size: 0.85rem; color: #888; }
 .image-row .status-text { font-size: 0.8rem; color: #888; }
 
+/* Mode toggle pill-row */
+.mode-toggle {
+  display: inline-flex;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #555;
+}
+.mode-toggle button {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border: none;
+  border-radius: 0;
+  background: #333;
+  color: #888;
+  cursor: pointer;
+  font-weight: 600;
+}
+.mode-toggle button:hover { background: #444; }
+.mode-toggle button.active {
+  background: #e94560;
+  color: #fff;
+}
+
 /* Card count button group */
 .count-group {
   display: flex;
@@ -255,6 +278,39 @@ button.secondary:hover { background: #444; }
 .crop-panel img {
   position: absolute;
   transform-origin: 0 0;
+}
+
+/* Names-mode crop panel — wider, no fixed aspect ratio */
+.crop-panel.names-mode {
+  aspect-ratio: auto;
+  width: 400px;
+  height: min(calc(100vh - 200px), 600px);
+  position: relative;
+}
+.crop-panel .bbox-overlay {
+  position: absolute;
+  border: 2px solid #888;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  z-index: 2;
+}
+.crop-panel .bbox-overlay.selected {
+  border-color: #4caf50;
+  background: rgba(76, 175, 80, 0.15);
+}
+.crop-panel .bbox-overlay.assigned {
+  border-color: #42a5f5;
+  background: rgba(66, 165, 245, 0.15);
+}
+.crop-panel .bbox-overlay .bbox-set-icon {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 0.9rem;
+  background: rgba(0,0,0,0.6);
+  border-radius: 3px;
+  padding: 1px 3px;
 }
 
 /* Right panel: candidates */
@@ -418,6 +474,69 @@ button.secondary:hover { background: #444; }
   font-size: 0.85rem;
 }
 
+/* ── Names Mode Grid ── */
+.names-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 6px;
+}
+.names-grid .name-tile {
+  position: relative;
+  background: #16213e;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.names-grid .name-tile:hover { border-color: #0f3460; }
+.name-tile .tile-img {
+  width: 100%;
+  aspect-ratio: 63 / 44;
+  object-fit: cover;
+  object-position: top center;
+  border-radius: 4px 4px 0 0;
+}
+.name-tile .tile-set-icon {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  font-size: 1.6rem;
+  width: 36px;
+  height: 36px;
+  line-height: 36px;
+  text-align: center;
+  background: #efefef;
+  border-radius: 5px;
+  border: 2px solid #0f3460;
+}
+.name-tile .tile-buttons {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+.name-tile .tile-buttons button {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid #555;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.name-tile .btn-nonfoil {
+  background: #555;
+  color: #e0e0e0;
+}
+.name-tile .btn-nonfoil:hover { background: #666; }
+.name-tile .btn-foil {
+  background: linear-gradient(135deg, #ff6b6b, #ffd93d, #6bff6b, #6bb5ff, #d06bff);
+  color: #000;
+  border-color: transparent;
+}
+.name-tile .btn-foil:hover { opacity: 0.85; }
+
 /* ── Done Screen ── */
 #done-view {
   display: none;
@@ -441,6 +560,7 @@ button.secondary:hover { background: #444; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 </style>
+<style id="dynamic-settings-style"></style>
 </head>
 <body>
 
@@ -468,14 +588,14 @@ button.secondary:hover { background: #444; }
   <div id="image-list"></div>
   <div id="process-controls">
     <button id="process-all-btn" disabled>Process All</button>
-    <span id="process-all-warning" style="color: #e94560; font-size: 0.85rem; margin-left: 12px;">Set card count for all images before processing</span>
+    <span id="process-all-warning" style="color: #e94560; font-size: 0.85rem; margin-left: 12px;">Set mode and card count for all images before processing</span>
   </div>
 </div>
 
 <!-- Processing Log (shown inline during upload, moves into disambig layout) -->
 <div id="processing-log"></div>
 
-<!-- Phase 2: Disambiguation -->
+<!-- Phase 2: Disambiguation (full-card mode) -->
 <div id="disambig-view">
   <div class="disambig-layout" id="disambig-layout">
     <div class="crop-panel" id="crop-panel">
@@ -508,6 +628,36 @@ button.secondary:hover { background: #444; }
   </div>
 </div>
 
+<!-- Phase 2b: Disambiguation (names mode) -->
+<div id="names-disambig-view" style="display:none; margin: 0 24px;">
+  <div class="disambig-layout" id="names-disambig-layout">
+    <div class="crop-panel names-mode" id="names-crop-panel">
+      <img id="names-crop-img" src="">
+    </div>
+    <div class="candidates-panel">
+      <div class="card-info" id="names-card-info">
+        <div class="card-name-row">
+          <h3 id="names-card-name">&mdash;</h3>
+          <span id="names-qty-badge" style="font-size:0.8rem; color:#888; margin-left:4px;"></span>
+          <button id="names-edit-btn" class="icon-btn" title="Edit name and search" onclick="startNamesEdit()">&#9998;</button>
+        </div>
+        <div class="search-override" id="names-search-override" style="display:none">
+          <input type="text" id="names-search-input" placeholder="Search by card name...">
+          <button id="names-search-btn" onclick="namesSearchOverride()">Search</button>
+        </div>
+        <div class="meta" id="names-card-meta"></div>
+      </div>
+      <div class="disambig-actions">
+        <button id="names-confirm-btn" disabled>Confirm</button>
+        <button id="names-skip-btn" class="secondary">Skip</button>
+        <button id="names-reset-btn" class="secondary">Reset</button>
+        <div class="progress" id="names-progress-text"></div>
+      </div>
+      <div class="candidates-list names-grid" id="names-candidates-grid"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Phase 3: Done -->
 <div id="done-view">
   <h2>All done!</h2>
@@ -523,7 +673,35 @@ const state = {
   processing: false,
   confirmedCount: 0,
   skippedCount: 0,
+  // Names mode state
+  namesMode: {
+    imageIdx: null,
+    nameIdx: null,
+    assignments: [],  // [{occurrence_idx, scryfall_id, finish}]
+    selectedBoxes: new Set(),
+    candidates: [],
+    quantity: 0,
+  },
+  hasNamesImages: false,
+  hasFullImages: false,
 };
+
+let _settings = {};
+
+function applyIngestSettings() {
+  const style = document.getElementById('dynamic-settings-style');
+  let css = '';
+  if (_settings.image_display === 'contain') {
+    css += '.card-img-crop { object-fit: contain !important; object-position: center !important; }\n';
+    css += '.card-img-grid { object-fit: contain !important; object-position: center !important; }\n';
+  }
+  if (_settings.icon_background === 'none') {
+    css += '.candidate-row .set-icon { background: transparent !important; }\n';
+  }
+  style.textContent = css;
+}
+
+fetch('/api/settings').then(r => r.json()).then(s => { _settings = s; applyIngestSettings(); });
 
 let selectedCandidate = null;
 
@@ -570,6 +748,7 @@ async function handleFiles(fileList) {
       storedName: uploaded.stored_name,
       index: uploaded.index,
       cardCount: 0,
+      mode: null,  // "full" or "names" — must be set
       forceIngest: false,
       processed: false,
     };
@@ -587,6 +766,10 @@ function renderImageRow(img) {
   row.innerHTML = `
     <img class="thumb" src="/api/ingest/image/${img.storedName}" alt="${img.filename}">
     <span class="name">${img.filename}</span>
+    <div class="mode-toggle" id="mode-toggle-${img.index}">
+      <button onclick="setMode(${img.index}, 'full')" id="mode-full-${img.index}">Full Cards</button>
+      <button onclick="setMode(${img.index}, 'names')" id="mode-names-${img.index}">Names Only</button>
+    </div>
     <label>Cards:</label>
     <div class="count-group">
       <button onclick="adjustCount(${img.index}, -5)">-5</button>
@@ -603,10 +786,21 @@ function renderImageRow(img) {
   imageList.appendChild(row);
 }
 
+function setMode(index, mode) {
+  const img = state.images.find(i => i.index === index);
+  if (!img) return;
+  img.mode = mode;
+  // Update toggle UI
+  document.getElementById(`mode-full-${index}`).className = mode === 'full' ? 'active' : '';
+  document.getElementById(`mode-names-${index}`).className = mode === 'names' ? 'active' : '';
+  updateProcessAllState();
+  syncCount(index);
+}
+
 function adjustCount(index, delta) {
   const img = state.images.find(i => i.index === index);
   if (!img) return;
-  img.cardCount = Math.max(0, Math.min(20, img.cardCount + delta));
+  img.cardCount = Math.max(0, Math.min(99, img.cardCount + delta));
   const countEl = document.getElementById(`count-${index}`);
   countEl.textContent = img.cardCount;
   countEl.style.color = img.cardCount === 0 ? '#e94560' : '#e0e0e0';
@@ -615,7 +809,7 @@ function adjustCount(index, delta) {
 }
 
 function updateProcessAllState() {
-  const allSet = state.images.length > 0 && state.images.every(img => img.cardCount > 0);
+  const allSet = state.images.length > 0 && state.images.every(img => img.cardCount > 0 && img.mode);
   document.getElementById('process-all-btn').disabled = !allSet;
   document.getElementById('process-all-warning').style.display = allSet ? 'none' : 'inline';
 }
@@ -636,6 +830,7 @@ async function syncCount(index) {
       image_idx: index,
       card_count: img.cardCount,
       force_ingest: img.forceIngest,
+      mode: img.mode,
     }),
   });
 }
@@ -661,6 +856,10 @@ async function processAll() {
     await syncCount(img.index);
   }
 
+  // Track what modes we have
+  state.hasFullImages = state.images.some(i => i.mode === 'full');
+  state.hasNamesImages = state.images.some(i => i.mode === 'names');
+
   for (let i = 0; i < state.images.length; i++) {
     const img = state.images[i];
     if (img.processed) continue;
@@ -676,7 +875,7 @@ async function processAll() {
     document.getElementById('pill-step').textContent = 'Starting...';
     document.getElementById('pill-step').className = 'pill active';
 
-    appendLog(`Processing ${img.filename}...`, 'running');
+    appendLog(`Processing ${img.filename} [${img.mode}]...`, 'running');
 
     await processImageSSE(img);
 
@@ -760,6 +959,13 @@ function processImageSSE(img) {
       }
     });
 
+    es.addEventListener('names_ready', (e) => {
+      const data = JSON.parse(e.data);
+      const totalCandidates = data.names.reduce((sum, n) => sum + n.candidates.length, 0);
+      const totalQty = data.names.reduce((sum, n) => sum + n.quantity, 0);
+      appendLog(`  Scryfall: ${data.names.length} unique name(s), ${totalQty} copies, ${totalCandidates} total candidates`, 'done');
+    });
+
     es.addEventListener('error', (e) => {
       if (e.data) {
         const data = JSON.parse(e.data);
@@ -793,13 +999,22 @@ function appendLog(text, cls) {
 
 async function showDisambiguation() {
   document.getElementById('upload-phase').style.display = 'none';
-  document.getElementById('disambig-view').style.display = 'block';
-  // Move log into the disambig layout as first child
-  const log = document.getElementById('processing-log');
-  const layout = document.getElementById('disambig-layout');
-  layout.insertBefore(log, layout.firstChild);
-  await loadNextCard();
+
+  // Handle full-card images first, then names images
+  if (state.hasFullImages) {
+    document.getElementById('disambig-view').style.display = 'block';
+    const log = document.getElementById('processing-log');
+    const layout = document.getElementById('disambig-layout');
+    layout.insertBefore(log, layout.firstChild);
+    await loadNextCard();
+  } else if (state.hasNamesImages) {
+    await startNamesDisambiguation();
+  } else {
+    showDone();
+  }
 }
+
+// ── Full-card disambiguation ──
 
 async function loadNextCard() {
   const resp = await fetch('/api/ingest/next-card', {
@@ -810,7 +1025,13 @@ async function loadNextCard() {
   const data = await resp.json();
 
   if (data.done) {
-    showDone();
+    // Full-card done — move to names if needed
+    if (state.hasNamesImages) {
+      document.getElementById('disambig-view').style.display = 'none';
+      await startNamesDisambiguation();
+    } else {
+      showDone();
+    }
     return;
   }
 
@@ -863,7 +1084,7 @@ function startNameEdit() {
   nameEl.style.display = 'none';
   editBtn.style.display = 'none';
   searchRow.style.display = 'flex';
-  input.value = nameEl.textContent === '—' ? '' : nameEl.textContent;
+  input.value = nameEl.textContent === '\u2014' ? '' : nameEl.textContent;
   input.focus();
   input.select();
 }
@@ -1006,14 +1227,17 @@ function renderCandidates(candidates, imageIdx, cardIdx) {
     const setCode = (c.set_code || '').toLowerCase();
     const rarityClass = `ss-${c.rarity || 'common'}`;
 
+    const sources = (_settings.price_sources || 'tcg,ck').split(',');
+    const showPrice = sources.includes('tcg') && c.price;
+
     if (gridMode) {
       row.innerHTML = `
         <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw set-icon"></i>
         ${c.image_uri ? `<img class="card-img-grid" src="${c.image_uri}" loading="lazy">` : `<div style="width:100%;aspect-ratio:63/88;background:#0d1117;border-radius:4px;"></div>`}
       `;
-      row.title = `${c.name} — ${c.set_name}${c.price ? ' ($' + c.price + ')' : ''}`;
+      row.title = `${c.name} — ${c.set_name}${showPrice ? ' ($' + c.price + ')' : ''}`;
     } else {
-      const priceHtml = c.price ? `<span class="card-price">$${c.price}</span>` : '';
+      const priceHtml = showPrice ? `<span class="card-price">$${c.price}</span>` : '';
       row.innerHTML = `
         <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw set-icon"></i>
         <span class="card-name">${c.name}</span>
@@ -1084,8 +1308,456 @@ document.getElementById('skip-btn').addEventListener('click', async () => {
   await loadNextCard();
 });
 
+// ── Names Mode Disambiguation ──
+
+async function startNamesDisambiguation() {
+  document.getElementById('names-disambig-view').style.display = 'block';
+  // Move log into names disambig layout
+  const log = document.getElementById('processing-log');
+  const layout = document.getElementById('names-disambig-layout');
+  layout.insertBefore(log, layout.firstChild);
+  await loadNextName();
+}
+
+async function loadNextName() {
+  const resp = await fetch('/api/ingest/next-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: state.sessionId }),
+  });
+  const data = await resp.json();
+
+  if (data.done) {
+    showDone();
+    return;
+  }
+
+  const nm = state.namesMode;
+  nm.imageIdx = data.image_idx;
+  nm.nameIdx = data.name_idx;
+  nm.quantity = data.quantity;
+  nm.candidates = data.candidates;
+  // Initialize assignments: one per occurrence, null = unassigned
+  nm.assignments = (data.assignments || []).map(a => a);
+  // Select all unassigned boxes
+  nm.selectedBoxes = new Set();
+  for (let i = 0; i < nm.quantity; i++) {
+    if (!nm.assignments[i]) nm.selectedBoxes.add(i);
+  }
+
+  // Update UI
+  document.getElementById('names-card-name').textContent = data.name || '(Unknown)';
+  document.getElementById('names-qty-badge').textContent = `x${data.quantity}`;
+  document.getElementById('names-card-meta').textContent =
+    data.uncertain ? 'Name uncertain — verify carefully' : '';
+
+  // Reset search UI
+  document.getElementById('names-card-name').style.display = '';
+  document.getElementById('names-edit-btn').style.display = '';
+  document.getElementById('names-qty-badge').style.display = '';
+  document.getElementById('names-search-override').style.display = 'none';
+
+  // Progress
+  document.getElementById('names-progress-text').textContent =
+    `${data.total_done + 1} of ${data.total_names}`;
+  document.getElementById('pill-card').textContent =
+    `Name ${data.total_done + 1} of ${data.total_names}`;
+  document.getElementById('pill-card').className = 'pill active';
+
+  const img = state.images.find(i => i.index === data.image_idx);
+  if (img) {
+    document.getElementById('pill-filename').textContent = img.filename;
+  }
+
+  // Set up crop panel with bbox overlays
+  setupNamesCropView(data.image_filename, data.occurrence_crops);
+
+  // Render candidate grid with N/F buttons
+  renderNamesCandidates(data.candidates);
+
+  updateNamesConfirmState();
+}
+
+function setupNamesCropView(imageFilename, occurrenceCrops) {
+  const panel = document.getElementById('names-crop-panel');
+  const img = document.getElementById('names-crop-img');
+
+  // Remove old overlays
+  panel.querySelectorAll('.bbox-overlay').forEach(el => el.remove());
+
+  function applyView() {
+    requestAnimationFrame(() => {
+      const panelW = panel.clientWidth;
+      const panelH = panel.clientHeight;
+      if (panelW === 0 || panelH === 0) {
+        requestAnimationFrame(applyView);
+        return;
+      }
+
+      // Compute bounding box encompassing all occurrences
+      let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+      for (const crop of occurrenceCrops) {
+        if (!crop) continue;
+        minX = Math.min(minX, crop.x);
+        minY = Math.min(minY, crop.y);
+        maxX = Math.max(maxX, crop.x + crop.w);
+        maxY = Math.max(maxY, crop.y + crop.h);
+      }
+
+      // Add padding
+      const pw = (maxX - minX) * 0.2;
+      const ph = (maxY - minY) * 0.2;
+      minX = Math.max(0, minX - pw);
+      minY = Math.max(0, minY - ph);
+      maxX = Math.min(img.naturalWidth || maxX + pw, maxX + pw);
+      maxY = Math.min(img.naturalHeight || maxY + ph, maxY + ph);
+
+      const regionW = maxX - minX;
+      const regionH = maxY - minY;
+
+      if (regionW > 0 && regionH > 0) {
+        const scaleX = panelW / regionW;
+        const scaleY = panelH / regionH;
+        const scale = Math.min(scaleX, scaleY) * 0.9;
+
+        const offsetX = (panelW / 2) - (minX + regionW / 2) * scale;
+        const offsetY = (panelH / 2) - (minY + regionH / 2) * scale;
+
+        img.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+        img._scale = scale;
+        img._tx = offsetX;
+        img._ty = offsetY;
+
+        // Draw bbox overlays for each occurrence
+        const nm = state.namesMode;
+        for (let oi = 0; oi < occurrenceCrops.length; oi++) {
+          const crop = occurrenceCrops[oi];
+          if (!crop) continue;
+
+          const div = document.createElement('div');
+          div.className = 'bbox-overlay';
+          div.dataset.occIdx = oi;
+
+          // Position relative to panel
+          const left = crop.x * scale + offsetX;
+          const top = crop.y * scale + offsetY;
+          const w = crop.w * scale;
+          const h = crop.h * scale;
+
+          div.style.left = left + 'px';
+          div.style.top = top + 'px';
+          div.style.width = w + 'px';
+          div.style.height = h + 'px';
+
+          // State styling
+          if (nm.assignments[oi] && nm.assignments[oi] !== null) {
+            div.classList.add('assigned');
+          } else if (nm.selectedBoxes.has(oi)) {
+            div.classList.add('selected');
+          }
+
+          div.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleOccurrenceBox(oi);
+          });
+
+          panel.appendChild(div);
+        }
+      } else {
+        const scale = Math.min(panelW / (img.naturalWidth || 1), panelH / (img.naturalHeight || 1));
+        img.style.transform = `scale(${scale})`;
+        img._scale = scale;
+        img._tx = 0;
+        img._ty = 0;
+      }
+    });
+  }
+
+  const newSrc = `/api/ingest/image/${imageFilename}`;
+  if (img.src.endsWith(imageFilename) && img.complete) {
+    applyView();
+  } else {
+    img.src = newSrc;
+    img.onload = applyView;
+  }
+
+  // Pan/zoom handlers
+  let dragging = false, lastX, lastY;
+
+  panel.onmousedown = e => {
+    if (e.target.classList.contains('bbox-overlay')) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    e.preventDefault();
+  };
+
+  panel.onmousemove = e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    img._tx += dx;
+    img._ty += dy;
+    img.style.transform = `translate(${img._tx}px, ${img._ty}px) scale(${img._scale})`;
+    // Move overlays too
+    panel.querySelectorAll('.bbox-overlay').forEach(el => {
+      el.style.left = (parseFloat(el.style.left) + dx) + 'px';
+      el.style.top = (parseFloat(el.style.top) + dy) + 'px';
+    });
+  };
+
+  panel.onmouseup = () => dragging = false;
+  panel.onmouseleave = () => dragging = false;
+
+  panel.onwheel = e => {
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const oldScale = img._scale || 1;
+    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const newScale = oldScale * factor;
+
+    const newTx = mouseX - (mouseX - img._tx) * (newScale / oldScale);
+    const newTy = mouseY - (mouseY - img._ty) * (newScale / oldScale);
+
+    img._tx = newTx;
+    img._ty = newTy;
+    img._scale = newScale;
+
+    img.style.transform = `translate(${newTx}px, ${newTy}px) scale(${newScale})`;
+    // Reposition overlays
+    const ratio = newScale / oldScale;
+    panel.querySelectorAll('.bbox-overlay').forEach(el => {
+      const elX = parseFloat(el.style.left);
+      const elY = parseFloat(el.style.top);
+      const elW = parseFloat(el.style.width);
+      const elH = parseFloat(el.style.height);
+      el.style.left = (mouseX + (elX - mouseX) * ratio) + 'px';
+      el.style.top = (mouseY + (elY - mouseY) * ratio) + 'px';
+      el.style.width = (elW * ratio) + 'px';
+      el.style.height = (elH * ratio) + 'px';
+    });
+  };
+}
+
+function toggleOccurrenceBox(occIdx) {
+  const nm = state.namesMode;
+  // Only toggle unassigned boxes
+  if (nm.assignments[occIdx] && nm.assignments[occIdx] !== null) return;
+
+  if (nm.selectedBoxes.has(occIdx)) {
+    nm.selectedBoxes.delete(occIdx);
+  } else {
+    nm.selectedBoxes.add(occIdx);
+  }
+  refreshBboxStyles();
+}
+
+function refreshBboxStyles() {
+  const nm = state.namesMode;
+  const panel = document.getElementById('names-crop-panel');
+  panel.querySelectorAll('.bbox-overlay').forEach(el => {
+    const oi = parseInt(el.dataset.occIdx);
+    el.classList.remove('selected', 'assigned');
+    el.innerHTML = '';
+    if (nm.assignments[oi] && nm.assignments[oi] !== null) {
+      el.classList.add('assigned');
+      // Show set icon if we have candidate info
+      const a = nm.assignments[oi];
+      if (a.set_code) {
+        const icon = document.createElement('i');
+        icon.className = `ss ss-${a.set_code.toLowerCase()} ss-${a.rarity || 'common'} ss-grad ss-fw bbox-set-icon`;
+        el.appendChild(icon);
+      }
+    } else if (nm.selectedBoxes.has(oi)) {
+      el.classList.add('selected');
+    }
+  });
+}
+
+function renderNamesCandidates(candidates) {
+  const grid = document.getElementById('names-candidates-grid');
+  grid.innerHTML = '';
+
+  if (!candidates.length) {
+    grid.innerHTML = '<div style="padding:20px;color:#888;text-align:center;">No candidates found</div>';
+    return;
+  }
+
+  for (const c of candidates) {
+    const tile = document.createElement('div');
+    tile.className = 'name-tile';
+
+    const setCode = (c.set_code || '').toLowerCase();
+    const rarityClass = `ss-${c.rarity || 'common'}`;
+
+    tile.innerHTML = `
+      <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw tile-set-icon"></i>
+      ${c.image_uri ? `<img class="tile-img" src="${c.image_uri}" loading="lazy">` : `<div style="width:100%;aspect-ratio:63/44;background:#0d1117;border-radius:4px 4px 0 0;"></div>`}
+      <div class="tile-buttons">
+        <button class="btn-nonfoil" title="Assign as nonfoil">N</button>
+        <button class="btn-foil" title="Assign as foil">F</button>
+      </div>
+    `;
+    tile.title = `${c.name} — ${c.set_name} (${c.set_code.toUpperCase()} #${c.collector_number})`;
+
+    // N button
+    tile.querySelector('.btn-nonfoil').addEventListener('click', (e) => {
+      e.stopPropagation();
+      assignToSelected(c, 'nonfoil');
+    });
+
+    // F button
+    tile.querySelector('.btn-foil').addEventListener('click', (e) => {
+      e.stopPropagation();
+      assignToSelected(c, 'foil');
+    });
+
+    grid.appendChild(tile);
+  }
+}
+
+function assignToSelected(candidate, finish) {
+  const nm = state.namesMode;
+  if (nm.selectedBoxes.size === 0) return;
+
+  for (const oi of nm.selectedBoxes) {
+    nm.assignments[oi] = {
+      occurrence_idx: oi,
+      scryfall_id: candidate.scryfall_id,
+      finish: finish,
+      set_code: candidate.set_code,
+      rarity: candidate.rarity,
+    };
+  }
+
+  nm.selectedBoxes.clear();
+
+  // Auto-select remaining unassigned boxes
+  for (let i = 0; i < nm.quantity; i++) {
+    if (!nm.assignments[i] || nm.assignments[i] === null) {
+      nm.selectedBoxes.add(i);
+    }
+  }
+
+  refreshBboxStyles();
+  updateNamesConfirmState();
+}
+
+function updateNamesConfirmState() {
+  const nm = state.namesMode;
+  const allAssigned = nm.assignments.every(a => a && a !== null);
+  document.getElementById('names-confirm-btn').disabled = !allAssigned;
+}
+
+// Names confirm
+document.getElementById('names-confirm-btn').addEventListener('click', async () => {
+  const nm = state.namesMode;
+  const assignments = nm.assignments.filter(a => a && a.scryfall_id).map(a => ({
+    occurrence_idx: a.occurrence_idx,
+    scryfall_id: a.scryfall_id,
+    finish: a.finish,
+  }));
+
+  const resp = await fetch('/api/ingest/confirm-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: state.sessionId,
+      image_idx: nm.imageIdx,
+      name_idx: nm.nameIdx,
+      assignments: assignments,
+    }),
+  });
+  const data = await resp.json();
+
+  if (data.ok) {
+    state.confirmedCount += assignments.length;
+    appendLog(`Confirmed: ${data.name} x${assignments.length} -> IDs ${data.entry_ids.join(', ')}`, 'done');
+    await loadNextName();
+  }
+});
+
+// Names skip
+document.getElementById('names-skip-btn').addEventListener('click', async () => {
+  const nm = state.namesMode;
+  await fetch('/api/ingest/skip-name', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: state.sessionId,
+      image_idx: nm.imageIdx,
+      name_idx: nm.nameIdx,
+    }),
+  });
+  state.skippedCount += nm.quantity;
+  appendLog(`Skipped name: ${document.getElementById('names-card-name').textContent}`, '');
+  await loadNextName();
+});
+
+// Names reset
+document.getElementById('names-reset-btn').addEventListener('click', () => {
+  const nm = state.namesMode;
+  nm.assignments = new Array(nm.quantity).fill(null);
+  nm.selectedBoxes = new Set();
+  for (let i = 0; i < nm.quantity; i++) nm.selectedBoxes.add(i);
+  refreshBboxStyles();
+  updateNamesConfirmState();
+});
+
+// Names search override
+function startNamesEdit() {
+  document.getElementById('names-card-name').style.display = 'none';
+  document.getElementById('names-edit-btn').style.display = 'none';
+  document.getElementById('names-qty-badge').style.display = 'none';
+  document.getElementById('names-search-override').style.display = 'flex';
+  const input = document.getElementById('names-search-input');
+  input.value = document.getElementById('names-card-name').textContent;
+  input.focus();
+  input.select();
+}
+
+async function namesSearchOverride() {
+  const input = document.getElementById('names-search-input');
+  const query = input.value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('names-search-btn');
+  btn.disabled = true;
+  btn.textContent = 'Searching...';
+
+  const resp = await fetch('/api/ingest/search-card', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: state.sessionId,
+      image_idx: state.namesMode.imageIdx,
+      card_idx: state.namesMode.nameIdx,
+      query: query,
+    }),
+  });
+  const data = await resp.json();
+
+  btn.disabled = false;
+  btn.textContent = 'Search';
+
+  state.namesMode.candidates = data.candidates;
+  renderNamesCandidates(data.candidates);
+}
+
+document.getElementById('names-search-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') namesSearchOverride();
+});
+
+// ── Done ──
+
 function showDone() {
   document.getElementById('disambig-view').style.display = 'none';
+  document.getElementById('names-disambig-view').style.display = 'none';
   document.getElementById('done-view').style.display = 'block';
   document.getElementById('pill-card').textContent = 'Done';
   document.getElementById('pill-card').className = 'pill done';
