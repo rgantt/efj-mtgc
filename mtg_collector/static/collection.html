@@ -1428,7 +1428,12 @@ async function fetchCollection() {
   // Populate subtype options from data
   populateSubtypeOptions();
 
-  statusEl.textContent = `${allCards.length} entries, ${allCards.reduce((s, c) => s + c.qty, 0)} cards`;
+  const totalQty = allCards.reduce((s, c) => s + c.qty, 0);
+  const sources = (_settings.price_sources || 'tcg,ck').split(',');
+  const priceField = sources[0] === 'ck' ? 'ck_price' : 'tcg_price';
+  const priceLabel = sources[0] === 'ck' ? 'CK' : 'TCG';
+  const totalValue = allCards.reduce((s, c) => s + (parseFloat(c[priceField]) || 0) * c.qty, 0);
+  statusEl.textContent = `${allCards.length} entries, ${totalQty} cards \u2014 ${priceLabel} $${totalValue.toFixed(2)}`;
   render();
 }
 
