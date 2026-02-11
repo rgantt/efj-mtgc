@@ -296,11 +296,15 @@ class ScryfallAPI:
 
     def to_card_model(self, data: Dict) -> Card:
         """Convert Scryfall API response to Card model."""
+        mana_cost = data.get("mana_cost")
+        if not mana_cost and "card_faces" in data:
+            face_manas = [f.get("mana_cost", "") for f in data["card_faces"]]
+            mana_cost = " // ".join(m for m in face_manas if m) or None
         return Card(
             oracle_id=data["oracle_id"],
             name=data["name"],
             type_line=data.get("type_line"),
-            mana_cost=data.get("mana_cost"),
+            mana_cost=mana_cost,
             cmc=data.get("cmc"),
             oracle_text=data.get("oracle_text"),
             colors=data.get("colors", []),

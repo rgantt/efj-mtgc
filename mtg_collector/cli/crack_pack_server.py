@@ -643,6 +643,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 p.frame_effects, p.border_color, p.full_art, p.promo,
                 p.promo_types, p.finishes,
                 json_extract(p.raw_json, '$.layout') as layout,
+                json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
                 c.finish, c.condition,
                 COUNT(*) as qty,
                 MAX(c.acquired_at) as acquired_at
@@ -660,10 +662,16 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         results = []
         for row in rows:
+            mana_cost = row["mana_cost"]
+            if not mana_cost:
+                face0 = row["face0_mana"] or ""
+                face1 = row["face1_mana"] or ""
+                if face0 or face1:
+                    mana_cost = " // ".join(p for p in [face0, face1] if p)
             card = {
                 "name": row["name"],
                 "type_line": row["type_line"],
-                "mana_cost": row["mana_cost"],
+                "mana_cost": mana_cost,
                 "cmc": row["cmc"],
                 "colors": row["colors"],
                 "color_identity": row["color_identity"],
