@@ -325,13 +325,13 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 }
 
 .sheet-card {
-  width: 264px;
+  width: var(--grid-card-width, 264px);
   position: relative;
   cursor: pointer;
 }
 
 .sheet-card-img-wrap {
-  width: 264px;
+  width: var(--grid-card-width, 264px);
   aspect-ratio: 488 / 680;
   border-radius: 8px;
   position: relative;
@@ -510,10 +510,21 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
 .sort-btn:hover { color: #e94560; border-color: #e94560; }
 .sort-btn.active { color: #e94560; border-color: #e94560; background: #1a1a2e; }
 
+.size-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.size-slider-wrap input[type="range"] {
+  width: 100px;
+  accent-color: #e94560;
+}
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
-  .sheet-card { width: 168px; }
-  .sheet-card-img-wrap { width: 168px; }
   #search-input { width: 140px; }
 }
 </style>
@@ -528,6 +539,7 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
     <button class="secondary" id="view-table-btn" title="Table view">Table</button>
     <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
+    <div class="size-slider-wrap" id="grid-size-wrap" style="display:none"><span>Size</span><input type="range" id="grid-size-slider" min="100" max="500" value="264"></div>
   </div>
   <div id="status"></div>
 </header>
@@ -637,6 +649,9 @@ const cmcMaxEl = document.getElementById('cmc-max');
 const priceMinEl = document.getElementById('price-min');
 const priceMaxEl = document.getElementById('price-max');
 
+const gridSizeWrap = document.getElementById('grid-size-wrap');
+const gridSizeSlider = document.getElementById('grid-size-slider');
+
 let currentView = 'table';
 let sortOrder = 'asc';
 let sortColumn = 'name';
@@ -644,8 +659,22 @@ let allCards = [];
 let debounceTimer = null;
 let _settings = {};
 
+// Grid size slider
+const savedGridSize = localStorage.getItem('collectionGridCardSize');
+if (savedGridSize) {
+  gridSizeSlider.value = savedGridSize;
+  document.documentElement.style.setProperty('--grid-card-width', savedGridSize + 'px');
+}
+
+gridSizeSlider.addEventListener('input', () => {
+  const w = gridSizeSlider.value;
+  document.documentElement.style.setProperty('--grid-card-width', w + 'px');
+  localStorage.setItem('collectionGridCardSize', w);
+});
+
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp',
+  pspm: 'spm',
 };
 function keyruneSetCode(code) {
   const lc = (code || '').toLowerCase();
@@ -865,6 +894,7 @@ viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewBu
 function updateViewButtons() {
   viewTableBtn.classList.toggle('active', currentView === 'table');
   viewGridBtn.classList.toggle('active', currentView === 'grid');
+  gridSizeWrap.style.display = currentView === 'grid' ? '' : 'none';
 }
 updateViewButtons();
 

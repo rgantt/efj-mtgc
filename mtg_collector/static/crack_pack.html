@@ -161,7 +161,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   padding: 24px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .pack-area h2 {
@@ -182,8 +182,21 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   position: relative;
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
-  height: var(--card-height);
+  height: var(--card-height, 280px);
   perspective: 800px;
+}
+
+.size-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.size-slider-wrap input[type="range"] {
+  width: 100px;
+  accent-color: #e94560;
 }
 
 #zoom-overlay {
@@ -470,6 +483,7 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
     <div class="product-radios"><input type="checkbox" id="open-mode" checked><label for="open-mode">Surprise</label></div>
     <button id="reveal-all-btn" disabled>Reveal All</button>
     <button id="sheets-btn" disabled style="background:#333;border-color:#555">Explore Sheets</button>
+    <div class="size-slider-wrap"><span>Size</span><input type="range" id="card-size-slider" min="120" max="500" value="280"></div>
   </div>
   <div id="status">
     <span class="prices-status" id="prices-status" title="Click to update CK prices"></span>
@@ -519,23 +533,21 @@ let currentPackSeed = null;
 let currentPackSetCode = null;
 let _settings = {};
 
-function fitGrid() {
-  const cardCount = packGrid.children.length;
-  if (!cardCount) return;
-  const gridWidth = packGrid.clientWidth;
-  const availHeight = packGrid.clientHeight;
-  let rows = 1;
-  for (rows = 1; rows <= cardCount; rows++) {
-    const cardH = (availHeight - (rows - 1) * 12) / rows;
-    const cardW = cardH * (488 / 680);
-    const cols = Math.floor((gridWidth + 12) / (cardW + 12));
-    if (cols * rows >= cardCount) break;
-  }
-  const cardH = (availHeight - (rows - 1) * 12) / rows;
-  packGrid.style.setProperty('--card-height', cardH + 'px');
+const cardSizeSlider = document.getElementById('card-size-slider');
+
+function applyCardSize(h) {
+  packGrid.style.setProperty('--card-height', h + 'px');
+  localStorage.setItem('crackPackCardSize', h);
 }
 
-window.addEventListener('resize', fitGrid);
+// Restore saved size
+const savedSize = localStorage.getItem('crackPackCardSize');
+if (savedSize) {
+  cardSizeSlider.value = savedSize;
+  applyCardSize(savedSize);
+}
+
+cardSizeSlider.addEventListener('input', () => applyCardSize(cardSizeSlider.value));
 
 // --- Prices status ---
 
@@ -942,7 +954,6 @@ async function openPack(seed, hashRevealed) {
     packGrid.appendChild(div);
   });
 
-  fitGrid();
   syncPickState();
   syncRevealBtn();
   updateHash();

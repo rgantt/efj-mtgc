@@ -692,6 +692,7 @@ let _settings = {};
 // Map unsupported codes to a supported equivalent.
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp',   // Time Spiral Timeshifted → Time Spiral
+  pspm: 'spm',  // SPM Promos → SPM
 };
 function keyruneSetCode(code) {
   const lc = (code || '').toLowerCase();
@@ -1206,7 +1207,7 @@ function setupCropView(imageFilename, crop) {
     const mouseY = e.clientY - rect.top;
 
     const oldScale = img._scale || 1;
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
     const newScale = oldScale * factor;
 
     img._tx = mouseX - (mouseX - img._tx) * (newScale / oldScale);
@@ -1528,7 +1529,7 @@ function setupNamesCropView(imageFilename, occurrenceCrops) {
     const mouseY = e.clientY - rect.top;
 
     const oldScale = img._scale || 1;
-    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
     const newScale = oldScale * factor;
 
     const newTx = mouseX - (mouseX - img._tx) * (newScale / oldScale);
