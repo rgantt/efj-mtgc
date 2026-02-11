@@ -225,6 +225,80 @@ def _compute_name_bbox(fragments, indices, image_w=None, image_h=None):
     return {"x": round(x1), "y": round(y1), "w": round(w), "h": round(h)}
 
 
+def _merge_nearby_fragments(fragments, gap_threshold=2.0):
+    """Merge OCR fragments whose bounding boxes are within gap_threshold pixels of each other.
+
+    Uses union-find to group fragments, then merges each group into a single
+    fragment with combined text (left-to-right) and union bounding box.
+    """
+    n = len(fragments)
+    if n == 0:
+        return fragments
+
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a, b):
+        a, b = find(a), find(b)
+        if a != b:
+            parent[b] = a
+
+    # Check all pairs for proximity
+    for i in range(n):
+        bi = fragments[i]["bbox"]
+        i_x1, i_y1 = bi["x"], bi["y"]
+        i_x2, i_y2 = i_x1 + bi["w"], i_y1 + bi["h"]
+        for j in range(i + 1, n):
+            bj = fragments[j]["bbox"]
+            j_x1, j_y1 = bj["x"], bj["y"]
+            j_x2, j_y2 = j_x1 + bj["w"], j_y1 + bj["h"]
+
+            # Gap = distance between nearest edges; negative means overlap
+            gap_x = max(i_x1 - j_x2, j_x1 - i_x2, 0)
+            gap_y = max(i_y1 - j_y2, j_y1 - i_y2, 0)
+
+            if gap_x <= gap_threshold and gap_y <= gap_threshold:
+                union(i, j)
+
+    # Group by root
+    groups: dict[int, list[int]] = {}
+    for i in range(n):
+        r = find(i)
+        groups.setdefault(r, []).append(i)
+
+    merged = []
+    for indices in groups.values():
+        # Sort left-to-right by x position so text reads naturally
+        indices.sort(key=lambda i: fragments[i]["bbox"]["x"])
+        text = " ".join(fragments[i]["text"] for i in indices)
+        confidence = min(fragments[i]["confidence"] for i in indices)
+
+        xs = [fragments[i]["bbox"]["x"] for i in indices]
+        ys = [fragments[i]["bbox"]["y"] for i in indices]
+        x2s = [fragments[i]["bbox"]["x"] + fragments[i]["bbox"]["w"] for i in indices]
+        y2s = [fragments[i]["bbox"]["y"] + fragments[i]["bbox"]["h"] for i in indices]
+
+        merged.append({
+            "text": text,
+            "bbox": {
+                "x": min(xs),
+                "y": min(ys),
+                "w": max(x2s) - min(xs),
+                "h": max(y2s) - min(ys),
+            },
+            "confidence": round(confidence, 3),
+        })
+
+    # Sort top-to-bottom, left-to-right
+    merged.sort(key=lambda f: (f["bbox"]["y"], f["bbox"]["x"]))
+    return merged
+
+
 def _format_candidates(raw_cards):
     """Format raw Scryfall card dicts into the candidate shape the client expects."""
     formatted = []
@@ -353,6 +427,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_ingest_next_card()
         elif path == "/api/ingest/search-card":
             self._api_ingest_search_card()
+        elif path == "/api/ingest/submit-clicked-names":
+            self._api_ingest_submit_clicked_names()
         elif path == "/api/ingest/next-name":
             self._api_ingest_next_name()
         elif path == "/api/ingest/confirm-name":
@@ -618,10 +694,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             else:
                 card["tcg_price"] = card_prices.get("usd") or card_prices.get("usd_foil")
 
-            # CK price via MTGJSON uuid lookup
+            # CK price and URL via MTGJSON uuid lookup
             uuid = self.generator.get_uuid_for_scryfall_id(card["scryfall_id"])
             if uuid:
                 card["ck_price"] = _get_ck_price(uuid, foil)
+            card["ck_url"] = self.generator.get_ck_url(card["scryfall_id"], foil)
 
         conn.close()
         self._send_json(results)
@@ -828,7 +905,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         try:
             mode = img.get("mode", "full")
-            if mode == "names":
+            if mode == "click_names":
+                self._process_image_click_names_sse(sid, img_idx, img, force, send_event)
+            elif mode == "names":
                 self._process_image_names_sse(sid, img_idx, img, force, send_event)
             else:
                 self._process_image_sse(sid, img_idx, img, force, send_event)
@@ -882,9 +961,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if ocr_fragments is None:
             send_event("status", {"message": "Running OCR..."})
             t0 = time.time()
-            ocr_fragments = run_ocr_with_boxes(image_path)
+            raw_fragments = run_ocr_with_boxes(image_path)
             elapsed = time.time() - t0
-            _log_ingest(f"OCR complete: {len(ocr_fragments)} fragments in {elapsed:.1f}s")
+            _log_ingest(f"OCR complete: {len(raw_fragments)} fragments in {elapsed:.1f}s")
+            ocr_fragments = _merge_nearby_fragments(raw_fragments)
+            _log_ingest(f"Merged {len(raw_fragments)} -> {len(ocr_fragments)} fragments")
             send_event("ocr_complete", {"fragment_count": len(ocr_fragments), "fragments": ocr_fragments})
 
         # Step 2: Claude extraction
@@ -1060,9 +1141,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if ocr_fragments is None:
             send_event("status", {"message": "Running OCR..."})
             t0 = time.time()
-            ocr_fragments = run_ocr_with_boxes(image_path)
+            raw_fragments = run_ocr_with_boxes(image_path)
             elapsed = time.time() - t0
-            _log_ingest(f"OCR complete: {len(ocr_fragments)} fragments in {elapsed:.1f}s")
+            _log_ingest(f"OCR complete: {len(raw_fragments)} fragments in {elapsed:.1f}s")
+            ocr_fragments = _merge_nearby_fragments(raw_fragments)
+            _log_ingest(f"Merged {len(raw_fragments)} -> {len(ocr_fragments)} fragments")
             send_event("ocr_complete", {"fragment_count": len(ocr_fragments), "fragments": ocr_fragments})
 
         # Step 2: Claude name extraction
@@ -1168,6 +1251,152 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         send_event("names_ready", {"names": names_data})
         conn.close()
+
+    def _process_image_click_names_sse(self, sid, img_idx, img, force, send_event):
+        """Process a single image in click-names mode: OCR only, no Claude."""
+        from mtg_collector.services.ocr import run_ocr_with_boxes
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.utils import now_iso
+
+        image_path = str(_get_ingest_images_dir() / img["stored_name"])
+        md5 = img["md5"]
+        cache_key = md5 + ":click_names"
+
+        _log_ingest(f"Processing image {img_idx} (click_names mode): {img['filename']} (MD5={md5}, force={force})")
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        init_db(conn)
+
+        ocr_fragments = None
+
+        if not force:
+            cache_row = conn.execute(
+                "SELECT ocr_result FROM ingest_cache WHERE image_md5 = ?",
+                (cache_key,),
+            ).fetchone()
+            if cache_row:
+                _log_ingest(f"Cache hit for click_names MD5={cache_key}")
+                ocr_fragments = json.loads(cache_row["ocr_result"])
+                send_event("cached", {"step": "ocr"})
+                send_event("ocr_complete", {"fragment_count": len(ocr_fragments), "fragments": ocr_fragments})
+
+        # Step 1: OCR
+        if ocr_fragments is None:
+            send_event("status", {"message": "Running OCR..."})
+            t0 = time.time()
+            raw_fragments = run_ocr_with_boxes(image_path)
+            elapsed = time.time() - t0
+            _log_ingest(f"OCR complete: {len(raw_fragments)} fragments in {elapsed:.1f}s")
+            send_event("ocr_complete", {"fragment_count": len(raw_fragments), "fragments": raw_fragments})
+
+            # Merge nearby/overlapping fragments for cleaner click targets
+            ocr_fragments = _merge_nearby_fragments(raw_fragments)
+            _log_ingest(f"Merged {len(raw_fragments)} -> {len(ocr_fragments)} fragments")
+
+        # Save to cache (merged fragments)
+        conn.execute(
+            """INSERT OR REPLACE INTO ingest_cache
+               (image_md5, image_path, card_count, ocr_result, claude_result, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (cache_key, image_path, 0, json.dumps(ocr_fragments), None, now_iso()),
+        )
+        conn.commit()
+
+        # Update session state
+        with _ingest_lock:
+            session = _ingest_sessions.get(sid)
+            if session and img_idx < len(session["images"]):
+                session["images"][img_idx]["ocr_result"] = ocr_fragments
+
+        # Emit fragments ready — client will show clickable overlay
+        send_event("ocr_fragments_ready", {"fragments": ocr_fragments})
+        conn.close()
+
+    def _api_ingest_submit_clicked_names(self):
+        """Accept user-clicked OCR fragments, search Scryfall for each name, set up names disambiguation."""
+        from mtg_collector.services.scryfall import ScryfallAPI
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        sid = data["session_id"]
+        img_idx = data["image_idx"]
+        clicked_fragments = data["fragments"]  # [{text, bbox, count}]
+
+        with _ingest_lock:
+            session = _ingest_sessions.get(sid)
+            if not session or img_idx >= len(session["images"]):
+                self._send_json({"error": "Invalid session or image"}, 400)
+                return
+            img = session["images"][img_idx]
+            ocr_fragments = img.get("ocr_result", [])
+            md5 = img["md5"]
+
+        cache_key = md5 + ":click_names"
+        scryfall = ScryfallAPI()
+
+        names_data = []
+        for ci, frag in enumerate(clicked_fragments):
+            name = frag["text"]
+            quantity = frag.get("count", 1)
+
+            candidates = scryfall.search_card(name)
+            formatted = _format_candidates(candidates)
+            _log_ingest(f"Scryfall click-name {ci}: {len(formatted)} candidates for '{name}' (qty={quantity})")
+
+            # Build occurrence crops from the bbox
+            occurrence_crops = []
+            for _ in range(quantity):
+                occurrence_crops.append(frag.get("bbox"))
+
+            names_data.append({
+                "name": name,
+                "quantity": quantity,
+                "uncertain": False,
+                "candidates": formatted,
+                "occurrence_crops": occurrence_crops,
+                "occurrence_frag_indices": [],
+            })
+
+        # Check lineage for already-ingested
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        from mtg_collector.db.schema import init_db
+        init_db(conn)
+
+        lineage_rows = conn.execute(
+            "SELECT card_index FROM ingest_lineage WHERE image_md5 = ?",
+            (cache_key,),
+        ).fetchall()
+        already_ingested_indices = {row["card_index"] for row in lineage_rows}
+        conn.close()
+
+        names_disambiguated = []
+        card_index_offset = 0
+        for ni, nd in enumerate(names_data):
+            qty = nd["quantity"]
+            occ_list = []
+            for oi in range(qty):
+                global_idx = card_index_offset + oi
+                if global_idx in already_ingested_indices:
+                    occ_list.append("already_ingested")
+                else:
+                    occ_list.append(None)
+            names_disambiguated.append(occ_list)
+            card_index_offset += qty
+
+        # Update session state — reuse names mode structures
+        with _ingest_lock:
+            session = _ingest_sessions.get(sid)
+            if session and img_idx < len(session["images"]):
+                session["images"][img_idx]["mode"] = "names"
+                session["images"][img_idx]["names_data"] = names_data
+                session["images"][img_idx]["names_disambiguated"] = names_disambiguated
+
+        self._send_json({"names": names_data})
 
     def _api_ingest_next_name(self):
         """Find the next name that needs disambiguation across all names-mode images."""

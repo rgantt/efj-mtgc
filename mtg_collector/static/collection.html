@@ -675,6 +675,7 @@ gridSizeSlider.addEventListener('input', () => {
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp',
   pspm: 'spm',
+  cst: 'csp',   // Coldsnap Theme Decks → Coldsnap
 };
 function keyruneSetCode(code) {
   const lc = (code || '').toLowerCase();
@@ -734,9 +735,9 @@ function buildPriceBadges(card) {
     html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
   }
   if (sources.includes('ck')) {
-    const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
     const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-    html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+    const ckHref = card.ck_url || `https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${encodeURIComponent(card.name.split(' // ')[0])}`;
+    html += `<a class="badge link" href="${ckHref}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
   }
   return html;
 }
@@ -750,9 +751,9 @@ function buildCardBadges(card) {
     html += `<a class="badge link" href="https://scryfall.com/card/${card.set_code.toLowerCase()}/${card.collector_number}" target="_blank" rel="noopener" onclick="event.stopPropagation()">SF${sfPrice}</a>`;
   }
   if (sources.includes('ck')) {
-    const ckSearch = encodeURIComponent(card.name.split(' // ')[0]);
     const ckPrice = card.ck_price ? ` $${parseFloat(card.ck_price).toFixed(2)}` : '';
-    html += `<a class="badge link" href="https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${ckSearch}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
+    const ckHref = card.ck_url || `https://www.cardkingdom.com/catalog/search?search=header&filter%5Bname%5D=${encodeURIComponent(card.name.split(' // ')[0])}`;
+    html += `<a class="badge link" href="${ckHref}" target="_blank" rel="noopener" onclick="event.stopPropagation()">CK${ckPrice}</a>`;
   }
   const fe = parseJsonField(card.frame_effects);
   if (card.border_color === 'borderless') html += '<span class="badge treatment">BL</span>';

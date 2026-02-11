@@ -537,6 +537,121 @@ button.secondary:hover { background: #444; }
 }
 .name-tile .btn-foil:hover { opacity: 0.85; }
 
+/* ── Click Names Phase ── */
+#click-names-phase {
+  display: none;
+  margin: 0 24px;
+}
+.click-names-layout {
+  display: flex;
+  gap: 20px;
+}
+.click-names-image-panel {
+  flex: 1;
+  position: relative;
+  background: #0d1117;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+  height: calc(100vh - 140px);
+}
+.click-names-image-panel img {
+  position: absolute;
+  transform-origin: 0 0;
+}
+.click-names-image-panel .ocr-bbox {
+  position: absolute;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  z-index: 2;
+}
+.click-names-image-panel .ocr-bbox:hover {
+  border-color: #f0c040;
+  background: rgba(240, 192, 64, 0.15);
+}
+.click-names-image-panel .ocr-bbox.clicked {
+  border-color: #4caf50;
+  background: rgba(76, 175, 80, 0.2);
+}
+.click-names-image-panel .ocr-bbox .bbox-label {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  background: rgba(0, 0, 0, 0.85);
+  color: #e0e0e0;
+  font-size: 0.7rem;
+  padding: 2px 5px;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+  pointer-events: none;
+  display: none;
+}
+.click-names-image-panel .ocr-bbox:hover .bbox-label,
+.click-names-image-panel .ocr-bbox.clicked .bbox-label {
+  display: block;
+}
+.click-names-image-panel .ocr-bbox .bbox-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #e94560;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  z-index: 3;
+  display: none;
+}
+.click-names-image-panel .ocr-bbox.clicked .bbox-count {
+  display: block;
+}
+.click-names-sidebar {
+  width: 280px;
+  flex-shrink: 0;
+}
+.click-names-sidebar h3 {
+  color: #e94560;
+  margin-bottom: 8px;
+  font-size: 1rem;
+}
+.click-names-sidebar .selected-names-list {
+  list-style: none;
+  margin-bottom: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+.click-names-sidebar .selected-names-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: #16213e;
+  border-radius: 4px;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+.click-names-sidebar .selected-names-list li .sn-name { flex: 1; }
+.click-names-sidebar .selected-names-list li .sn-count {
+  color: #4caf50;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.click-names-sidebar .selected-names-list li .sn-remove {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0 4px;
+}
+.click-names-sidebar .selected-names-list li .sn-remove:hover { color: #e94560; }
+
 /* ── Done Screen ── */
 #done-view {
   display: none;
@@ -658,6 +773,21 @@ button.secondary:hover { background: #444; }
   </div>
 </div>
 
+<!-- Phase 2c: Click Names (OCR fragment selection) -->
+<div id="click-names-phase">
+  <div class="click-names-layout">
+    <div class="click-names-image-panel" id="click-names-panel">
+      <img id="click-names-img" src="">
+    </div>
+    <div class="click-names-sidebar">
+      <h3>Click card names in the image</h3>
+      <p style="font-size:0.8rem; color:#888; margin-bottom:12px;">Click a text box to add it as a card name. Click again to add more copies. Right-click to remove.</p>
+      <ul class="selected-names-list" id="clicked-names-list"></ul>
+      <button id="submit-clicked-names-btn" disabled style="width:100%">Submit Names</button>
+    </div>
+  </div>
+</div>
+
 <!-- Phase 3: Done -->
 <div id="done-view">
   <h2>All done!</h2>
@@ -684,6 +814,14 @@ const state = {
   },
   hasNamesImages: false,
   hasFullImages: false,
+  hasClickNamesImages: false,
+  // Click-names state
+  clickNames: {
+    imageIdx: null,
+    fragments: [],     // all OCR fragments
+    clicked: {},       // fragment_index -> count
+    imageFilename: null,
+  },
 };
 
 let _settings = {};
@@ -693,6 +831,7 @@ let _settings = {};
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp',   // Time Spiral Timeshifted → Time Spiral
   pspm: 'spm',  // SPM Promos → SPM
+  cst: 'csp',   // Coldsnap Theme Decks → Coldsnap
 };
 function keyruneSetCode(code) {
   const lc = (code || '').toLowerCase();
@@ -780,9 +919,10 @@ function renderImageRow(img) {
     <div class="mode-toggle" id="mode-toggle-${img.index}">
       <button onclick="setMode(${img.index}, 'full')" id="mode-full-${img.index}">Full Cards</button>
       <button onclick="setMode(${img.index}, 'names')" id="mode-names-${img.index}">Names Only</button>
+      <button onclick="setMode(${img.index}, 'click_names')" id="mode-click_names-${img.index}">Click Names</button>
     </div>
-    <label>Cards:</label>
-    <div class="count-group">
+    <label id="count-label-${img.index}">Cards:</label>
+    <div class="count-group" id="count-group-${img.index}">
       <button onclick="adjustCount(${img.index}, -5)">-5</button>
       <button onclick="adjustCount(${img.index}, -1)">-1</button>
       <span class="count-display" id="count-${img.index}" style="color: ${img.cardCount === 0 ? '#e94560' : '#e0e0e0'}">${img.cardCount}</span>
@@ -804,6 +944,21 @@ function setMode(index, mode) {
   // Update toggle UI
   document.getElementById(`mode-full-${index}`).className = mode === 'full' ? 'active' : '';
   document.getElementById(`mode-names-${index}`).className = mode === 'names' ? 'active' : '';
+  document.getElementById(`mode-click_names-${index}`).className = mode === 'click_names' ? 'active' : '';
+  // Hide card count for click_names mode (count determined by user clicks)
+  const countGroup = document.getElementById(`count-group-${index}`);
+  const countLabel = document.getElementById(`count-label-${index}`);
+  if (mode === 'click_names') {
+    countGroup.style.display = 'none';
+    countLabel.style.display = 'none';
+    img.cardCount = 1;  // dummy nonzero to pass validation
+  } else {
+    countGroup.style.display = '';
+    countLabel.style.display = '';
+    if (img.cardCount === 1 && mode !== 'click_names') {
+      // Reset to 0 if switching away from click_names with the dummy value
+    }
+  }
   updateProcessAllState();
   syncCount(index);
 }
@@ -820,7 +975,7 @@ function adjustCount(index, delta) {
 }
 
 function updateProcessAllState() {
-  const allSet = state.images.length > 0 && state.images.every(img => img.cardCount > 0 && img.mode);
+  const allSet = state.images.length > 0 && state.images.every(img => img.mode && (img.mode === 'click_names' || img.cardCount > 0));
   document.getElementById('process-all-btn').disabled = !allSet;
   document.getElementById('process-all-warning').style.display = allSet ? 'none' : 'inline';
 }
@@ -870,6 +1025,7 @@ async function processAll() {
   // Track what modes we have
   state.hasFullImages = state.images.some(i => i.mode === 'full');
   state.hasNamesImages = state.images.some(i => i.mode === 'names');
+  state.hasClickNamesImages = state.images.some(i => i.mode === 'click_names');
 
   for (let i = 0; i < state.images.length; i++) {
     const img = state.images[i];
@@ -977,6 +1133,13 @@ function processImageSSE(img) {
       appendLog(`  Scryfall: ${data.names.length} unique name(s), ${totalQty} copies, ${totalCandidates} total candidates`, 'done');
     });
 
+    es.addEventListener('ocr_fragments_ready', (e) => {
+      const data = JSON.parse(e.data);
+      appendLog(`  OCR fragments ready: ${data.fragments.length} boxes to choose from`, 'done');
+      // Store fragments for the click-names phase
+      img.ocrFragments = data.fragments;
+    });
+
     es.addEventListener('error', (e) => {
       if (e.data) {
         const data = JSON.parse(e.data);
@@ -1011,8 +1174,10 @@ function appendLog(text, cls) {
 async function showDisambiguation() {
   document.getElementById('upload-phase').style.display = 'none';
 
-  // Handle full-card images first, then names images
-  if (state.hasFullImages) {
+  // Handle click-names images first (need user clicking phase)
+  if (state.hasClickNamesImages) {
+    await startClickNamesPhase();
+  } else if (state.hasFullImages) {
     document.getElementById('disambig-view').style.display = 'block';
     const log = document.getElementById('processing-log');
     const layout = document.getElementById('disambig-layout');
@@ -1763,6 +1928,326 @@ async function namesSearchOverride() {
 document.getElementById('names-search-input').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') namesSearchOverride();
 });
+
+// ── Click Names Phase ──
+
+async function startClickNamesPhase() {
+  // Find the first click_names image that hasn't been submitted yet
+  const img = state.images.find(i => i.mode === 'click_names' && !i.clickNamesSubmitted);
+  if (!img) {
+    // All click_names images done, proceed to other disambiguation
+    state.hasClickNamesImages = false;
+    document.getElementById('click-names-phase').style.display = 'none';
+    document.getElementById('processing-log').style.display = 'block';
+    if (state.hasFullImages) {
+      document.getElementById('disambig-view').style.display = 'block';
+      const log = document.getElementById('processing-log');
+      const layout = document.getElementById('disambig-layout');
+      layout.insertBefore(log, layout.firstChild);
+      await loadNextCard();
+    } else if (state.hasNamesImages) {
+      await startNamesDisambiguation();
+    } else {
+      showDone();
+    }
+    return;
+  }
+
+  document.getElementById('click-names-phase').style.display = 'block';
+  document.getElementById('processing-log').style.display = 'none';
+
+  const cn = state.clickNames;
+  cn.imageIdx = img.index;
+  cn.fragments = img.ocrFragments || [];
+  cn.clicked = {};
+  cn.imageFilename = img.storedName;
+
+  document.getElementById('pill-filename').textContent = img.filename;
+
+  renderClickNamesView();
+  updateClickedNamesList();
+}
+
+function renderClickNamesView() {
+  const cn = state.clickNames;
+  const panel = document.getElementById('click-names-panel');
+  const imgEl = document.getElementById('click-names-img');
+
+  // Remove old overlays
+  panel.querySelectorAll('.ocr-bbox').forEach(el => el.remove());
+
+  function applyView() {
+    requestAnimationFrame(() => {
+      const panelW = panel.clientWidth;
+      const panelH = panel.clientHeight;
+      if (panelW === 0 || panelH === 0) {
+        requestAnimationFrame(applyView);
+        return;
+      }
+
+      // Fit image to panel
+      const natW = imgEl.naturalWidth || 1;
+      const natH = imgEl.naturalHeight || 1;
+      const scale = Math.min(panelW / natW, panelH / natH);
+
+      const offsetX = (panelW - natW * scale) / 2;
+      const offsetY = (panelH - natH * scale) / 2;
+
+      imgEl.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${scale})`;
+      imgEl._scale = scale;
+      imgEl._tx = offsetX;
+      imgEl._ty = offsetY;
+
+      // Draw OCR bounding boxes
+      for (let fi = 0; fi < cn.fragments.length; fi++) {
+        const frag = cn.fragments[fi];
+        const bbox = frag.bbox;
+
+        const div = document.createElement('div');
+        div.className = 'ocr-bbox';
+        div.dataset.fragIdx = fi;
+
+        const left = bbox.x * scale + offsetX;
+        const top = bbox.y * scale + offsetY;
+        const w = bbox.w * scale;
+        const h = bbox.h * scale;
+
+        div.style.left = left + 'px';
+        div.style.top = top + 'px';
+        div.style.width = w + 'px';
+        div.style.height = h + 'px';
+
+        // Label
+        const label = document.createElement('span');
+        label.className = 'bbox-label';
+        label.textContent = frag.text;
+        div.appendChild(label);
+
+        // Count badge
+        const countBadge = document.createElement('span');
+        countBadge.className = 'bbox-count';
+        countBadge.id = `bbox-count-${fi}`;
+        div.appendChild(countBadge);
+
+        // Left click: add
+        div.addEventListener('click', (e) => {
+          e.stopPropagation();
+          clickFragment(fi);
+        });
+
+        // Right click: remove
+        div.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          unclickFragment(fi);
+        });
+
+        panel.appendChild(div);
+      }
+    });
+  }
+
+  const newSrc = `/api/ingest/image/${cn.imageFilename}`;
+  if (imgEl.src.endsWith(cn.imageFilename) && imgEl.complete) {
+    applyView();
+  } else {
+    imgEl.src = newSrc;
+    imgEl.onload = applyView;
+  }
+
+  // Pan/zoom handlers
+  let dragging = false, lastX, lastY;
+
+  panel.onmousedown = e => {
+    if (e.target.classList.contains('ocr-bbox') || e.target.classList.contains('bbox-label') || e.target.classList.contains('bbox-count')) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    e.preventDefault();
+  };
+
+  panel.onmousemove = e => {
+    if (!dragging) return;
+    const dx = e.clientX - lastX;
+    const dy = e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    imgEl._tx += dx;
+    imgEl._ty += dy;
+    imgEl.style.transform = `translate(${imgEl._tx}px, ${imgEl._ty}px) scale(${imgEl._scale})`;
+    panel.querySelectorAll('.ocr-bbox').forEach(el => {
+      el.style.left = (parseFloat(el.style.left) + dx) + 'px';
+      el.style.top = (parseFloat(el.style.top) + dy) + 'px';
+    });
+  };
+
+  panel.onmouseup = () => dragging = false;
+  panel.onmouseleave = () => dragging = false;
+
+  panel.onwheel = e => {
+    e.preventDefault();
+    const rect = panel.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const oldScale = imgEl._scale || 1;
+    const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
+    const newScale = oldScale * factor;
+
+    imgEl._tx = mouseX - (mouseX - imgEl._tx) * (newScale / oldScale);
+    imgEl._ty = mouseY - (mouseY - imgEl._ty) * (newScale / oldScale);
+    imgEl._scale = newScale;
+
+    imgEl.style.transform = `translate(${imgEl._tx}px, ${imgEl._ty}px) scale(${imgEl._scale})`;
+    const ratio = newScale / oldScale;
+    panel.querySelectorAll('.ocr-bbox').forEach(el => {
+      const elX = parseFloat(el.style.left);
+      const elY = parseFloat(el.style.top);
+      const elW = parseFloat(el.style.width);
+      const elH = parseFloat(el.style.height);
+      el.style.left = (mouseX + (elX - mouseX) * ratio) + 'px';
+      el.style.top = (mouseY + (elY - mouseY) * ratio) + 'px';
+      el.style.width = (elW * ratio) + 'px';
+      el.style.height = (elH * ratio) + 'px';
+    });
+  };
+}
+
+function clickFragment(fragIdx) {
+  const cn = state.clickNames;
+  cn.clicked[fragIdx] = (cn.clicked[fragIdx] || 0) + 1;
+  refreshClickedBbox(fragIdx);
+  updateClickedNamesList();
+}
+
+function unclickFragment(fragIdx) {
+  const cn = state.clickNames;
+  if (!cn.clicked[fragIdx]) return;
+  cn.clicked[fragIdx]--;
+  if (cn.clicked[fragIdx] <= 0) delete cn.clicked[fragIdx];
+  refreshClickedBbox(fragIdx);
+  updateClickedNamesList();
+}
+
+function refreshClickedBbox(fragIdx) {
+  const cn = state.clickNames;
+  const panel = document.getElementById('click-names-panel');
+  const div = panel.querySelector(`.ocr-bbox[data-frag-idx="${fragIdx}"]`);
+  if (!div) return;
+  const count = cn.clicked[fragIdx] || 0;
+  if (count > 0) {
+    div.classList.add('clicked');
+    div.querySelector('.bbox-count').textContent = count;
+  } else {
+    div.classList.remove('clicked');
+  }
+}
+
+function getClickedNamesGrouped() {
+  // Group clicked fragments by text, summing counts
+  const cn = state.clickNames;
+  const groups = {};  // text -> {count, fragIndices: [idx, ...]}
+  for (const [fragIdx, count] of Object.entries(cn.clicked)) {
+    const frag = cn.fragments[parseInt(fragIdx)];
+    if (!frag || count <= 0) continue;
+    const text = frag.text;
+    if (!groups[text]) groups[text] = { count: 0, fragIndices: [] };
+    groups[text].count += count;
+    groups[text].fragIndices.push(parseInt(fragIdx));
+  }
+  return groups;
+}
+
+function updateClickedNamesList() {
+  const groups = getClickedNamesGrouped();
+  const list = document.getElementById('clicked-names-list');
+  list.innerHTML = '';
+
+  for (const [text, group] of Object.entries(groups)) {
+    const li = document.createElement('li');
+    const removeFunc = group.fragIndices.map(i => `unclickFragment(${i})`).join(';');
+    li.innerHTML = `
+      <span class="sn-name">${text}</span>
+      <span class="sn-count">x${group.count}</span>
+      <button class="sn-remove" onclick="${removeFunc}">&times;</button>
+    `;
+    list.appendChild(li);
+  }
+
+  const btn = document.getElementById('submit-clicked-names-btn');
+  btn.disabled = Object.keys(groups).length === 0;
+}
+
+document.getElementById('submit-clicked-names-btn').addEventListener('click', submitClickedNames);
+
+async function submitClickedNames() {
+  const cn = state.clickNames;
+  const btn = document.getElementById('submit-clicked-names-btn');
+  btn.disabled = true;
+  btn.textContent = 'Searching Scryfall...';
+
+  // Build fragments payload, grouped by name
+  const groups = getClickedNamesGrouped();
+  const fragments = [];
+  for (const [text, group] of Object.entries(groups)) {
+    // Use the bbox of the first fragment as representative
+    const firstFrag = cn.fragments[group.fragIndices[0]];
+    fragments.push({
+      text: text,
+      bbox: firstFrag.bbox,
+      count: group.count,
+    });
+  }
+
+  const resp = await fetch('/api/ingest/submit-clicked-names', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: state.sessionId,
+      image_idx: cn.imageIdx,
+      fragments: fragments,
+    }),
+  });
+  const data = await resp.json();
+
+  btn.textContent = 'Submit Names';
+  btn.disabled = false;
+
+  // Mark this image as submitted
+  const img = state.images.find(i => i.index === cn.imageIdx);
+  if (img) {
+    img.clickNamesSubmitted = true;
+    // Server switched mode to "names" for disambiguation
+    img.mode = 'names';
+    state.hasNamesImages = true;
+  }
+
+  const totalCandidates = data.names.reduce((sum, n) => sum + n.candidates.length, 0);
+  const totalQty = data.names.reduce((sum, n) => sum + n.quantity, 0);
+  appendLog(`Click Names: ${data.names.length} name(s), ${totalQty} copies, ${totalCandidates} candidates`, 'done');
+
+  // Check for more click_names images
+  const nextClickImg = state.images.find(i => i.mode === 'click_names' && !i.clickNamesSubmitted);
+  if (nextClickImg) {
+    await startClickNamesPhase();
+  } else {
+    // All click_names done, move to disambiguation
+    state.hasClickNamesImages = false;
+    document.getElementById('click-names-phase').style.display = 'none';
+
+    if (state.hasFullImages) {
+      document.getElementById('disambig-view').style.display = 'block';
+      const log = document.getElementById('processing-log');
+      const layout = document.getElementById('disambig-layout');
+      layout.insertBefore(log, layout.firstChild);
+      await loadNextCard();
+    } else if (state.hasNamesImages) {
+      await startNamesDisambiguation();
+    } else {
+      showDone();
+    }
+  }
+}
 
 // ── Done ──
 
