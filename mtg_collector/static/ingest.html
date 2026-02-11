@@ -688,6 +688,16 @@ const state = {
 
 let _settings = {};
 
+// Keyrune doesn't have glyphs for every Scryfall set code.
+// Map unsupported codes to a supported equivalent.
+const KEYRUNE_FALLBACKS = {
+  tsb: 'tsp',   // Time Spiral Timeshifted → Time Spiral
+};
+function keyruneSetCode(code) {
+  const lc = (code || '').toLowerCase();
+  return KEYRUNE_FALLBACKS[lc] || lc;
+}
+
 function applyIngestSettings() {
   const style = document.getElementById('dynamic-settings-style');
   let css = '';
@@ -1224,7 +1234,7 @@ function renderCandidates(candidates, imageIdx, cardIdx) {
     row.className = 'candidate-row';
     row.dataset.scryfallId = c.scryfall_id;
 
-    const setCode = (c.set_code || '').toLowerCase();
+    const setCode = keyruneSetCode(c.set_code);
     const rarityClass = `ss-${c.rarity || 'common'}`;
 
     const sources = (_settings.price_sources || 'tcg,ck').split(',');
@@ -1570,7 +1580,7 @@ function refreshBboxStyles() {
       const a = nm.assignments[oi];
       if (a.set_code) {
         const icon = document.createElement('i');
-        icon.className = `ss ss-${a.set_code.toLowerCase()} ss-${a.rarity || 'common'} ss-grad ss-fw bbox-set-icon`;
+        icon.className = `ss ss-${keyruneSetCode(a.set_code)} ss-${a.rarity || 'common'} ss-grad ss-fw bbox-set-icon`;
         el.appendChild(icon);
       }
     } else if (nm.selectedBoxes.has(oi)) {
@@ -1592,7 +1602,7 @@ function renderNamesCandidates(candidates) {
     const tile = document.createElement('div');
     tile.className = 'name-tile';
 
-    const setCode = (c.set_code || '').toLowerCase();
+    const setCode = keyruneSetCode(c.set_code);
     const rarityClass = `ss-${c.rarity || 'common'}`;
 
     tile.innerHTML = `

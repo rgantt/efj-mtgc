@@ -644,6 +644,14 @@ let allCards = [];
 let debounceTimer = null;
 let _settings = {};
 
+const KEYRUNE_FALLBACKS = {
+  tsb: 'tsp',
+};
+function keyruneSetCode(code) {
+  const lc = (code || '').toLowerCase();
+  return KEYRUNE_FALLBACKS[lc] || lc;
+}
+
 // Multi-select state
 let selectedSets = new Map();   // code -> name
 let selectedSubtypes = new Set();
@@ -1010,7 +1018,7 @@ function renderTable() {
     }
     const priceBadges = buildPriceBadges(card);
     const condAbbrev = CONDITION_ABBREV[card.condition] || card.condition;
-    const setCode = card.set_code.toLowerCase();
+    const setCode = keyruneSetCode(card.set_code);
     const rarityClass = `ss-${card.rarity || 'common'}`;
     const setName = card.set_name || card.set_code.toUpperCase();
     const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw"></i>`;
