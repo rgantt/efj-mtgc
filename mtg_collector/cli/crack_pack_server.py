@@ -381,6 +381,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_get_settings()
         elif path == "/api/prices-status":
             self._api_prices_status()
+        elif path == "/api/shorten":
+            self._api_shorten(params)
         # Ingest SSE endpoint: /api/ingest/process/{session_id}/{image_idx}
         elif path.startswith("/api/ingest/process/"):
             parts = path.split("/")
@@ -1772,6 +1774,23 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             self._send_json({"error": "Invalid JSON"}, 400)
             return None
+
+    def _api_shorten(self, params):
+        url = params.get("url", [""])[0]
+        shorteners = [
+            ("https://da.gd/s", {"url": url}),
+            ("https://is.gd/create.php", {"format": "simple", "url": url}),
+        ]
+        for base, qs in shorteners:
+            try:
+                resp = requests.get(base, params=qs, timeout=5)
+                short = resp.text.strip()
+                if resp.ok and short.startswith("http"):
+                    self._send_json({"short_url": short})
+                    return
+            except Exception:
+                continue
+        self._send_json({"error": "Shortening failed"}, 502)
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
