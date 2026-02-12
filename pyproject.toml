@@ -28,6 +28,7 @@ dependencies = [
     "anthropic>=0.18.0",
     "easyocr>=1.7.0",
     "numpy<2",
+    "torch<=2.2.2",
     "requests>=2.28.0",
 ]
 
