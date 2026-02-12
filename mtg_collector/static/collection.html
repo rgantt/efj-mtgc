@@ -206,7 +206,7 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
   gap: 6px;
   align-items: center;
 }
-.range-row input[type="number"] {
+.range-row input[type="number"], .range-row input[type="date"] {
   width: 60px;
   padding: 4px 6px;
   border: 1px solid #0f3460;
@@ -215,7 +215,9 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
   color: #e0e0e0;
   font-size: 0.8rem;
 }
-.range-row input[type="number"]:focus { outline: 2px solid #e94560; }
+.range-row input[type="date"] { width: auto; }
+.range-row input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+.range-row input[type="number"]:focus, .range-row input[type="date"]:focus { outline: 2px solid #e94560; }
 .range-row span { font-size: 0.8rem; color: #888; }
 
 /* Main content */
@@ -683,6 +685,69 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
 .filterable { cursor: pointer; }
 .filterable:hover { text-decoration: underline; text-decoration-color: #e94560; }
 
+/* More dropdown menu items */
+.menu-item {
+  display: block;
+  width: 100%;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  color: #e0e0e0;
+  text-align: left;
+  font-weight: 400;
+}
+.menu-item:hover { background: #0f3460; }
+
+/* Selection bar */
+.selection-bar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  background: #0f3460;
+  border-bottom: 1px solid #1a5276;
+  font-size: 0.85rem;
+  color: #e0e0e0;
+}
+.selection-bar.active { display: flex; }
+.selection-bar .sel-count { font-weight: 600; }
+.selection-bar .sel-link {
+  color: #e94560;
+  cursor: pointer;
+  text-decoration: underline;
+  background: none;
+  border: none;
+  font-size: 0.85rem;
+  padding: 0;
+}
+.selection-bar .sel-link:hover { color: #fff; }
+.selection-bar .sel-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.sel-share-link { color: #7ec8e3; text-decoration: underline; font-size: 0.85rem; }
+.sel-share-link:hover { color: #fff; }
+
+/* Select column in table */
+.select-col { width: 32px; text-align: center; }
+.select-col input[type="checkbox"] { accent-color: #e94560; cursor: pointer; }
+
+/* Selected row highlight */
+.collection-table tr.selected { background: rgba(233, 69, 96, 0.1); }
+.collection-table tr.selected:hover { background: rgba(233, 69, 96, 0.18); }
+
+/* Select checkbox on grid cards */
+.select-checkbox {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 4;
+  accent-color: #e94560;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .sidebar { display: none; }
   #search-input { width: 140px; }
@@ -703,10 +768,25 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
       <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
       <div class="col-config-dropdown" id="col-config-dropdown"></div>
     </div>
+    <div class="col-config-wrap">
+      <button class="secondary" id="more-menu-btn">More</button>
+      <div class="col-config-dropdown" id="more-menu-dropdown">
+        <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
+      </div>
+    </div>
     <div class="size-slider-wrap" id="grid-size-wrap" style="display:none"><span>Size</span><input type="range" id="grid-size-slider" min="100" max="500" value="264"></div>
   </div>
   <div id="status"></div>
 </header>
+
+<div class="selection-bar" id="selection-bar">
+  <span class="sel-count" id="sel-count">0 selected</span>
+  (<button class="sel-link" id="sel-all">All</button> / <button class="sel-link" id="sel-none">None</button>)
+  <div class="sel-actions">
+    <span id="sel-share-result"></span>
+    <button id="sel-share-btn">Share</button>
+  </div>
+</div>
 
 <div class="layout">
   <aside class="sidebar" id="sidebar">
@@ -793,6 +873,13 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
       <input type="number" id="price-max" min="0" step="0.01" placeholder="Max">
     </div>
 
+    <h3>Date Added</h3>
+    <div class="range-row">
+      <input type="date" id="date-min">
+      <span>&ndash;</span>
+      <input type="date" id="date-max">
+    </div>
+
     <button style="margin-top:16px;width:100%" id="clear-filters-btn">Clear Filters</button>
   </aside>
 
@@ -833,6 +920,11 @@ const modalClose = document.getElementById('modal-close');
 const clearFiltersBtn = document.getElementById('clear-filters-btn');
 const colConfigBtn = document.getElementById('col-config-btn');
 const colConfigDropdown = document.getElementById('col-config-dropdown');
+const moreMenuBtn = document.getElementById('more-menu-btn');
+const moreMenuDropdown = document.getElementById('more-menu-dropdown');
+const selectionBar = document.getElementById('selection-bar');
+const selCountEl = document.getElementById('sel-count');
+const selShareBtn = document.getElementById('sel-share-btn');
 
 // Range inputs
 const cnMinEl = document.getElementById('cn-min');
@@ -841,6 +933,8 @@ const cmcMinEl = document.getElementById('cmc-min');
 const cmcMaxEl = document.getElementById('cmc-max');
 const priceMinEl = document.getElementById('price-min');
 const priceMaxEl = document.getElementById('price-max');
+const dateMinEl = document.getElementById('date-min');
+const dateMaxEl = document.getElementById('date-max');
 
 const gridSizeWrap = document.getElementById('grid-size-wrap');
 const gridSizeSlider = document.getElementById('grid-size-slider');
@@ -851,6 +945,9 @@ let sortColumn = 'name';
 let allCards = [];
 let debounceTimer = null;
 let _settings = {};
+let multiSelectMode = false;
+let selectedCards = new Set();
+let lastSelectedIdx = null;
 
 // Grid size slider
 const savedGridSize = localStorage.getItem('collectionGridCardSize');
@@ -936,12 +1033,92 @@ renderColConfig();
 colConfigBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   colConfigDropdown.classList.toggle('open');
+  moreMenuDropdown.classList.remove('open');
+});
+moreMenuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  moreMenuDropdown.classList.toggle('open');
+  colConfigDropdown.classList.remove('open');
 });
 document.addEventListener('click', (e) => {
   if (!colConfigDropdown.contains(e.target) && e.target !== colConfigBtn) {
     colConfigDropdown.classList.remove('open');
   }
+  if (!moreMenuDropdown.contains(e.target) && e.target !== moreMenuBtn) {
+    moreMenuDropdown.classList.remove('open');
+  }
 });
+
+// --- Multi-select ---
+const selShareResult = document.getElementById('sel-share-result');
+
+document.getElementById('toggle-multiselect-btn').addEventListener('click', () => {
+  moreMenuDropdown.classList.remove('open');
+  multiSelectMode = !multiSelectMode;
+  selectedCards.clear();
+  lastSelectedIdx = null;
+  updateSelectionBar();
+  render();
+});
+
+document.getElementById('sel-all').addEventListener('click', () => {
+  for (let i = 0; i < allCards.length; i++) selectedCards.add(i);
+  updateSelectionBar();
+  render();
+});
+
+document.getElementById('sel-none').addEventListener('click', () => {
+  selectedCards.clear();
+  lastSelectedIdx = null;
+  updateSelectionBar();
+  render();
+});
+
+selShareBtn.addEventListener('click', async () => {
+  if (selectedCards.size === 0) return;
+  const terms = Array.from(selectedCards).map(i => {
+    const c = allCards[i];
+    return `(s:${c.set_code.toLowerCase()} cn:${c.collector_number})`;
+  });
+  const q = terms.join(' or ');
+  const sfUrl = `https://scryfall.com/search?unique=prints&q=${encodeURIComponent(q)}`;
+  if (sfUrl.length > 8000) {
+    alert(`URL is ${sfUrl.length} characters (limit ~8000). Select fewer cards.`);
+    return;
+  }
+  selShareBtn.disabled = true;
+  selShareBtn.textContent = 'Shortening...';
+  try {
+    const res = await fetch(`/api/shorten?url=${encodeURIComponent(sfUrl)}`);
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const shortUrl = data.short_url;
+    selShareResult.innerHTML = `<a class="sel-share-link" href="${shortUrl}" target="_blank" rel="noopener">Open in Scryfall</a>`;
+  } catch {
+    selShareResult.innerHTML = `<a class="sel-share-link" href="${sfUrl}" target="_blank" rel="noopener">Open on Scryfall</a>`;
+  }
+  selShareBtn.disabled = false;
+  selShareBtn.textContent = 'Share';
+});
+
+function updateSelectionBar() {
+  selectionBar.classList.toggle('active', multiSelectMode);
+  selCountEl.textContent = `${selectedCards.size} selected`;
+  selShareResult.innerHTML = '';
+}
+
+function toggleCardSelection(idx, shiftKey) {
+  if (shiftKey && lastSelectedIdx != null) {
+    const lo = Math.min(lastSelectedIdx, idx);
+    const hi = Math.max(lastSelectedIdx, idx);
+    for (let i = lo; i <= hi; i++) selectedCards.add(i);
+  } else {
+    if (selectedCards.has(idx)) selectedCards.delete(idx);
+    else selectedCards.add(idx);
+  }
+  lastSelectedIdx = idx;
+  updateSelectionBar();
+}
 
 function handleSortClick(colKey) {
   if (sortColumn === colKey) {
@@ -1317,6 +1494,10 @@ function applyFilter(type, value) {
       if (cb) cb.checked = true;
       break;
     }
+    case 'date_added':
+      dateMinEl.value = value;
+      dateMaxEl.value = value;
+      break;
   }
   fetchCollection();
 }
@@ -1383,6 +1564,9 @@ async function fetchCollection() {
   statusEl.textContent = 'Loading...';
   const res = await fetch(`/api/collection?${params}`);
   allCards = await res.json();
+  selectedCards.clear();
+  lastSelectedIdx = null;
+  updateSelectionBar();
 
   // Client-side price sort if needed
   if (sortColumn === 'price' || sortColumn === 'tcg_price') {
@@ -1419,6 +1603,19 @@ async function fetchCollection() {
       const price = parseFloat(card.tcg_price) || 0;
       if (!isNaN(pMin) && price < pMin) return false;
       if (!isNaN(pMax) && price > pMax) return false;
+      return true;
+    });
+  }
+
+  // Client-side date added filtering
+  const dateMin = dateMinEl.value;
+  const dateMax = dateMaxEl.value;
+  if (dateMin || dateMax) {
+    allCards = allCards.filter(card => {
+      const d = (card.acquired_at || '').slice(0, 10);
+      if (!d) return false;
+      if (dateMin && d < dateMin) return false;
+      if (dateMax && d > dateMax) return false;
       return true;
     });
   }
@@ -1506,7 +1703,12 @@ function renderCellContent(colKey, card, helpers) {
     case 'collector_number': return (card.collector_number || '').padStart(4, '0');
     case 'price': return buildPriceBadges(card);
     case 'condition': return CONDITION_ABBREV[card.condition] || card.condition || '';
-    case 'date_added': return formatDate(card.acquired_at);
+    case 'date_added': {
+      const dateStr = formatDate(card.acquired_at);
+      if (!dateStr) return '';
+      const isoDate = card.acquired_at.slice(0, 10);
+      return `<span class="filterable" data-filter-type="date_added" data-filter-value="${isoDate}">${dateStr}</span>`;
+    }
     case 'ck_price': {
       const p = card.ck_price ? `$${parseFloat(card.ck_price).toFixed(2)}` : '';
       return p ? `<a class="badge link" href="${getCkUrl(card)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${p}</a>` : '';
@@ -1528,6 +1730,10 @@ function renderTable() {
   const visCols = getVisibleColumns();
 
   let html = '<table class="collection-table"><thead><tr>';
+  if (multiSelectMode) {
+    const allChecked = selectedCards.size === allCards.length && allCards.length > 0;
+    html += `<th class="select-col"><input type="checkbox" class="sel-all-cb" ${allChecked ? 'checked' : ''}></th>`;
+  }
   for (const col of visCols) {
     const isActive = col.key === sortColumn;
     const arrow = isActive ? `<span class="sort-arrow">${sortOrder === 'asc' ? '\u25B2' : '\u25BC'}</span>` : '';
@@ -1560,7 +1766,11 @@ function renderTable() {
     const tags = buildInlineTags(card);
     const helpers = { imgSrc, nameHtml, manaHtml, setCode, setName, setIcon, tags };
 
-    html += `<tr data-idx="${idx}">`;
+    const isSelected = selectedCards.has(idx);
+    html += `<tr data-idx="${idx}"${isSelected ? ' class="selected"' : ''}>`;
+    if (multiSelectMode) {
+      html += `<td class="select-col"><input type="checkbox" class="row-sel-cb" data-idx="${idx}" ${isSelected ? 'checked' : ''}></td>`;
+    }
     for (const col of visCols) {
       const cls = col.key === 'price' || col.key === 'ck_price' || col.key === 'tcg_price' ? ' class="price-cell"' : '';
       html += `<td${cls}>${renderCellContent(col.key, card, helpers)}</td>`;
@@ -1571,9 +1781,30 @@ function renderTable() {
   html += '</tbody></table>';
   main.innerHTML = html;
 
-  // Row click -> modal
-  // Delegated click handler for filterable elements and row->modal
+  // Delegated click handler for checkboxes, filterable elements and row->modal
   main.querySelector('.collection-table').addEventListener('click', (e) => {
+    // Select-all checkbox
+    if (e.target.classList.contains('sel-all-cb')) {
+      if (e.target.checked) {
+        for (let i = 0; i < allCards.length; i++) selectedCards.add(i);
+      } else {
+        selectedCards.clear();
+      }
+      updateSelectionBar();
+      render();
+      return;
+    }
+    // Per-row checkbox
+    if (e.target.classList.contains('row-sel-cb')) {
+      const idx = parseInt(e.target.dataset.idx);
+      toggleCardSelection(idx, e.shiftKey);
+      if (e.shiftKey) { render(); return; }
+      e.target.closest('tr').classList.toggle('selected', selectedCards.has(idx));
+      // Update select-all checkbox state
+      const allCb = main.querySelector('.sel-all-cb');
+      if (allCb) allCb.checked = selectedCards.size === allCards.length;
+      return;
+    }
     // External links pass through
     if (e.target.closest('a')) return;
     // Filterable element click
@@ -1615,7 +1846,8 @@ function renderGrid() {
   const grid = document.createElement('div');
   grid.className = 'card-grid';
 
-  for (const card of allCards) {
+  for (let idx = 0; idx < allCards.length; idx++) {
+    const card = allCards[idx];
     const cardEl = document.createElement('div');
     cardEl.className = 'sheet-card';
 
@@ -1623,15 +1855,22 @@ function renderGrid() {
     const foilClass = (card.finish === 'foil' || card.finish === 'etched') ? ' foil' : '';
     const badges = buildCardBadges(card);
     const qtyBadge = card.qty > 1 ? `<span class="qty-badge">${card.qty}x</span>` : '';
+    const selectCb = multiSelectMode ? `<input type="checkbox" class="select-checkbox" data-idx="${idx}" ${selectedCards.has(idx) ? 'checked' : ''}>` : '';
 
     cardEl.innerHTML = `
       <div class="sheet-card-img-wrap${foilClass}" style="--rarity-color:${rarityColor};--set-color:#111">
         <img src="${card.image_uri || ''}" alt="${card.name}" loading="lazy">
         ${qtyBadge}
+        ${selectCb}
       </div>
       <div class="sheet-card-info">${badges}</div>
     `;
     cardEl.addEventListener('click', (e) => {
+      if (e.target.classList.contains('select-checkbox')) {
+        toggleCardSelection(idx, e.shiftKey);
+        if (e.shiftKey) render();
+        return;
+      }
       if (e.target.closest('a')) return;
       const filterEl = e.target.closest('[data-filter-type]');
       if (filterEl) {
@@ -1689,6 +1928,16 @@ priceMaxEl.addEventListener('input', () => {
   debounceTimer = setTimeout(fetchCollection, 300);
 });
 
+// Date range inputs
+dateMinEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+dateMaxEl.addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(fetchCollection, 300);
+});
+
 clearFiltersBtn.addEventListener('click', () => {
   document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input, #badge-filters input, #type-filters input').forEach(cb => {
     cb.checked = false;
@@ -1704,6 +1953,8 @@ clearFiltersBtn.addEventListener('click', () => {
   cmcMaxEl.value = '';
   priceMinEl.value = '';
   priceMaxEl.value = '';
+  dateMinEl.value = '';
+  dateMaxEl.value = '';
   fetchCollection();
 });
 
