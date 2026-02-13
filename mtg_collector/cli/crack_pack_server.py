@@ -544,6 +544,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         filter_badges = params.get("filter_badge[]", [])
         filter_cmc_min = params.get("filter_cmc_min", [""])[0]
         filter_cmc_max = params.get("filter_cmc_max", [""])[0]
+        filter_date_min = params.get("filter_date_min", [""])[0]
+        filter_date_max = params.get("filter_date_max", [""])[0]
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -619,6 +621,13 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if filter_cmc_max:
             where_clauses.append("card.cmc <= ?")
             sql_params.append(float(filter_cmc_max))
+
+        if filter_date_min:
+            where_clauses.append("c.acquired_at >= ?")
+            sql_params.append(filter_date_min)
+        if filter_date_max:
+            where_clauses.append("c.acquired_at < date(?, '+1 day')")
+            sql_params.append(filter_date_max)
 
         where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
 

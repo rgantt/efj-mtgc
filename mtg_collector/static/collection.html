@@ -1557,6 +1557,11 @@ function getFilterParams() {
   if (cmcMin !== '') params.set('filter_cmc_min', cmcMin);
   if (cmcMax !== '') params.set('filter_cmc_max', cmcMax);
 
+  const dateMin = dateMinEl.value;
+  const dateMax = dateMaxEl.value;
+  if (dateMin) params.set('filter_date_min', dateMin);
+  if (dateMax) params.set('filter_date_max', dateMax);
+
   return params.toString();
 }
 
@@ -1604,19 +1609,6 @@ async function fetchCollection() {
       const price = parseFloat(card.tcg_price) || 0;
       if (!isNaN(pMin) && price < pMin) return false;
       if (!isNaN(pMax) && price > pMax) return false;
-      return true;
-    });
-  }
-
-  // Client-side date added filtering
-  const dateMin = dateMinEl.value;
-  const dateMax = dateMaxEl.value;
-  if (dateMin || dateMax) {
-    allCards = allCards.filter(card => {
-      const d = (card.acquired_at || '').slice(0, 10);
-      if (!d) return false;
-      if (dateMin && d < dateMin) return false;
-      if (dateMax && d > dateMax) return false;
       return true;
     });
   }
