@@ -552,7 +552,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         sql_params = []
 
         if q:
-            where_clauses.append("(card.name LIKE ? OR card.type_line LIKE ?)")
+            where_clauses.append("(card.name LIKE ? OR card.type_line LIKE ? OR json_extract(p.raw_json, '$.flavor_name') LIKE ?)")
+            sql_params.append(f"%{q}%")
             sql_params.append(f"%{q}%")
             sql_params.append(f"%{q}%")
 
@@ -644,6 +645,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 p.scryfall_id, p.image_uri, p.artist,
                 p.frame_effects, p.border_color, p.full_art, p.promo,
                 p.promo_types, p.finishes,
+                COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
                 json_extract(p.raw_json, '$.layout') as layout,
                 json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
                 json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
@@ -671,7 +673,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 if face0 or face1:
                     mana_cost = " // ".join(p for p in [face0, face1] if p)
             card = {
-                "name": row["name"],
+                "name": row["flavor_name"] or row["name"],
+                "oracle_name": row["name"] if row["flavor_name"] and row["flavor_name"] != row["name"] else None,
                 "type_line": row["type_line"],
                 "mana_cost": mana_cost,
                 "cmc": row["cmc"],

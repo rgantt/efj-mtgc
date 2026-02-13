@@ -1236,6 +1236,7 @@ function showCardModal(card) {
 
     modalDetails.innerHTML = `
       <h2 class="filterable" data-filter-type="name" data-filter-value="${faceName.replace(/"/g, '&quot;')}">${faceName}</h2>
+      ${card.oracle_name ? `<div style="font-size:0.85rem;color:#888;margin-top:2px">${card.oracle_name}</div>` : ''}
       ${manaHtml ? `<div class="modal-mana">${manaHtml}</div>` : ''}
       <div class="modal-section">
         <span class="modal-section-title">Type</span>
