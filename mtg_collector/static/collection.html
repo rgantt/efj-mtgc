@@ -299,13 +299,19 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 
 .set-cell { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .set-cell .ss {
-  font-size: 1.3em;
-  width: 26px;
-  height: 26px;
-  line-height: 26px;
+  font-size: 2.0em;
+  width: 40px;
+  height: 40px;
+  line-height: 40px;
   text-align: center;
-  background: #efefef;
-  border-radius: 5px;
+  -webkit-text-stroke: 3px rgba(0,0,0,0.85);
+  paint-order: stroke fill;
+}
+.set-cell .ss.ss-grad::before {
+  -webkit-text-fill-color: currentColor;
+}
+.set-cell .ss.ss-common {
+  -webkit-text-stroke: 2px rgba(255,255,255,0.9);
 }
 
 .price-cell { white-space: nowrap; color: #aaa; font-variant-numeric: tabular-nums; }
@@ -1204,7 +1210,7 @@ function showCardModal(card) {
   // Set info
   const setCode = card.set_code.toLowerCase();
   const rarityClass = `ss-${card.rarity || 'common'}`;
-  const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw"></i>`;
+  const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad"></i>`;
   const setName = card.set_name || card.set_code.toUpperCase();
   const rarity = card.rarity ? card.rarity.charAt(0).toUpperCase() + card.rarity.slice(1) : '';
 
@@ -1755,7 +1761,7 @@ function renderTable() {
     const setCode = keyruneSetCode(card.set_code);
     const rarityClass = `ss-${card.rarity || 'common'}`;
     const setName = card.set_name || card.set_code.toUpperCase();
-    const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw"></i>`;
+    const setIcon = `<i class="ss ss-${setCode} ${rarityClass} ss-grad"></i>`;
     const tags = buildInlineTags(card);
     const helpers = { imgSrc, nameHtml, manaHtml, setCode, setName, setIcon, tags };
 
@@ -1955,11 +1961,8 @@ function applySettings() {
   const style = document.getElementById('dynamic-settings-style');
   let css = '';
   if (_settings.image_display === 'contain') {
-    css += '.card-thumb { object-fit: contain !important; object-position: center !important; }\n';
+    css += '.card-thumb { width: 36px; height: 50px; object-fit: contain !important; object-position: center !important; }\n';
     css += '.sheet-card-img-wrap img { object-fit: contain !important; object-position: center !important; }\n';
-  }
-  if (_settings.icon_background === 'none') {
-    css += '.set-cell .ss { background: transparent !important; }\n';
   }
   style.textContent = css;
 }

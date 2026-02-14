@@ -309,9 +309,14 @@ button.secondary:hover { background: #444; }
   top: 2px;
   right: 2px;
   font-size: 0.9rem;
-  background: rgba(0,0,0,0.6);
-  border-radius: 3px;
-  padding: 1px 3px;
+  -webkit-text-stroke: 2px rgba(0,0,0,0.85);
+  paint-order: stroke fill;
+}
+.crop-panel .bbox-overlay .bbox-set-icon.ss-grad::before {
+  -webkit-text-fill-color: currentColor;
+}
+.crop-panel .bbox-overlay .bbox-set-icon.ss-common {
+  -webkit-text-stroke: 1px rgba(255,255,255,0.9);
 }
 
 /* Right panel: candidates */
@@ -393,8 +398,14 @@ button.secondary:hover { background: #444; }
   line-height: 52px;
   text-align: center;
   flex-shrink: 0;
-  background: #efefef;
-  border-radius: 5px;
+  -webkit-text-stroke: 3px rgba(0,0,0,0.85);
+  paint-order: stroke fill;
+}
+.candidate-row .set-icon.ss-grad::before {
+  -webkit-text-fill-color: currentColor;
+}
+.candidate-row .set-icon.ss-common {
+  -webkit-text-stroke: 2px rgba(255,255,255,0.9);
 }
 .candidate-row .card-name {
   font-weight: 600;
@@ -444,7 +455,6 @@ button.secondary:hover { background: #444; }
   width: 36px;
   height: 36px;
   line-height: 36px;
-  border: 2px solid #0f3460;
 }
 .candidates-list.grid-mode .candidate-row {
   position: relative;
@@ -508,9 +518,14 @@ button.secondary:hover { background: #444; }
   height: 36px;
   line-height: 36px;
   text-align: center;
-  background: #efefef;
-  border-radius: 5px;
-  border: 2px solid #0f3460;
+  -webkit-text-stroke: 3px rgba(0,0,0,0.85);
+  paint-order: stroke fill;
+}
+.name-tile .tile-set-icon.ss-grad::before {
+  -webkit-text-fill-color: currentColor;
+}
+.name-tile .tile-set-icon.ss-common {
+  -webkit-text-stroke: 2px rgba(255,255,255,0.9);
 }
 .name-tile .tile-buttons {
   display: flex;
@@ -845,9 +860,6 @@ function applyIngestSettings() {
   if (_settings.image_display === 'contain') {
     css += '.card-img-crop { object-fit: contain !important; object-position: center !important; }\n';
     css += '.card-img-grid { object-fit: contain !important; object-position: center !important; }\n';
-  }
-  if (_settings.icon_background === 'none') {
-    css += '.candidate-row .set-icon { color: transparent !important; }\n';
   }
   style.textContent = css;
 }
@@ -1409,14 +1421,14 @@ function renderCandidates(candidates, imageIdx, cardIdx) {
 
     if (gridMode) {
       row.innerHTML = `
-        <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw set-icon"></i>
+        <i class="ss ss-${setCode} ${rarityClass} ss-grad set-icon"></i>
         ${c.image_uri ? `<img class="card-img-grid" src="${c.image_uri}" loading="lazy">` : `<div style="width:100%;aspect-ratio:63/88;background:#0d1117;border-radius:4px;"></div>`}
       `;
       row.title = `${c.name} — ${c.set_name}${showPrice ? ' ($' + c.price + ')' : ''}`;
     } else {
       const priceHtml = showPrice ? `<span class="card-price">$${c.price}</span>` : '';
       row.innerHTML = `
-        <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw set-icon"></i>
+        <i class="ss ss-${setCode} ${rarityClass} ss-grad set-icon"></i>
         <span class="card-name">${c.name}</span>
         <span class="card-set-name">${c.set_name}</span>
         ${priceHtml}
@@ -1747,7 +1759,7 @@ function refreshBboxStyles() {
       const a = nm.assignments[oi];
       if (a.set_code) {
         const icon = document.createElement('i');
-        icon.className = `ss ss-${keyruneSetCode(a.set_code)} ss-${a.rarity || 'common'} ss-grad ss-fw bbox-set-icon`;
+        icon.className = `ss ss-${keyruneSetCode(a.set_code)} ss-${a.rarity || 'common'} ss-grad bbox-set-icon`;
         el.appendChild(icon);
       }
     } else if (nm.selectedBoxes.has(oi)) {
@@ -1773,7 +1785,7 @@ function renderNamesCandidates(candidates) {
     const rarityClass = `ss-${c.rarity || 'common'}`;
 
     tile.innerHTML = `
-      <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw tile-set-icon"></i>
+      <i class="ss ss-${setCode} ${rarityClass} ss-grad tile-set-icon"></i>
       ${c.image_uri ? `<img class="tile-img" src="${c.image_uri}" loading="lazy">` : `<div style="width:100%;aspect-ratio:63/44;background:#0d1117;border-radius:4px 4px 0 0;"></div>`}
       <div class="tile-buttons">
         <button class="btn-nonfoil" title="Assign as nonfoil">N</button>

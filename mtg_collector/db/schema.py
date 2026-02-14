@@ -334,7 +334,6 @@ def _seed_default_settings(conn: sqlite3.Connection):
     """Insert default settings values (idempotent)."""
     for key, value in [
         ("image_display", "crop"),
-        ("icon_background", "white"),
         ("price_sources", "tcg,ck"),
     ]:
         conn.execute(

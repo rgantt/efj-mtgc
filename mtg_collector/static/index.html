@@ -164,14 +164,6 @@ body {
   </div>
 
   <div class="setting-group">
-    <label class="group-label">Icon Background</label>
-    <div class="pill-row" id="icon-bg-pills">
-      <div class="pill" data-value="white">White</div>
-      <div class="pill" data-value="none">None</div>
-    </div>
-  </div>
-
-  <div class="setting-group">
     <label class="group-label">Price Sources</label>
     <div class="check-row" id="price-source-checks">
       <div class="pill" data-value="tcg">TCG</div>
@@ -195,10 +187,6 @@ function applyToUI() {
   // Image display
   document.querySelectorAll('#image-display-pills .pill').forEach(p => {
     p.classList.toggle('active', p.dataset.value === settings.image_display);
-  });
-  // Icon background
-  document.querySelectorAll('#icon-bg-pills .pill').forEach(p => {
-    p.classList.toggle('active', p.dataset.value === settings.icon_background);
   });
   // Price sources
   const sources = (settings.price_sources || '').split(',');
@@ -245,7 +233,6 @@ function initCheckPills(containerId, settingKey) {
 }
 
 initRadioPills('image-display-pills', 'image_display');
-initRadioPills('icon-bg-pills', 'icon_background');
 initCheckPills('price-source-checks', 'price_sources');
 
 loadSettings();
