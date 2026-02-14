@@ -368,6 +368,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._serve_static("ingest.html")
         elif path == "/api/sets":
             self._api_sets()
+        elif path == "/api/cached-sets":
+            self._api_cached_sets()
         elif path == "/api/products":
             set_code = params.get("set", [""])[0]
             self._api_products(set_code)
@@ -507,6 +509,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_sets(self):
         sets = self.generator.list_sets()
         self._send_json([{"code": code, "name": name} for code, name in sets])
+
+    def _api_cached_sets(self):
+        """Return all sets whose card list has been fully cached."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT set_code, set_name FROM sets WHERE cards_fetched_at IS NOT NULL ORDER BY set_name"
+        )
+        result = [{"code": row["set_code"], "name": row["set_name"]} for row in cursor]
+        conn.close()
+        self._send_json(result)
 
     def _api_products(self, set_code: str):
         if not set_code:
