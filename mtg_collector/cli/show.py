@@ -66,6 +66,7 @@ def run(args):
         print(f"Available:       {', '.join(printing.finishes) if printing.finishes else 'N/A'}")
     print()
 
+    print(f"Status:          {entry.status}")
     print(f"Finish:          {entry.finish}")
     print(f"Condition:       {entry.condition}")
     print(f"Language:        {entry.language}")
@@ -75,6 +76,8 @@ def run(args):
     print(f"Source:          {entry.source}")
     if entry.purchase_price is not None:
         print(f"Purchase Price:  ${entry.purchase_price:.2f}")
+    if entry.sale_price is not None:
+        print(f"Sale Price:      ${entry.sale_price:.2f}")
     if entry.notes:
         print(f"Notes:           {entry.notes}")
     if entry.tags:
@@ -82,8 +85,6 @@ def run(args):
     print()
 
     flags = []
-    if entry.tradelist:
-        flags.append("Tradelist")
     if entry.alter:
         flags.append("Alter")
     if entry.proxy:
@@ -95,5 +96,16 @@ def run(args):
     if flags:
         print(f"Flags:           {', '.join(flags)}")
 
+    # Status history
+    history = collection_repo.get_status_history(entry.id)
+    if history:
+        print()
+        print("Status History:")
+        for h in history:
+            from_s = h["from_status"] or "(new)"
+            note_s = f" — {h['note']}" if h["note"] else ""
+            print(f"  {h['changed_at']}  {from_s} → {h['to_status']}{note_s}")
+
+    print()
     print(f"Scryfall ID:     {entry.scryfall_id}")
     print("=" * 60)

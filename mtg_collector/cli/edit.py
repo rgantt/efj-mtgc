@@ -23,7 +23,13 @@ def register(subparsers):
     parser.add_argument("--source", metavar="SRC", help="Set source")
     parser.add_argument("--notes", metavar="TEXT", help="Set notes")
     parser.add_argument("--tags", metavar="TAGS", help="Set tags")
-    parser.add_argument("--tradelist", type=int, choices=[0, 1], help="Set tradelist flag")
+    parser.add_argument(
+        "--status",
+        choices=["owned", "ordered", "listed", "sold", "removed"],
+        help="Set lifecycle status",
+    )
+    parser.add_argument("--sale-price", type=float, metavar="PRICE", help="Set sale price (for sold cards)")
+    parser.add_argument("--tradelist", type=int, choices=[0, 1], help="Set tradelist flag (deprecated, use --status)")
     parser.add_argument("--alter", type=int, choices=[0, 1], help="Set alter flag")
     parser.add_argument("--proxy", type=int, choices=[0, 1], help="Set proxy flag")
     parser.add_argument("--signed", type=int, choices=[0, 1], help="Set signed flag")
@@ -73,6 +79,14 @@ def run(args):
     if args.tags is not None:
         entry.tags = args.tags
         changes.append("tags=...")
+
+    if args.status:
+        entry.status = args.status
+        changes.append(f"status={entry.status}")
+
+    if args.sale_price is not None:
+        entry.sale_price = args.sale_price
+        changes.append(f"sale_price=${entry.sale_price:.2f}")
 
     if args.tradelist is not None:
         entry.tradelist = bool(args.tradelist)

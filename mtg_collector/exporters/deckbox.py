@@ -51,7 +51,7 @@ class DeckboxExporter(BaseExporter):
             for entry in entries:
                 row = {
                     "Count": 1,
-                    "Tradelist Count": 1 if entry["tradelist"] else "",
+                    "Tradelist Count": 1 if entry.get("status") == "listed" else "",
                     "Name": entry["name"],
                     "Edition": entry["set_name"],  # Deckbox uses full set name
                     "Card Number": entry["collector_number"],

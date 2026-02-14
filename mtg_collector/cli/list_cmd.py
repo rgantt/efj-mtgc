@@ -22,6 +22,12 @@ def register(subparsers):
     )
     parser.add_argument("--source", metavar="SRC", help="Filter by source")
     parser.add_argument(
+        "--status",
+        choices=["owned", "ordered", "listed", "sold", "removed"],
+        help="Filter by status (default: owned)",
+    )
+    parser.add_argument("--all-statuses", action="store_true", help="Show cards in all statuses")
+    parser.add_argument(
         "--limit", type=int, default=50, metavar="N", help="Maximum results (default: 50)"
     )
     parser.add_argument("--offset", type=int, default=0, metavar="N", help="Skip first N results")
@@ -47,12 +53,22 @@ def run(args):
     if args.condition:
         condition = normalize_condition(args.condition)
 
+    # Resolve status filter: default to 'owned' unless --all-statuses or --status given
+    status = None
+    if args.all_statuses:
+        status = None
+    elif args.status:
+        status = args.status
+    else:
+        status = "owned"
+
     entries = collection_repo.list_all(
         set_code=args.set_code,
         name=args.name,
         foil=foil,
         condition=condition,
         source=args.source,
+        status=status,
         limit=args.limit,
         offset=args.offset,
     )
@@ -62,8 +78,8 @@ def run(args):
         return
 
     # Print header
-    print(f"{'ID':>6}  {'Name':<30}  {'Set':<6}  {'#':<5}  {'Finish':<8}  {'Condition':<18}  {'Source':<15}")
-    print("-" * 110)
+    print(f"{'ID':>6}  {'Name':<30}  {'Set':<6}  {'#':<5}  {'Finish':<8}  {'Status':<9}  {'Condition':<18}  {'Source':<15}")
+    print("-" * 120)
 
     for e in entries:
         print(
@@ -72,11 +88,12 @@ def run(args):
             f"{e['set_code'].upper():<6}  "
             f"{e['collector_number'][:5]:<5}  "
             f"{e['finish']:<8}  "
+            f"{e['status']:<9}  "
             f"{e['condition']:<18}  "
             f"{e['source'][:15]:<15}"
         )
 
-    print("-" * 110)
+    print("-" * 120)
     print(f"Showing {len(entries)} card(s)")
 
     total = collection_repo.count()

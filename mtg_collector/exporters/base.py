@@ -41,7 +41,7 @@ class BaseExporter(ABC):
 
         Args:
             conn: Database connection
-            filters: Optional filters
+            filters: Optional filters (set_code, name, status)
 
         Returns:
             List of dicts with full card info
@@ -51,6 +51,7 @@ class BaseExporter(ABC):
                 c.id, c.scryfall_id, c.finish, c.condition, c.language,
                 c.purchase_price, c.acquired_at, c.source, c.notes, c.tags,
                 c.tradelist, c.is_alter, c.proxy, c.signed, c.misprint,
+                c.status, c.sale_price,
                 p.set_code, p.collector_number, p.rarity, p.artist, p.finishes,
                 card.oracle_id, card.name, card.type_line, card.mana_cost,
                 s.set_name
@@ -70,6 +71,14 @@ class BaseExporter(ABC):
             if filters.get("name"):
                 query += " AND card.name LIKE ?"
                 params.append(f"%{filters['name']}%")
+
+            if filters.get("status"):
+                query += " AND c.status = ?"
+                params.append(filters["status"])
+
+        # Default: export only owned + listed cards
+        if not filters or "status" not in filters:
+            query += " AND c.status IN ('owned', 'listed')"
 
         query += " ORDER BY card.name, p.set_code, c.id"
 

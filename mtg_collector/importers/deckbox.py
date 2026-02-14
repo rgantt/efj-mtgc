@@ -78,12 +78,15 @@ class DeckboxImporter(BaseImporter):
         alter = row.get("Altered Art", "").strip().lower() in ("altered", "yes", "true", "1")
         misprint = row.get("Misprint", "").strip().lower() in ("misprint", "yes", "true", "1")
 
-        # Check tradelist
+        # Check tradelist → status
         tradelist_str = row.get("Tradelist Count", "").strip()
         tradelist = False
+        status = "owned"
         if tradelist_str:
             try:
-                tradelist = int(tradelist_str) > 0
+                if int(tradelist_str) > 0:
+                    tradelist = True
+                    status = "listed"
             except ValueError:
                 pass
 
@@ -103,4 +106,5 @@ class DeckboxImporter(BaseImporter):
             proxy=False,  # Deckbox doesn't have proxy field in standard export
             signed=signed,
             misprint=misprint,
+            status=status,
         )

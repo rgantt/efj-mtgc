@@ -377,6 +377,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_sheets(set_code, product)
         elif path == "/api/collection":
             self._api_collection(params)
+        elif path == "/api/wishlist":
+            self._api_wishlist_list(params)
+        elif path.startswith("/api/set-browse/"):
+            set_code = path[len("/api/set-browse/"):]
+            self._api_set_browse(set_code, params)
         elif path == "/api/settings":
             self._api_get_settings()
         elif path == "/api/prices-status":
@@ -437,6 +442,18 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_ingest_confirm_name()
         elif path == "/api/ingest/skip-name":
             self._api_ingest_skip_name()
+        elif path == "/api/wishlist":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON"}, 400)
+                return
+            self._api_wishlist_add(data)
+        elif path.startswith("/api/wishlist/") and path.endswith("/fulfill"):
+            wid = path[len("/api/wishlist/"):-len("/fulfill")]
+            self._api_wishlist_fulfill(int(wid))
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -446,6 +463,16 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         if path == "/api/settings":
             self._api_put_settings()
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path.startswith("/api/wishlist/"):
+            wid = path[len("/api/wishlist/"):]
+            self._api_wishlist_delete(int(wid))
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -546,12 +573,18 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         filter_cmc_max = params.get("filter_cmc_max", [""])[0]
         filter_date_min = params.get("filter_date_min", [""])[0]
         filter_date_max = params.get("filter_date_max", [""])[0]
+        filter_status = params.get("status", ["owned"])[0]
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
 
         where_clauses = []
         sql_params = []
+
+        # Status filter (default: owned)
+        if filter_status != "all":
+            where_clauses.append("c.status = ?")
+            sql_params.append(filter_status)
 
         if q:
             where_clauses.append("(card.name LIKE ? OR card.type_line LIKE ? OR json_extract(p.raw_json, '$.flavor_name') LIKE ?)")
@@ -658,7 +691,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 json_extract(p.raw_json, '$.layout') as layout,
                 json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
                 json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
-                c.finish, c.condition,
+                c.finish, c.condition, c.status,
                 COUNT(*) as qty,
                 MAX(c.acquired_at) as acquired_at
             FROM collection c
@@ -666,7 +699,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             JOIN cards card ON p.oracle_id = card.oracle_id
             JOIN sets s ON p.set_code = s.set_code
             WHERE {where_sql}
-            GROUP BY p.scryfall_id, c.finish, c.condition
+            GROUP BY p.scryfall_id, c.finish, c.condition, c.status
             ORDER BY {sort_col} {order_dir}, card.name ASC
         """
 
@@ -705,6 +738,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 "layout": row["layout"] or "normal",
                 "finish": row["finish"],
                 "condition": row["condition"],
+                "status": row["status"],
                 "qty": row["qty"],
                 "acquired_at": row["acquired_at"],
             }
@@ -1803,6 +1837,194 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             except Exception:
                 continue
         self._send_json({"error": "Shortening failed"}, 502)
+
+    def _api_wishlist_list(self, params: dict):
+        """List wishlist entries."""
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.db.models import WishlistRepository
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = WishlistRepository(conn)
+        fulfilled_param = params.get("fulfilled", [""])[0]
+        fulfilled = None
+        if fulfilled_param == "true":
+            fulfilled = True
+        elif fulfilled_param == "false":
+            fulfilled = False
+
+        name = params.get("name", [""])[0] or None
+        limit_str = params.get("limit", [""])[0]
+        limit = int(limit_str) if limit_str else None
+
+        entries = repo.list_all(fulfilled=fulfilled, name=name, limit=limit)
+        conn.close()
+        self._send_json(entries)
+
+    def _api_wishlist_add(self, data: dict):
+        """Add a wishlist entry."""
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.db.models import WishlistRepository, WishlistEntry
+        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
+        from mtg_collector.db.models import CardRepository, SetRepository, PrintingRepository
+        from mtg_collector.utils import now_iso
+
+        name = data.get("name", "").strip()
+        if not name:
+            self._send_json({"error": "name is required"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+        scryfall = ScryfallAPI()
+
+        set_code = data.get("set_code")
+        cn = data.get("collector_number")
+        results = scryfall.search_card(name, set_code=set_code, collector_number=cn)
+        if not results:
+            conn.close()
+            self._send_json({"error": f"No card found matching '{name}'"}, 404)
+            return
+
+        card_data = results[0]
+        cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+
+        oracle_id = card_data["oracle_id"]
+        scryfall_id = card_data["id"] if set_code else None
+
+        repo = WishlistRepository(conn)
+        entry = WishlistEntry(
+            id=None,
+            oracle_id=oracle_id,
+            scryfall_id=scryfall_id,
+            max_price=data.get("max_price"),
+            priority=data.get("priority", 0),
+            notes=data.get("notes"),
+            added_at=now_iso(),
+            source="server",
+        )
+        new_id = repo.add(entry)
+        conn.commit()
+        conn.close()
+
+        self._send_json({"id": new_id, "name": card_data["name"]})
+
+    def _api_wishlist_delete(self, wid: int):
+        """Delete a wishlist entry."""
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.db.models import WishlistRepository
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = WishlistRepository(conn)
+        deleted = repo.delete(wid)
+        conn.commit()
+        conn.close()
+
+        if deleted:
+            self._send_json({"ok": True})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def _api_wishlist_fulfill(self, wid: int):
+        """Mark a wishlist entry as fulfilled."""
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.db.models import WishlistRepository
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = WishlistRepository(conn)
+        fulfilled = repo.fulfill(wid)
+        conn.commit()
+        conn.close()
+
+        if fulfilled:
+            self._send_json({"ok": True})
+        else:
+            self._send_json({"error": "Not found"}, 404)
+
+    def _api_set_browse(self, set_code: str, params: dict):
+        """Browse all printings in a set with owned/wanted annotations."""
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.scryfall import ScryfallAPI, ensure_set_cached
+        from mtg_collector.db.models import CardRepository, SetRepository, PrintingRepository
+
+        set_code = set_code.lower()
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        # Ensure the set is cached
+        if not set_repo.is_cards_cached(set_code):
+            scryfall = ScryfallAPI()
+            cached = ensure_set_cached(scryfall, set_code, card_repo, set_repo, printing_repo, conn)
+            if not cached:
+                conn.close()
+                self._send_json({"error": f"Could not fetch set '{set_code}'"}, 404)
+                return
+            conn.commit()
+
+        query = """
+            SELECT p.scryfall_id, p.collector_number, p.rarity, p.image_uri, p.artist,
+                   p.frame_effects, p.border_color, p.full_art, p.promo, p.promo_types, p.finishes,
+                   card.name, card.type_line, card.mana_cost, card.colors, card.color_identity,
+                   c.id as collection_id, c.status, c.finish as owned_finish, c.condition,
+                   w.id as wishlist_id, w.priority
+            FROM printings p
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id AND c.status = 'owned'
+            LEFT JOIN wishlist w ON (p.oracle_id = w.oracle_id AND w.fulfilled_at IS NULL)
+            WHERE p.set_code = ?
+            ORDER BY CAST(p.collector_number AS INTEGER), p.collector_number
+        """
+        cursor = conn.execute(query, (set_code,))
+        rows = cursor.fetchall()
+
+        results = []
+        for row in rows:
+            results.append({
+                "scryfall_id": row["scryfall_id"],
+                "collector_number": row["collector_number"],
+                "rarity": row["rarity"],
+                "image_uri": row["image_uri"],
+                "artist": row["artist"],
+                "name": row["name"],
+                "type_line": row["type_line"],
+                "mana_cost": row["mana_cost"],
+                "colors": row["colors"],
+                "color_identity": row["color_identity"],
+                "frame_effects": row["frame_effects"],
+                "border_color": row["border_color"],
+                "full_art": bool(row["full_art"]),
+                "promo": bool(row["promo"]),
+                "promo_types": row["promo_types"],
+                "finishes": row["finishes"],
+                "collection_id": row["collection_id"],
+                "status": row["status"],
+                "owned_finish": row["owned_finish"],
+                "condition": row["condition"],
+                "wishlist_id": row["wishlist_id"],
+                "wishlist_priority": row["priority"],
+            })
+
+        conn.close()
+        self._send_json(results)
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()

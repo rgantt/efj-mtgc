@@ -72,12 +72,15 @@ class MoxfieldImporter(BaseImporter):
         alter = row.get("Alter", "").strip().lower() in ("alter", "yes", "true", "1")
         proxy = row.get("Proxy", "").strip().lower() in ("proxy", "yes", "true", "1")
 
-        # Check tradelist
+        # Check tradelist → status
         tradelist_str = row.get("Tradelist Count", "").strip()
         tradelist = False
+        status = "owned"
         if tradelist_str:
             try:
-                tradelist = int(tradelist_str) > 0
+                if int(tradelist_str) > 0:
+                    tradelist = True
+                    status = "listed"
             except ValueError:
                 pass
 
@@ -97,4 +100,5 @@ class MoxfieldImporter(BaseImporter):
             proxy=proxy,
             signed=False,
             misprint=False,
+            status=status,
         )

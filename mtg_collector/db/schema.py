@@ -1,9 +1,8 @@
 """Database schema and migrations."""
 
 import sqlite3
-from typing import Optional
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -64,8 +63,37 @@ CREATE TABLE IF NOT EXISTS collection (
     is_alter INTEGER DEFAULT 0,
     proxy INTEGER DEFAULT 0,
     signed INTEGER DEFAULT 0,
-    misprint INTEGER DEFAULT 0
+    misprint INTEGER DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'owned'
+        CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed')),
+    sale_price REAL
 );
+
+-- Status audit log (append-only)
+CREATE TABLE IF NOT EXISTS status_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    collection_id INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+    from_status TEXT,
+    to_status TEXT NOT NULL,
+    changed_at TEXT NOT NULL,
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_status_log_collection ON status_log(collection_id);
+
+-- Wishlist (separate entity — can be oracle-level or printing-specific)
+CREATE TABLE IF NOT EXISTS wishlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    oracle_id TEXT NOT NULL REFERENCES cards(oracle_id),
+    scryfall_id TEXT REFERENCES printings(scryfall_id),  -- NULL = "any printing"
+    max_price REAL,
+    priority INTEGER NOT NULL DEFAULT 0,
+    notes TEXT,
+    added_at TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    fulfilled_at TEXT  -- set when the want is satisfied
+);
+CREATE INDEX IF NOT EXISTS idx_wishlist_oracle ON wishlist(oracle_id);
+CREATE INDEX IF NOT EXISTS idx_wishlist_scryfall ON wishlist(scryfall_id);
 
 -- Ingest cache: OCR + Claude results by image MD5
 CREATE TABLE IF NOT EXISTS ingest_cache (
@@ -105,6 +133,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_collection_scryfall ON collection(scryfall_id);
 CREATE INDEX IF NOT EXISTS idx_collection_source ON collection(source);
+CREATE INDEX IF NOT EXISTS idx_collection_status ON collection(status);
 CREATE INDEX IF NOT EXISTS idx_printings_oracle ON printings(oracle_id);
 CREATE INDEX IF NOT EXISTS idx_printings_set ON printings(set_code);
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
@@ -135,6 +164,8 @@ SELECT
     c.notes,
     c.tags,
     c.tradelist,
+    c.status,
+    c.sale_price,
     c.scryfall_id,
     p.oracle_id
 FROM collection c
@@ -194,6 +225,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v5_to_v6(conn)
         if current < 7:
             _migrate_v6_to_v7(conn)
+        if current < 8:
+            _migrate_v7_to_v8(conn)
 
     # Record schema version
     conn.execute(
@@ -321,10 +354,112 @@ def _migrate_v6_to_v7(conn: sqlite3.Connection):
     _seed_default_settings(conn)
 
 
+def _migrate_v7_to_v8(conn: sqlite3.Connection):
+    """Add status/sale_price to collection, status_log table, wishlist table."""
+    from mtg_collector.utils import now_iso
+
+    cursor = conn.execute("PRAGMA table_info(collection)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "status" not in columns:
+        conn.execute(
+            "ALTER TABLE collection ADD COLUMN status TEXT NOT NULL DEFAULT 'owned'"
+        )
+    if "sale_price" not in columns:
+        conn.execute("ALTER TABLE collection ADD COLUMN sale_price REAL")
+
+    # Migrate tradelist=1 → status='listed'
+    conn.execute("UPDATE collection SET status = 'listed' WHERE tradelist = 1")
+
+    # Status audit log
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS status_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            collection_id INTEGER NOT NULL REFERENCES collection(id) ON DELETE CASCADE,
+            from_status TEXT,
+            to_status TEXT NOT NULL,
+            changed_at TEXT NOT NULL,
+            note TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_status_log_collection ON status_log(collection_id);
+    """)
+
+    # Wishlist
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS wishlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            oracle_id TEXT NOT NULL REFERENCES cards(oracle_id),
+            scryfall_id TEXT REFERENCES printings(scryfall_id),
+            max_price REAL,
+            priority INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            added_at TEXT NOT NULL,
+            source TEXT NOT NULL DEFAULT 'manual',
+            fulfilled_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_wishlist_oracle ON wishlist(oracle_id);
+        CREATE INDEX IF NOT EXISTS idx_wishlist_scryfall ON wishlist(scryfall_id);
+    """)
+
+    # Status index
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_collection_status ON collection(status)"
+    )
+
+    # Rebuild collection_view to include status and sale_price
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+    conn.execute("""
+        CREATE VIEW collection_view AS
+        SELECT
+            c.id,
+            card.name,
+            s.set_name,
+            p.set_code,
+            p.collector_number,
+            p.rarity,
+            p.promo,
+            c.finish,
+            c.condition,
+            c.language,
+            card.type_line,
+            card.mana_cost,
+            card.cmc,
+            card.colors,
+            card.color_identity,
+            p.artist,
+            c.purchase_price,
+            c.acquired_at,
+            c.source,
+            c.source_image,
+            c.notes,
+            c.tags,
+            c.tradelist,
+            c.status,
+            c.sale_price,
+            c.scryfall_id,
+            p.oracle_id
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        JOIN cards card ON p.oracle_id = card.oracle_id
+        JOIN sets s ON p.set_code = s.set_code
+    """)
+
+    # Seed status_log with initial entries for existing collection rows
+    ts = now_iso()
+    conn.execute("""
+        INSERT INTO status_log (collection_id, from_status, to_status, changed_at, note)
+        SELECT id, NULL, status, COALESCE(acquired_at, ?), 'migration seed'
+        FROM collection
+        WHERE id NOT IN (SELECT collection_id FROM status_log)
+    """, (ts,))
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
         DROP VIEW IF EXISTS collection_view;
+        DROP TABLE IF EXISTS status_log;
+        DROP TABLE IF EXISTS wishlist;
         DROP TABLE IF EXISTS settings;
         DROP TABLE IF EXISTS ingest_lineage;
         DROP TABLE IF EXISTS ingest_cache;

@@ -32,6 +32,12 @@ def run(args):
     print(f"Unique Printings:  {stats['unique_printings']:,}")
     print()
 
+    if stats.get("by_status"):
+        print("By Status:")
+        for status, count in sorted(stats["by_status"].items()):
+            print(f"  {status:<12} {count:,}")
+        print()
+
     if stats["by_finish"]:
         print("By Finish:")
         for finish, count in sorted(stats["by_finish"].items()):

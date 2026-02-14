@@ -60,7 +60,7 @@ class MoxfieldExporter(BaseExporter):
                 entry["language"],
             )
             aggregated[key]["count"] += 1
-            if entry["tradelist"]:
+            if entry.get("status") == "listed":
                 aggregated[key]["tradelist_count"] += 1
             aggregated[key]["entries"].append(entry)
 

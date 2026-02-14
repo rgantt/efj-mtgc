@@ -7,6 +7,7 @@ from mtg_collector.db.models import (
     SetRepository,
     PrintingRepository,
     CollectionRepository,
+    WishlistRepository,
 )
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "SetRepository",
     "PrintingRepository",
     "CollectionRepository",
+    "WishlistRepository",
 ]
