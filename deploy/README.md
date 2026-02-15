@@ -13,108 +13,101 @@ Self-hosted runner
     │
     │  deploy.sh
     ▼
-┌─────────────────────────────────────────┐
-│  Ubuntu server                          │
-│                                         │
-│  nginx (:8082) ──► mtgc service (:8081) │
-│                                         │
-│  Code: ~/workspace/efj-mtgc             │
-│  Data: /var/lib/mtgc                    │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────┐
+│  Ubuntu server                       │
+│                                      │
+│  nginx (:8082) ──► mtgc (:8081)     │
+│                                      │
+│  User: mtgc (dedicated system user)  │
+│  Code: /opt/mtgc                     │
+│  Data: /var/lib/mtgc                 │
+└──────────────────────────────────────┘
 ```
 
 ## Quick Start
 
-If you just want to get it running and the defaults work for you:
-
 ```bash
 # 1. Install prerequisites
-sudo apt install nginx curl
-curl -LsSf https://astral.sh/uv/install.sh | sh
+sudo apt install nginx curl git
 
-# 2. Clone and run setup
-git clone https://github.com/thaen/efj-mtgc.git ~/workspace/efj-mtgc
-cd ~/workspace/efj-mtgc
-bash deploy/setup.sh
+# 2. Clone the setup script (or copy it from an existing checkout)
+git clone https://github.com/thaen/efj-mtgc.git /tmp/efj-mtgc
+sudo bash /tmp/efj-mtgc/deploy/setup.sh
 ```
 
-`setup.sh` handles everything: installs dependencies, downloads card data (~700MB), installs the systemd service, and configures nginx. It checks prerequisites and verifies the deployment at the end.
+`setup.sh` handles everything: creates a dedicated `mtgc` system user, clones the repo to `/opt/mtgc`, installs a private copy of uv, downloads card data (~700MB), installs the systemd service, and configures nginx. Everything is self-contained under `/opt/mtgc` and `/var/lib/mtgc`.
 
 ## Prerequisites
 
 - Ubuntu server (tested on 22.04/24.04)
 - nginx (`sudo apt install nginx`)
-- uv (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
 - Python 3.12+
+- git, curl
 
 ## Step-by-Step Setup
 
 If you prefer to run each step manually, or need to customize the defaults.
 
-### 1. Clone the repository
+### 1. Create the service user
 
 ```bash
-mkdir -p ~/workspace
-git clone https://github.com/thaen/efj-mtgc.git ~/workspace/efj-mtgc
-cd ~/workspace/efj-mtgc
-uv sync
+sudo useradd --system --shell /usr/sbin/nologin --home-dir /var/lib/mtgc mtgc
 ```
 
-### 2. Create the data directory
+### 3. Create the data directory
 
-The app stores its SQLite database, Scryfall cache, MTGJSON data, and price data here (~700MB after setup).
+Must exist before installing uv or running any commands as `mtgc`, since it's the user's home directory and uv caches here.
 
 ```bash
 sudo mkdir -p /var/lib/mtgc
-sudo chown $USER:$USER /var/lib/mtgc
+sudo chown mtgc:mtgc /var/lib/mtgc
 ```
 
-### 3. Run initial data setup
-
-Downloads Scryfall bulk data (~500MB) and MTGJSON price data (~200MB). Takes a few minutes.
+### 4. Clone the repository and install uv
 
 ```bash
-MTGC_HOME=/var/lib/mtgc uv run mtg setup
-MTGC_HOME=/var/lib/mtgc uv run mtg data fetch-prices
+sudo git clone https://github.com/thaen/efj-mtgc.git /opt/mtgc
+sudo chown -R mtgc:mtgc /opt/mtgc
+
+# Install uv privately for the mtgc user
+sudo mkdir -p /opt/mtgc/.uv
+sudo chown mtgc:mtgc /opt/mtgc/.uv
+curl -LsSf https://astral.sh/uv/install.sh | sudo -u mtgc env UV_INSTALL_DIR=/opt/mtgc/.uv/bin sh
+
+cd /opt/mtgc
+sudo -u mtgc /opt/mtgc/.uv/bin/uv sync
 ```
 
-To load demo data (~50 cards) for testing:
+### 5. Download card data
+
+~700MB total: Scryfall bulk data + MTGJSON price data.
 
 ```bash
-MTGC_HOME=/var/lib/mtgc uv run mtg setup --demo
+sudo -u mtgc MTGC_HOME=/var/lib/mtgc /opt/mtgc/.uv/bin/uv run mtg setup
+sudo -u mtgc MTGC_HOME=/var/lib/mtgc /opt/mtgc/.uv/bin/uv run mtg data fetch-prices
 ```
 
-### 4. Install the systemd service
-
-Edit `deploy/mtgc.service` first if your username, repo path, or uv path differ from the defaults:
-
-| Field | Default | How to find yours |
-|---|---|---|
-| `User` / `Group` | `ryangantt` | `whoami` |
-| `WorkingDirectory` | `/home/ryangantt/workspace/efj-mtgc` | Where you cloned the repo |
-| `ExecStart` uv path | `/home/ryangantt/.local/bin/uv` | `which uv` |
-
-Then install and start:
+### 6. Install the systemd service
 
 ```bash
-sudo cp deploy/mtgc.service /etc/systemd/system/
+sudo cp /opt/mtgc/deploy/mtgc.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now mtgc
 ```
 
-Verify it's running:
+Verify:
 
 ```bash
 sudo systemctl status mtgc
 curl http://localhost:8081/
 ```
 
-### 5. Install the nginx config
+### 7. Install the nginx config
 
 The default config listens on port 8082. Edit `deploy/mtgc-nginx.conf` to change the port.
 
 ```bash
-sudo cp deploy/mtgc-nginx.conf /etc/nginx/sites-available/mtgc
+sudo cp /opt/mtgc/deploy/mtgc-nginx.conf /etc/nginx/sites-available/mtgc
 sudo ln -sf /etc/nginx/sites-available/mtgc /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
@@ -126,9 +119,7 @@ curl http://localhost:8082/
 curl http://localhost:8082/api/cached-sets
 ```
 
-At this point the app is running and accessible. The remaining steps set up automated deployment.
-
-### 6. Set up automated deployment (optional)
+### 8. Set up automated deployment (optional)
 
 To auto-deploy on every push to main, register a GitHub Actions self-hosted runner on your repo (or fork).
 
@@ -140,31 +131,32 @@ sudo ./svc.sh install
 sudo ./svc.sh start
 ```
 
-The deploy workflow (`.github/workflows/deploy.yml`) triggers on push to main, checks out the code, and runs `deploy/deploy.sh`. The deploy script needs sudo access to restart services — configure sudoers for your runner user to allow:
+The deploy workflow (`.github/workflows/deploy.yml`) triggers on push to main, pulls the latest code as the `mtgc` user, and runs `deploy/deploy.sh`. The deploy script needs sudo access — configure sudoers for your runner user:
 
 ```
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart mtgc
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/cp <repo-path>/deploy/mtgc.service /etc/systemd/system/mtgc.service
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/cp <repo-path>/deploy/mtgc-nginx.conf /etc/nginx/sites-available/mtgc
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/ln -sf /etc/nginx/sites-available/mtgc /etc/nginx/sites-enabled/
-your-runner-user ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/mtgc
-your-runner-user ALL=(ALL) NOPASSWD: /usr/bin/chown *\:* /var/lib/mtgc
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart mtgc
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload nginx
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/systemctl daemon-reload
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/cp /opt/mtgc/deploy/mtgc.service /etc/systemd/system/mtgc.service
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/cp /opt/mtgc/deploy/mtgc-nginx.conf /etc/nginx/sites-available/mtgc
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/ln -sf /etc/nginx/sites-available/mtgc /etc/nginx/sites-enabled/
+runner-user ALL=(ALL) NOPASSWD: /usr/sbin/nginx -t
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/mkdir -p /var/lib/mtgc
+runner-user ALL=(ALL) NOPASSWD: /usr/bin/chown mtgc\:mtgc /var/lib/mtgc
+runner-user ALL=(mtgc) NOPASSWD: ALL
 ```
 
 ## How It Works
 
 1. Push to main triggers the deploy workflow
-2. The self-hosted runner checks out the latest code
+2. The self-hosted runner pulls the latest code into `/opt/mtgc`
 3. `deploy/deploy.sh` syncs dependencies, copies changed configs, restarts the service, and runs a health check
 
 ## What's in `deploy/`
 
 | File | Purpose |
 |---|---|
-| `setup.sh` | One-time machine provisioning (run manually) |
+| `setup.sh` | One-time machine provisioning (run with sudo) |
 | `deploy.sh` | Called by CI on every push (handles incremental updates) |
 | `mtgc.service` | systemd unit file for the Python server |
 | `mtgc-nginx.conf` | nginx reverse proxy config |
@@ -188,19 +180,17 @@ sudo journalctl -u mtgc -n 50 --no-pager
 
 **Service crashes with "AllPricesToday.json not found":**
 
-The price data wasn't downloaded. Fix with:
-
 ```bash
-MTGC_HOME=/var/lib/mtgc uv run mtg data fetch-prices
+sudo -u mtgc MTGC_HOME=/var/lib/mtgc /opt/mtgc/.uv/bin/uv run mtg data fetch-prices
 sudo systemctl restart mtgc
 ```
 
 **Deploy workflow fails:**
 
-Check the Actions tab on your repo. Common issues:
-- Runner offline — verify with `sudo systemctl status actions.runner.*`
-- Sudoers not installed — deploy.sh can't restart services
-- Missing data directory — deploy.sh handles this on first run, but check `/var/lib/mtgc` exists and is owned by the right user
+Check the Actions tab. Common issues:
+- Runner offline — `sudo systemctl status actions.runner.*`
+- Sudoers not configured — deploy.sh can't restart services
+- Permissions — `/opt/mtgc` must be owned by `mtgc:mtgc`
 
 **nginx returns 502:**
 

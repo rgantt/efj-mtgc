@@ -1,31 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="/home/ryangantt/workspace/efj-mtgc"
+REPO_DIR="/opt/mtgc"
 DATA_DIR="/var/lib/mtgc"
+SERVICE_USER="mtgc"
+UV="$REPO_DIR/.uv/bin/uv"
 
 cd "$REPO_DIR"
 
 echo "==> Syncing dependencies..."
-uv sync
+sudo -u "$SERVICE_USER" "$UV" sync
 
-# First-run setup: create data dir and initialize
+# First-run setup: create data dir
 if [ ! -d "$DATA_DIR" ]; then
     echo "==> First run: creating data directory..."
     sudo mkdir -p "$DATA_DIR"
-    sudo chown ryangantt:ryangantt "$DATA_DIR"
+    sudo chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 fi
 
 # Ensure database + Scryfall cache exist
 if [ ! -f "$DATA_DIR/collection.sqlite" ]; then
     echo "==> Running initial setup (DB + Scryfall cache)..."
-    MTGC_HOME="$DATA_DIR" uv run mtg setup
+    sudo -u "$SERVICE_USER" MTGC_HOME="$DATA_DIR" "$UV" run mtg setup
 fi
 
 # Ensure MTGJSON price data exists
 if [ ! -f "$DATA_DIR/AllPricesToday.json" ]; then
     echo "==> Fetching price data..."
-    MTGC_HOME="$DATA_DIR" uv run mtg data fetch-prices
+    sudo -u "$SERVICE_USER" MTGC_HOME="$DATA_DIR" "$UV" run mtg data fetch-prices
 fi
 
 # Install/update systemd service if changed

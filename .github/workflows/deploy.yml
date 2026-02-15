@@ -3,15 +3,14 @@ name: Deploy
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: self-hosted
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          path: /home/ryangantt/workspace/efj-mtgc
+      - name: Pull latest code
+        run: sudo -u mtgc git -C /opt/mtgc pull --ff-only origin main
 
       - name: Run deploy script
-        run: bash /home/ryangantt/workspace/efj-mtgc/deploy/deploy.sh
+        run: bash /opt/mtgc/deploy/deploy.sh

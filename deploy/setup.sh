@@ -1,28 +1,25 @@
 #!/usr/bin/env bash
 #
 # One-time machine setup for MTGC deployment.
-# Run this as the application user (e.g. ryangantt) who has sudo access.
-# After this script completes, deploy.sh handles all subsequent deploys.
+# Run this with sudo or as root. Creates a dedicated mtgc user,
+# installs uv + the service, and downloads all required data.
 #
 set -euo pipefail
 
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_DIR="/opt/mtgc"
 DATA_DIR="/var/lib/mtgc"
+UV_DIR="/opt/mtgc/.uv"
+SERVICE_USER="mtgc"
 
 echo "==> MTGC deployment setup"
-echo "    Repo: $REPO_DIR"
+echo "    Code: $REPO_DIR"
 echo "    Data: $DATA_DIR"
+echo "    User: $SERVICE_USER"
 echo ""
 
 # --- Prerequisites ---
 
 echo "==> Checking prerequisites..."
-
-if ! command -v uv &>/dev/null; then
-    echo "ERROR: uv not found. Install it first:"
-    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh"
-    exit 1
-fi
 
 if ! command -v nginx &>/dev/null; then
     echo "ERROR: nginx not found. Install it first:"
@@ -36,28 +33,60 @@ if ! command -v curl &>/dev/null; then
     exit 1
 fi
 
-echo "    uv: $(which uv)"
+if ! command -v git &>/dev/null; then
+    echo "ERROR: git not found. Install it first:"
+    echo "  sudo apt install git"
+    exit 1
+fi
+
 echo "    nginx: $(which nginx)"
+
+# --- Service user ---
+
+if ! id "$SERVICE_USER" &>/dev/null; then
+    echo "==> Creating $SERVICE_USER system user..."
+    sudo useradd --system --shell /usr/sbin/nologin --home-dir "$DATA_DIR" "$SERVICE_USER"
+fi
+
+# --- Code directory ---
+
+if [ ! -d "$REPO_DIR" ]; then
+    echo "==> Cloning repository to $REPO_DIR..."
+    sudo git clone https://github.com/thaen/efj-mtgc.git "$REPO_DIR"
+    sudo chown -R "$SERVICE_USER:$SERVICE_USER" "$REPO_DIR"
+fi
+
+# --- Data directory (must exist before uv, which caches here) ---
+
+if [ ! -d "$DATA_DIR" ]; then
+    echo "==> Creating data directory..."
+    sudo mkdir -p "$DATA_DIR"
+fi
+sudo chown "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
+
+# --- Install uv for mtgc user ---
+
+if [ ! -x "$UV_DIR/bin/uv" ]; then
+    echo "==> Installing uv for $SERVICE_USER..."
+    sudo mkdir -p "$UV_DIR"
+    sudo chown "$SERVICE_USER:$SERVICE_USER" "$UV_DIR"
+    curl -LsSf https://astral.sh/uv/install.sh | sudo -u "$SERVICE_USER" env UV_INSTALL_DIR="$UV_DIR/bin" sh
+fi
+
+UV="$UV_DIR/bin/uv"
+echo "    uv: $UV"
 
 # --- Dependencies ---
 
 echo "==> Installing Python dependencies..."
 cd "$REPO_DIR"
-uv sync
-
-# --- Data directory ---
-
-if [ ! -d "$DATA_DIR" ]; then
-    echo "==> Creating data directory..."
-    sudo mkdir -p "$DATA_DIR"
-    sudo chown "$(whoami):$(id -gn)" "$DATA_DIR"
-fi
+sudo -u "$SERVICE_USER" "$UV" sync
 
 echo "==> Running mtg setup (DB + Scryfall cache, ~500MB download)..."
-MTGC_HOME="$DATA_DIR" uv run mtg setup
+sudo -u "$SERVICE_USER" MTGC_HOME="$DATA_DIR" "$UV" run mtg setup
 
 echo "==> Fetching price data (~200MB download)..."
-MTGC_HOME="$DATA_DIR" uv run mtg data fetch-prices
+sudo -u "$SERVICE_USER" MTGC_HOME="$DATA_DIR" "$UV" run mtg data fetch-prices
 
 # --- systemd service ---
 
@@ -95,12 +124,3 @@ fi
 
 echo ""
 echo "==> Setup complete!"
-echo ""
-echo "Remaining manual step: register a GitHub Actions self-hosted runner"
-echo "on your fork. Go to your fork on GitHub:"
-echo "  Settings > Actions > Runners > New self-hosted runner"
-echo ""
-echo "Then install it as a service:"
-echo "  cd ~/actions-runner"
-echo "  sudo ./svc.sh install"
-echo "  sudo ./svc.sh start"

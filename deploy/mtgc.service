@@ -4,11 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=ryangantt
-Group=ryangantt
-WorkingDirectory=/home/ryangantt/workspace/efj-mtgc
+User=mtgc
+Group=mtgc
+WorkingDirectory=/opt/mtgc
 Environment=MTGC_HOME=/var/lib/mtgc
-ExecStart=/home/ryangantt/.local/bin/uv run mtg crack-pack-server --port 8081
+ExecStart=/opt/mtgc/.uv/bin/uv run mtg crack-pack-server --port 8081
 Restart=on-failure
 RestartSec=5
 
