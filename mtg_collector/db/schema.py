@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -275,6 +275,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v9_to_v10(conn)
         if current < 11:
             _migrate_v10_to_v11(conn)
+        if current < 12:
+            _migrate_v11_to_v12(conn)
 
     # Record schema version
     conn.execute(
@@ -595,7 +597,72 @@ def _migrate_v9_to_v10(conn: sqlite3.Connection):
 
 
 def _migrate_v10_to_v11(conn: sqlite3.Connection):
-    """Remove card_count columns from ingest_cache and ingest_images."""
+    """Remove card_count columns; ensure orders table exists (catch-up from rebase)."""
+    # Ensure orders table + order_id column exist (may have been skipped if DB
+    # was already at v10 under the old numbering before the merge renumbered v8→v9).
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_number TEXT,
+            source TEXT,
+            seller_name TEXT,
+            order_date TEXT,
+            subtotal REAL,
+            shipping REAL,
+            tax REAL,
+            total REAL,
+            shipping_status TEXT,
+            estimated_delivery TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_orders_number ON orders(order_number);
+    """)
+
+    cursor = conn.execute("PRAGMA table_info(collection)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "order_id" not in columns:
+        conn.execute("ALTER TABLE collection ADD COLUMN order_id INTEGER REFERENCES orders(id)")
+
+    # Rebuild collection_view to include order_id
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+    conn.execute("""
+        CREATE VIEW collection_view AS
+        SELECT
+            c.id,
+            card.name,
+            s.set_name,
+            p.set_code,
+            p.collector_number,
+            p.rarity,
+            p.promo,
+            c.finish,
+            c.condition,
+            c.language,
+            card.type_line,
+            card.mana_cost,
+            card.cmc,
+            card.colors,
+            card.color_identity,
+            p.artist,
+            c.purchase_price,
+            c.acquired_at,
+            c.source,
+            c.source_image,
+            c.notes,
+            c.tags,
+            c.tradelist,
+            c.status,
+            c.sale_price,
+            c.scryfall_id,
+            p.oracle_id,
+            c.order_id
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        JOIN cards card ON p.oracle_id = card.oracle_id
+        JOIN sets s ON p.set_code = s.set_code
+    """)
+
     # ingest_cache: drop card_count
     cursor = conn.execute("PRAGMA table_info(ingest_cache)")
     columns = [row[1] for row in cursor.fetchall()]
@@ -608,6 +675,71 @@ def _migrate_v10_to_v11(conn: sqlite3.Connection):
     if "card_count" in columns:
         conn.execute("ALTER TABLE ingest_images DROP COLUMN card_count")
 
+
+def _migrate_v11_to_v12(conn: sqlite3.Connection):
+    """Catch-up: ensure orders table + order_id exist (fixes v11 DBs that missed v8→v9)."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_number TEXT,
+            source TEXT,
+            seller_name TEXT,
+            order_date TEXT,
+            subtotal REAL,
+            shipping REAL,
+            tax REAL,
+            total REAL,
+            shipping_status TEXT,
+            estimated_delivery TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_orders_number ON orders(order_number);
+    """)
+
+    cursor = conn.execute("PRAGMA table_info(collection)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "order_id" not in columns:
+        conn.execute("ALTER TABLE collection ADD COLUMN order_id INTEGER REFERENCES orders(id)")
+
+    # Rebuild collection_view to include order_id
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+    conn.execute("""
+        CREATE VIEW collection_view AS
+        SELECT
+            c.id,
+            card.name,
+            s.set_name,
+            p.set_code,
+            p.collector_number,
+            p.rarity,
+            p.promo,
+            c.finish,
+            c.condition,
+            c.language,
+            card.type_line,
+            card.mana_cost,
+            card.cmc,
+            card.colors,
+            card.color_identity,
+            p.artist,
+            c.purchase_price,
+            c.acquired_at,
+            c.source,
+            c.source_image,
+            c.notes,
+            c.tags,
+            c.tradelist,
+            c.status,
+            c.sale_price,
+            c.scryfall_id,
+            p.oracle_id,
+            c.order_id
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        JOIN cards card ON p.oracle_id = card.oracle_id
+        JOIN sets s ON p.set_code = s.set_code
+    """)
 
 
 def drop_all_tables(conn: sqlite3.Connection):

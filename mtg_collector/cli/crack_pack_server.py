@@ -38,10 +38,12 @@ def _load_prices():
     """Load AllPricesToday.json into memory."""
     global _prices_data
     path = get_allpricestoday_path()
+    print(f"[startup] Loading prices from {path} ...", flush=True)
     with open(path) as f:
         raw = json.load(f)
     with _prices_lock:
         _prices_data = raw.get("data", {})
+    print(f"[startup] Prices loaded ({len(_prices_data)} cards)", flush=True)
 
 
 def _get_local_price(uuid: str, foil: bool, provider: str) -> str | None:
@@ -594,9 +596,11 @@ def _recover_pending_images(db_path):
     from mtg_collector.db.schema import init_db
     from mtg_collector.utils import now_iso
 
+    print("[startup] Running database migrations ...", flush=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     init_db(conn)
+    print("[startup] Database ready", flush=True)
 
     # Reset stale PROCESSING (>10 min old) back to READY_FOR_OCR
     cutoff = datetime.now(timezone.utc).isoformat()
@@ -612,6 +616,8 @@ def _recover_pending_images(db_path):
     rows = conn.execute("SELECT id FROM ingest_images WHERE status='READY_FOR_OCR'").fetchall()
     conn.close()
 
+    if rows:
+        print(f"[startup] Re-queuing {len(rows)} pending image(s) for OCR", flush=True)
     for row in rows:
         _log_ingest(f"Recovering image {row['id']} for background processing")
         _ingest_executor.submit(_process_image_background, db_path, row["id"])
@@ -753,6 +759,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_ingest2_update_cards()
         elif path == "/api/ingest2/add-card":
             self._api_ingest2_add_card()
+        elif path == "/api/ingest2/remove-card":
+            self._api_ingest2_remove_card()
         elif path == "/api/ingest2/delete":
             self._api_ingest2_delete()
         elif path == "/api/ingest/session":
@@ -1992,6 +2000,85 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         _log_ingest(f"AddCard: {name} ({set_code.upper()}) -> collection ID {entry_id}, image {image_id} slot {card_idx}")
 
         self._send_json({"ok": True, "entry_id": entry_id, "name": name, "set_code": set_code, "card_idx": card_idx})
+
+    def _api_ingest2_remove_card(self):
+        """Remove a card slot from an image. If confirmed, also remove from collection."""
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        image_id = data["image_id"]
+        card_idx = data["card_idx"]
+
+        conn = self._ingest2_db()
+        img = self._ingest2_load_image(conn, image_id)
+        if not img:
+            conn.close()
+            self._send_json({"error": "Image not found"}, 404)
+            return
+
+        disambiguated = json.loads(img["disambiguated"]) if img.get("disambiguated") else []
+        scryfall_matches = json.loads(img["scryfall_matches"]) if img.get("scryfall_matches") else []
+        claude_result = json.loads(img["claude_result"]) if img.get("claude_result") else []
+        crops = json.loads(img["crops"]) if img.get("crops") else []
+
+        if card_idx < 0 or card_idx >= len(disambiguated):
+            conn.close()
+            self._send_json({"error": "Invalid card index"}, 400)
+            return
+
+        # If this card was confirmed, remove collection entry + lineage
+        sid = disambiguated[card_idx]
+        removed_collection = False
+        if sid and sid != "skipped":
+            md5 = img["md5"]
+            lineage = conn.execute(
+                "SELECT collection_id FROM ingest_lineage WHERE image_md5 = ? AND card_index = ?",
+                (md5, card_idx),
+            ).fetchone()
+            if lineage:
+                conn.execute("DELETE FROM collection WHERE id = ?", (lineage["collection_id"],))
+                conn.execute("DELETE FROM ingest_lineage WHERE image_md5 = ? AND card_index = ?", (md5, card_idx))
+                removed_collection = True
+
+        # Remove from all parallel arrays
+        disambiguated.pop(card_idx)
+        if card_idx < len(scryfall_matches):
+            scryfall_matches.pop(card_idx)
+        if card_idx < len(claude_result):
+            claude_result.pop(card_idx)
+        if card_idx < len(crops):
+            crops.pop(card_idx)
+
+        # Fix card_index values in ingest_lineage for shifted slots
+        conn.execute(
+            "UPDATE ingest_lineage SET card_index = card_index - 1 WHERE image_md5 = ? AND card_index > ?",
+            (img["md5"], card_idx),
+        )
+
+        # Determine status
+        status_update = {}
+        if len(disambiguated) == 0:
+            status_update["status"] = "DONE"
+        elif all(d is not None for d in disambiguated):
+            status_update["status"] = "DONE"
+        else:
+            status_update["status"] = "READY_FOR_DISAMBIGUATION"
+
+        self._ingest2_update_image(
+            conn, image_id,
+            disambiguated=json.dumps(disambiguated),
+            scryfall_matches=json.dumps(scryfall_matches),
+            claude_result=json.dumps(claude_result),
+            crops=json.dumps(crops),
+            **status_update,
+        )
+
+        conn.commit()
+        conn.close()
+
+        _log_ingest(f"RemoveCard: image {image_id} slot {card_idx}, collection_removed={removed_collection}")
+        self._send_json({"ok": True, "removed_collection": removed_collection})
 
     def _api_ingest2_skip(self):
         """Skip a card."""
@@ -3358,7 +3445,12 @@ def run(args):
         sys.exit(1)
 
     # Pre-warm AllPrintings.json in background thread
-    warm_thread = threading.Thread(target=lambda: gen.data, daemon=True)
+    def _warm_allprintings():
+        print(f"[startup] Loading AllPrintings.json ({allprintings}) ...", flush=True)
+        _ = gen.data
+        print(f"[startup] AllPrintings.json loaded ({len(gen.data.get('data', {}))} sets)", flush=True)
+
+    warm_thread = threading.Thread(target=_warm_allprintings, daemon=True)
     warm_thread.start()
 
     # Load CK prices in background thread

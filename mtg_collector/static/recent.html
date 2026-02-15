@@ -292,6 +292,17 @@ header a:hover { color: #e94560; }
   font-weight: 400;
   font-size: 0.8rem;
 }
+.detail-modal .remove-card-btn {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.detail-modal .remove-card-btn:hover { color: #e94560; }
 .detail-modal .loading {
   padding: 40px;
   text-align: center;
@@ -585,6 +596,7 @@ async function showImageDetail(imageId) {
             <div class="card-set">${escapeHtml(claudeCard.set_code ? claudeCard.set_code.toUpperCase() : '')}</div>
           </div>
           <a href="/disambiguate" style="color:#e94560;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;">Disambiguate</a>
+          <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
         </div>
       `;
       continue;
@@ -610,6 +622,7 @@ async function showImageDetail(imageId) {
         </div>
         ${priceHtml}
         <a href="/correct?image_id=${imageId}&card_idx=${i}" style="color:#888;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">Correct</a>
+        <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
       </div>
     `;
   }
@@ -636,6 +649,34 @@ async function showImageDetail(imageId) {
 
   content.innerHTML = html;
   content.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+
+  // Remove card buttons
+  content.querySelectorAll('.remove-card-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const imgId = parseInt(btn.dataset.imageId);
+      const cardIdx = parseInt(btn.dataset.cardIdx);
+      const row = btn.closest('.card-row');
+      const isConfirmed = !row.classList.contains('pending') && !row.classList.contains('skipped');
+      const msg = isConfirmed
+        ? 'Remove this card from the image and your collection?'
+        : 'Remove this card slot from the image?';
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      const resp = await fetch('/api/ingest2/remove-card', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ image_id: imgId, card_idx: cardIdx }),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        row.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = '\u00d7';
+      }
+    });
+  });
 
   // Add card search + confirm wiring
   let _addSelectedCandidate = null;
