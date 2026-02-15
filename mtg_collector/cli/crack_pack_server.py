@@ -2628,8 +2628,8 @@ def register(subparsers):
     parser.add_argument(
         "--port",
         type=int,
-        default=8080,
-        help="Port to serve on (default: 8080)",
+        default=8081,
+        help="Port to serve on (default: 8081)",
     )
     parser.add_argument(
         "--mtgjson",
