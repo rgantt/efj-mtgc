@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Upload - Card Ingest</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+header {
+  background: #16213e;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #0f3460;
+}
+header h1 { font-size: 1.1rem; color: #e94560; }
+header a { color: #888; text-decoration: none; font-size: 0.8rem; }
+header a:hover { color: #e94560; }
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+button:hover { background: #c73651; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.secondary { background: #333; border-color: #555; }
+button.secondary:hover { background: #444; }
+button.danger { background: #c62828; border-color: #c62828; }
+button.danger:hover { background: #b71c1c; }
+
+#camera-view {
+  margin: 8px;
+  background: #0d1117;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+#camera-view video {
+  width: 100%;
+  max-height: 55vh;
+  object-fit: cover;
+  display: block;
+}
+#camera-view .camera-controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding: 8px;
+  background: rgba(0,0,0,0.5);
+}
+#camera-view .camera-controls button {
+  padding: 10px 24px;
+  font-size: 1rem;
+}
+#camera-view canvas { display: none; }
+#camera-view .photo-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.6);
+  color: #4caf50;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: none;
+}
+
+#camera-placeholder {
+  text-align: center;
+  padding: 40px 24px;
+}
+#camera-placeholder button {
+  padding: 14px 32px;
+  font-size: 1.1rem;
+}
+
+#drop-zone {
+  border: 2px dashed #0f3460;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  margin: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  font-size: 0.85rem;
+}
+#drop-zone.dragover {
+  border-color: #e94560;
+  background: rgba(233, 69, 96, 0.05);
+}
+#drop-zone span { color: #666; }
+
+#image-list {
+  margin: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 8px;
+}
+.image-card {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+}
+.image-card img {
+  width: 100%;
+  height: 80px;
+  object-fit: cover;
+}
+.image-card .info {
+  padding: 4px 6px;
+  font-size: 0.7rem;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.image-card .delete-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: #e94560;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1;
+}
+.image-card .delete-btn:hover { background: rgba(0,0,0,0.8); }
+
+.actions {
+  margin: 8px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.actions .count { font-size: 0.85rem; color: #888; }
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="/" style="color:inherit;text-decoration:none">Upload</a></h1>
+  <a href="/">Home</a>
+  <a href="/recent">Recent</a>
+  <a href="/disambiguate">Disambiguate</a>
+</header>
+
+<div id="camera-placeholder">
+  <button id="camera-btn">Open Camera</button>
+</div>
+
+<div id="camera-view" style="display:none">
+  <video id="camera-video" autoplay playsinline></video>
+  <canvas id="camera-canvas"></canvas>
+  <span class="photo-count" id="photo-count"></span>
+  <div class="camera-controls">
+    <button onclick="takePhoto()">Take Photo</button>
+    <button class="secondary" onclick="stopCamera()">Done</button>
+  </div>
+</div>
+
+<div id="drop-zone">
+  <span>Or drop / select files</span>
+  <input type="file" id="file-input" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
+</div>
+
+<div id="image-list"></div>
+
+<div class="actions" id="actions" style="display:none">
+  <span class="count" id="count-text"></span>
+  <a href="/recent"><button>View Recent Images</button></a>
+</div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const imageList = document.getElementById('image-list');
+const actions = document.getElementById('actions');
+const countText = document.getElementById('count-text');
+
+let images = [];
+let cameraStream = null;
+let photoCounter = 0;
+let sessionPhotos = 0;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => { handleFiles(fileInput.files); fileInput.value = ''; });
+
+async function handleFiles(fileList) {
+  const formData = new FormData();
+  for (const f of fileList) {
+    formData.append('files', f);
+  }
+
+  dropZone.innerHTML = '<div class="spinner"></div> Uploading...';
+
+  const resp = await fetch('/api/ingest2/upload', { method: 'POST', body: formData });
+  const data = await resp.json();
+
+  dropZone.innerHTML = '<span>Or drop / select files</span>';
+
+  if (data.collisions && data.collisions.length > 0) {
+    const names = data.collisions.join(', ');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'margin:8px;padding:8px 12px;background:#5e1b1b;border:1px solid #e94560;border-radius:6px;font-size:0.85rem;color:#e94560;';
+    msg.textContent = `Already exists: ${names} — rename or delete first`;
+    dropZone.parentNode.insertBefore(msg, dropZone.nextSibling);
+    setTimeout(() => msg.remove(), 8000);
+  }
+
+  for (const u of data.uploaded) {
+    images.push(u);
+    addImageCard(u);
+  }
+  updateActions();
+}
+
+async function uploadBlob(blob, filename) {
+  const formData = new FormData();
+  formData.append('files', blob, filename);
+
+  const resp = await fetch('/api/ingest2/upload', { method: 'POST', body: formData });
+  const data = await resp.json();
+
+  if (data.collisions && data.collisions.length > 0) {
+    const names = data.collisions.join(', ');
+    const msg = document.createElement('div');
+    msg.style.cssText = 'margin:8px;padding:8px 12px;background:#5e1b1b;border:1px solid #e94560;border-radius:6px;font-size:0.85rem;color:#e94560;';
+    msg.textContent = `Already exists: ${names} — rename or delete first`;
+    document.getElementById('camera-view').parentNode.insertBefore(msg, document.getElementById('image-list'));
+    setTimeout(() => msg.remove(), 8000);
+  }
+
+  for (const u of data.uploaded) {
+    images.push(u);
+    addImageCard(u);
+  }
+  updateActions();
+}
+
+// ── Camera ──
+
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+  });
+  cameraStream = stream;
+  const video = document.getElementById('camera-video');
+  video.srcObject = stream;
+  document.getElementById('camera-view').style.display = 'block';
+  document.getElementById('camera-placeholder').style.display = 'none';
+  sessionPhotos = 0;
+}
+
+document.getElementById('camera-btn').addEventListener('click', () => {
+  startCamera().catch(e => alert('Camera error: ' + e.message));
+});
+
+function takePhoto() {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  canvas.toBlob(blob => {
+    if (blob) {
+      photoCounter++;
+      sessionPhotos++;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `camera_${ts}_${photoCounter}.jpg`;
+      uploadBlob(blob, filename);
+
+      const badge = document.getElementById('photo-count');
+      badge.textContent = `${sessionPhotos} taken`;
+      badge.style.display = 'block';
+    }
+  }, 'image/jpeg', 0.92);
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('camera-video').srcObject = null;
+  document.getElementById('camera-view').style.display = 'none';
+  document.getElementById('camera-placeholder').style.display = 'block';
+  document.getElementById('photo-count').style.display = 'none';
+}
+
+function addImageCard(img) {
+  const card = document.createElement('div');
+  card.className = 'image-card';
+  card.dataset.id = img.id;
+  card.innerHTML = `
+    <img src="/api/ingest/image/${img.stored_name}" alt="${img.filename}">
+    <div class="info">${img.filename}</div>
+    <button class="delete-btn" onclick="deleteImage(${img.id}, this)" title="Delete">&times;</button>
+  `;
+  imageList.appendChild(card);
+}
+
+async function deleteImage(id, btn) {
+  btn.disabled = true;
+  await fetch('/api/ingest2/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({image_id: id}),
+  });
+  const card = btn.closest('.image-card');
+  card.remove();
+  images = images.filter(i => i.id !== id);
+  updateActions();
+}
+
+function updateActions() {
+  if (images.length > 0) {
+    actions.style.display = 'flex';
+    countText.textContent = `${images.length} image(s) uploaded`;
+  } else {
+    actions.style.display = 'none';
+  }
+}
+
+// Load existing READY_FOR_OCR images on page load
+async function loadExisting() {
+  const resp = await fetch('/api/ingest2/images?status=READY_FOR_OCR');
+  const existing = await resp.json();
+  for (const img of existing) {
+    images.push(img);
+    addImageCard(img);
+  }
+  updateActions();
+}
+loadExisting();
+</script>
+</body>
+</html>

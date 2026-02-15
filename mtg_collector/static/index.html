@@ -50,6 +50,42 @@ body {
   color: #888;
   margin-top: 4px;
 }
+.nav-col a .badge {
+  display: inline-block;
+  background: #e94560;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+.nav-col .ingest-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #16213e;
+  border: 2px solid #0f3460;
+  border-radius: 10px;
+}
+.nav-col .ingest-group .group-label {
+  font-size: 0.8rem;
+  color: #888;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 8px;
+}
+.nav-col .ingest-group a {
+  padding: 10px 24px;
+  border: 1px solid transparent;
+  font-size: 1rem;
+}
+.nav-col .ingest-group a:hover {
+  border-color: #e94560;
+}
 
 .settings-col {
   flex: 0 0 320px;
@@ -149,7 +185,12 @@ body {
   <a href="/crack">Crack-a-Pack<span>Open virtual booster packs with prices and pick tracking</span></a>
   <a href="/sheets">Explore Sheets<span>View booster pack structure, sheets, and pull rates</span></a>
   <a href="/collection">Collection<span>Browse your card collection with search, filters, and prices</span></a>
-  <a href="/ingestor-ocr">Ingestor (OCR)<span>Identify cards from photos — full cards or stacked name bars</span></a>
+  <div class="ingest-group">
+    <div class="group-label">Ingestor (OCR)</div>
+    <a href="/upload">Upload<span id="upload-badge-wrap"></span></a>
+    <a href="/recent">Recent<span id="recent-badge-wrap"></span></a>
+    <a href="/disambiguate">Disambiguate<span id="disambig-badge-wrap"></span></a>
+  </div>
 </div>
 
 <div class="settings-col">
@@ -249,6 +290,28 @@ initRadioPills('icon-bg-pills', 'icon_background');
 initCheckPills('price-source-checks', 'price_sources');
 
 loadSettings();
+
+// Load ingest counts for badges
+async function loadIngestCounts() {
+  try {
+    const resp = await fetch('/api/ingest2/counts');
+    const counts = await resp.json();
+    const readyForOcr = counts['READY_FOR_OCR'] || 0;
+    const processing = counts['PROCESSING'] || 0;
+    const disambig = counts['READY_FOR_DISAMBIGUATION'] || 0;
+    const inProgress = readyForOcr + processing;
+
+    if (inProgress > 0) {
+      document.getElementById('recent-badge-wrap').innerHTML =
+        `<span class="badge">${inProgress}</span> processing`;
+    }
+    if (disambig > 0) {
+      document.getElementById('disambig-badge-wrap').innerHTML =
+        `<span class="badge">${disambig}</span> ready to disambiguate`;
+    }
+  } catch (e) {}
+}
+loadIngestCounts();
 </script>
 </body>
 </html>

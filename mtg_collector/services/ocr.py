@@ -2,10 +2,25 @@
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 import easyocr
 
 # Model files stored in the repo for offline use
 _MODEL_DIR = str(Path(__file__).resolve().parent.parent.parent / "models" / "ocr")
+
+
+def _load_image(image_path: str) -> np.ndarray:
+    """Load an image as a numpy array, using PIL as fallback for formats OpenCV can't handle."""
+    img = cv2.imread(image_path)
+    if img is not None:
+        return img
+    # PIL handles HEIC, unusual JPEGs, and other formats OpenCV can't
+    from PIL import Image
+    pil_img = Image.open(image_path)
+    pil_img = pil_img.convert("RGB")
+    arr = np.array(pil_img)
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
 
 
 def run_ocr(image_path: str) -> list[str]:
@@ -23,7 +38,8 @@ def run_ocr(image_path: str) -> list[str]:
         model_storage_directory=_MODEL_DIR,
         verbose=False,
     )
-    results = reader.readtext(image_path, detail=0)
+    img = _load_image(image_path)
+    results = reader.readtext(img, detail=0)
     return results
 
 
@@ -39,7 +55,8 @@ def run_ocr_with_boxes(image_path: str) -> list[dict]:
         model_storage_directory=_MODEL_DIR,
         verbose=False,
     )
-    results = reader.readtext(image_path, detail=1)
+    img = _load_image(image_path)
+    results = reader.readtext(img, detail=1)
     fragments = []
     for bbox, text, conf in results:
         xs = [float(p[0]) for p in bbox]

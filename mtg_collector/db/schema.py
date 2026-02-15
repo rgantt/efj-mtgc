@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -99,7 +99,6 @@ CREATE INDEX IF NOT EXISTS idx_wishlist_scryfall ON wishlist(scryfall_id);
 CREATE TABLE IF NOT EXISTS ingest_cache (
     image_md5 TEXT PRIMARY KEY,
     image_path TEXT NOT NULL,
-    card_count INTEGER NOT NULL,
     ocr_result TEXT NOT NULL,       -- JSON array of {text, bbox, confidence}
     claude_result TEXT,             -- JSON array of card dicts from Claude
     created_at TEXT NOT NULL
@@ -117,6 +116,29 @@ CREATE TABLE IF NOT EXISTS ingest_lineage (
 
 CREATE INDEX IF NOT EXISTS idx_lineage_md5 ON ingest_lineage(image_md5);
 CREATE INDEX IF NOT EXISTS idx_lineage_collection ON ingest_lineage(collection_id);
+
+-- Ingest images: persistent ingest pipeline state
+CREATE TABLE IF NOT EXISTS ingest_images (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename TEXT NOT NULL,
+    stored_name TEXT NOT NULL,
+    md5 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'READY_FOR_OCR'
+        CHECK(status IN ('READY_FOR_OCR','PROCESSING','READY_FOR_DISAMBIGUATION','DONE','ERROR')),
+    mode TEXT,
+    ocr_result TEXT,
+    claude_result TEXT,
+    scryfall_matches TEXT,
+    crops TEXT,
+    disambiguated TEXT,
+    names_data TEXT,
+    names_disambiguated TEXT,
+    user_card_edits TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_images_status ON ingest_images(status);
 
 -- Global settings (key-value pairs)
 CREATE TABLE IF NOT EXISTS settings (
@@ -227,6 +249,10 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v6_to_v7(conn)
         if current < 8:
             _migrate_v7_to_v8(conn)
+        if current < 9:
+            _migrate_v8_to_v9(conn)
+        if current < 10:
+            _migrate_v9_to_v10(conn)
 
     # Record schema version
     conn.execute(
@@ -310,7 +336,6 @@ def _migrate_v5_to_v6(conn: sqlite3.Connection):
         CREATE TABLE IF NOT EXISTS ingest_cache (
             image_md5 TEXT PRIMARY KEY,
             image_path TEXT NOT NULL,
-            card_count INTEGER NOT NULL,
             ocr_result TEXT NOT NULL,
             claude_result TEXT,
             created_at TEXT NOT NULL
@@ -454,6 +479,48 @@ def _migrate_v7_to_v8(conn: sqlite3.Connection):
     """, (ts,))
 
 
+def _migrate_v8_to_v9(conn: sqlite3.Connection):
+    """Add ingest_images table for persistent ingest pipeline state."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS ingest_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            stored_name TEXT NOT NULL,
+            md5 TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'READY_FOR_OCR'
+                CHECK(status IN ('READY_FOR_OCR','PROCESSING','READY_FOR_DISAMBIGUATION','DONE','ERROR')),
+            mode TEXT,
+            ocr_result TEXT,
+            claude_result TEXT,
+            scryfall_matches TEXT,
+            crops TEXT,
+            disambiguated TEXT,
+            names_data TEXT,
+            names_disambiguated TEXT,
+            user_card_edits TEXT,
+            error_message TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ingest_images_status ON ingest_images(status);
+    """)
+
+
+def _migrate_v9_to_v10(conn: sqlite3.Connection):
+    """Remove card_count columns from ingest_cache and ingest_images."""
+    # ingest_cache: drop card_count
+    cursor = conn.execute("PRAGMA table_info(ingest_cache)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "card_count" in columns:
+        conn.execute("ALTER TABLE ingest_cache DROP COLUMN card_count")
+
+    # ingest_images: drop card_count
+    cursor = conn.execute("PRAGMA table_info(ingest_images)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "card_count" in columns:
+        conn.execute("ALTER TABLE ingest_images DROP COLUMN card_count")
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
@@ -461,6 +528,7 @@ def drop_all_tables(conn: sqlite3.Connection):
         DROP TABLE IF EXISTS status_log;
         DROP TABLE IF EXISTS wishlist;
         DROP TABLE IF EXISTS settings;
+        DROP TABLE IF EXISTS ingest_images;
         DROP TABLE IF EXISTS ingest_lineage;
         DROP TABLE IF EXISTS ingest_cache;
         DROP TABLE IF EXISTS collection;
