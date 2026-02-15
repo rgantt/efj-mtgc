@@ -94,7 +94,7 @@ class TestCornerIdentification:
         from mtg_collector.services.claude import ClaudeVision
 
         claude = ClaudeVision()
-        detected = claude.read_card_corners(photo_path)
+        detected, skipped = claude.read_card_corners(photo_path)
 
         # --- Count check ---
         print(f"\n{'='*70}")

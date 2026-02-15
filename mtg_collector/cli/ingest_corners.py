@@ -148,14 +148,26 @@ def run(args):
 
     # Read corners from all images
     all_detections = []
+    all_skipped = []
     for image_path in args.images:
-        detections = claude.read_card_corners(image_path)
-        if not detections:
+        detections, skipped = claude.read_card_corners(image_path)
+        if not detections and not skipped:
             print(f"  Warning: No card corners detected in {image_path}")
             continue
         for d in detections:
             d["_source_image"] = image_path
         all_detections.extend(detections)
+        for s in skipped:
+            s["_source_image"] = image_path
+        all_skipped.extend(skipped)
+
+    if all_skipped:
+        print(f"\nError: {len(all_skipped)} card(s) detected but missing required fields:")
+        for s in all_skipped:
+            fields = {k: v for k, v in s.items() if v and k != "_source_image"}
+            print(f"  {s['_source_image']}: {fields}")
+        print("Re-take the photo so all card corners are fully visible.")
+        sys.exit(1)
 
     if not all_detections:
         print("Error: No card corners detected in any image.")

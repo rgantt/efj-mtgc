@@ -383,7 +383,9 @@ OCR FRAGMENTS:
             image_path: Path to the image showing card corners
 
         Returns:
-            List of dicts with 'rarity', 'collector_number', 'set', 'foil'
+            Tuple of (normalized, skipped) where:
+            - normalized: list of dicts with 'rarity', 'collector_number', 'set', 'foil'
+            - skipped: list of raw card dicts that were missing required fields
         """
         print(f"Reading card corners from: {image_path}")
 
@@ -454,6 +456,7 @@ Return ONLY a JSON array:
 
                 # Normalize
                 normalized = []
+                skipped = []
                 for card in cards:
                     if not isinstance(card, dict):
                         continue
@@ -463,6 +466,7 @@ Return ONLY a JSON array:
                     foil = bool(card.get("foil", False))
 
                     if not cn or not set_code:
+                        skipped.append(card)
                         continue
 
                     normalized.append({
@@ -472,21 +476,26 @@ Return ONLY a JSON array:
                         "foil": foil,
                     })
 
+                if skipped:
+                    print(f"  Warning: {len(skipped)} card(s) incomplete (missing set or collector number):")
+                    for s in skipped:
+                        fields = {k: v for k, v in s.items() if v}
+                        print(f"    {fields}")
                 print(f"  Found {len(normalized)} card corner(s)")
-                return normalized
+                return normalized, skipped
 
             except json.JSONDecodeError as e:
                 last_error = f"JSON parse error: {e}"
                 print(f"  {last_error}")
             except anthropic.BadRequestError as e:
                 print(f"  Error: {e}")
-                return []
+                return [], []
             except Exception as e:
                 last_error = str(e)
                 if "api_key" in str(e).lower() or "authentication" in str(e).lower():
                     print(f"  Error: {e}")
-                    return []
+                    return [], []
                 print(f"  Error: {e}")
 
         print(f"  Failed after {self.max_retries + 1} attempts. Last error: {last_error}")
-        return []
+        return [], []

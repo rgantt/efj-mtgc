@@ -14,14 +14,14 @@ import uuid as uuid_mod
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from functools import partial
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
-from mtg_collector.cli.data_cmd import MTGJSON_PRICES_URL, get_allpricestoday_path, _download
+from mtg_collector.cli.data_cmd import MTGJSON_PRICES_URL, _download, get_allpricestoday_path
 from mtg_collector.db.connection import get_db_path
 from mtg_collector.services.pack_generator import PackGenerator
 
@@ -655,6 +655,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._serve_static("correct.html")
         elif path == "/api/sets":
             self._api_sets()
+        elif path == "/api/cached-sets":
+            self._api_cached_sets()
         elif path == "/api/products":
             set_code = params.get("set", [""])[0]
             self._api_products(set_code)
@@ -666,9 +668,19 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_collection(params)
         elif path == "/api/wishlist":
             self._api_wishlist_list(params)
+        elif path.startswith("/api/card/"):
+            scryfall_id = path[len("/api/card/"):]
+            self._api_card(scryfall_id)
         elif path.startswith("/api/set-browse/"):
             set_code = path[len("/api/set-browse/"):]
             self._api_set_browse(set_code, params)
+        elif path == "/ingestor-order":
+            self._serve_static("ingest_order.html")
+        elif path == "/api/orders":
+            self._api_orders_list()
+        elif path.startswith("/api/orders/") and path.endswith("/cards"):
+            oid = path[len("/api/orders/"):-len("/cards")]
+            self._api_order_cards(int(oid))
         elif path == "/api/settings":
             self._api_get_settings()
         elif path == "/api/prices-status":
@@ -766,6 +778,24 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Invalid JSON"}, 400)
                 return
             self._api_wishlist_add(data)
+        elif path == "/api/wishlist/bulk":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON"}, 400)
+                return
+            self._api_wishlist_bulk_add(data)
+        elif path == "/api/order/parse":
+            self._api_order_parse()
+        elif path == "/api/order/resolve":
+            self._api_order_resolve()
+        elif path == "/api/order/commit":
+            self._api_order_commit()
+        elif path.startswith("/api/orders/") and path.endswith("/receive"):
+            oid = path[len("/api/orders/"):-len("/receive")]
+            self._api_order_receive(int(oid))
         elif path.startswith("/api/wishlist/") and path.endswith("/fulfill"):
             wid = path[len("/api/wishlist/"):-len("/fulfill")]
             self._api_wishlist_fulfill(int(wid))
@@ -822,6 +852,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_sets(self):
         sets = self.generator.list_sets()
         self._send_json([{"code": code, "name": name} for code, name in sets])
+
+    def _api_cached_sets(self):
+        """Return all sets whose card list has been fully cached."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.execute(
+            "SELECT set_code, set_name FROM sets WHERE cards_fetched_at IS NOT NULL ORDER BY set_name"
+        )
+        result = [{"code": row["set_code"], "name": row["set_name"]} for row in cursor]
+        conn.close()
+        self._send_json(result)
 
     def _api_products(self, set_code: str):
         if not set_code:
@@ -889,17 +930,45 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         filter_date_min = params.get("filter_date_min", [""])[0]
         filter_date_max = params.get("filter_date_max", [""])[0]
         filter_status = params.get("status", ["owned"])[0]
+        filter_wanted = params.get("filter_wanted", [""])[0] == "true"
+        _unowned_raw = params.get("include_unowned", [""])[0]
+        include_unowned = _unowned_raw if _unowned_raw in ("base", "full") else ""
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
+
+        # When including unowned cards, ensure each selected set is fully cached
+        if include_unowned and filter_sets:
+            from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
+            from mtg_collector.services.scryfall import ScryfallAPI, ensure_set_cached
+            api = ScryfallAPI()
+            card_repo = CardRepository(conn)
+            set_repo = SetRepository(conn)
+            printing_repo = PrintingRepository(conn)
+            for sc in filter_sets:
+                ensure_set_cached(api, sc, card_repo, set_repo, printing_repo, conn)
 
         where_clauses = []
         sql_params = []
 
         # Status filter (default: owned)
-        if filter_status != "all":
-            where_clauses.append("c.status = ?")
-            sql_params.append(filter_status)
+        # "owned" includes both owned and ordered cards so ordered items are visible
+        # For include_unowned: applied in the LEFT JOIN ON clause (see query below)
+        # so unowned cards (c.* IS NULL) aren't filtered out
+        if not include_unowned and filter_status != "all":
+            if filter_status == "owned":
+                where_clauses.append("c.status IN ('owned', 'ordered')")
+            else:
+                where_clauses.append("c.status = ?")
+                sql_params.append(filter_status)
+
+        # Exclude non-collectible cards (digital-only, meld backs)
+        if include_unowned:
+            where_clauses.append("json_extract(p.raw_json, '$.digital') = 0")
+            where_clauses.append(
+                "NOT (json_extract(p.raw_json, '$.layout') = 'meld'"
+                " AND p.collector_number LIKE '%b')"
+            )
 
         if q:
             where_clauses.append("(card.name LIKE ? OR card.type_line LIKE ? OR json_extract(p.raw_json, '$.flavor_name') LIKE ?)")
@@ -943,8 +1012,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         if filter_finish:
             placeholders = ",".join("?" * len(filter_finish))
-            where_clauses.append(f"c.finish IN ({placeholders})")
-            sql_params.extend(filter_finish)
+            if include_unowned == "full":
+                # Full mode: filter on the expanded finish value
+                where_clauses.append(f"f.value IN ({placeholders})")
+                sql_params.extend(filter_finish)
+            elif not include_unowned:
+                # Normal mode: filter on collection finish
+                where_clauses.append(f"c.finish IN ({placeholders})")
+                sql_params.extend(filter_finish)
+            # Base mode: skip finish filter (rows span all finishes)
 
         if filter_badges:
             badge_conditions = []
@@ -970,10 +1046,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             where_clauses.append("card.cmc <= ?")
             sql_params.append(float(filter_cmc_max))
 
-        if filter_date_min:
+        if filter_date_min and not include_unowned:
             where_clauses.append("c.acquired_at >= ?")
             sql_params.append(filter_date_min)
-        if filter_date_max:
+        if filter_date_max and not include_unowned:
             where_clauses.append("c.acquired_at < date(?, '+1 day')")
             sql_params.append(filter_date_max)
 
@@ -994,29 +1070,122 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         sort_col = sort_map.get(sort, "card.name")
         order_dir = "DESC" if order == "desc" else "ASC"
 
-        query = f"""
-            SELECT
-                card.name, card.type_line, card.mana_cost, card.cmc,
-                card.colors, card.color_identity,
-                p.set_code, s.set_name, p.collector_number, p.rarity,
-                p.scryfall_id, p.image_uri, p.artist,
-                p.frame_effects, p.border_color, p.full_art, p.promo,
-                p.promo_types, p.finishes,
-                COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
-                json_extract(p.raw_json, '$.layout') as layout,
-                json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
-                json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
-                c.finish, c.condition, c.status,
-                COUNT(*) as qty,
-                MAX(c.acquired_at) as acquired_at
-            FROM collection c
-            JOIN printings p ON c.scryfall_id = p.scryfall_id
-            JOIN cards card ON p.oracle_id = card.oracle_id
-            JOIN sets s ON p.set_code = s.set_code
-            WHERE {where_sql}
-            GROUP BY p.scryfall_id, c.finish, c.condition, c.status
-            ORDER BY {sort_col} {order_dir}, card.name ASC
-        """
+        # Wishlist filter: INNER JOIN to restrict results to wishlisted cards
+        wanted_join = ""
+        if filter_wanted:
+            wanted_join = """
+                    JOIN wishlist w ON (
+                        w.scryfall_id = p.scryfall_id
+                        OR (w.scryfall_id IS NULL AND w.oracle_id = card.oracle_id)
+                    ) AND w.fulfilled_at IS NULL"""
+
+        if include_unowned:
+            if filter_status == "owned":
+                join_status_sql = " AND c.status IN ('owned', 'ordered')"
+                join_params = []
+            elif filter_status != "all":
+                join_status_sql = " AND c.status = ?"
+                join_params = [filter_status]
+            else:
+                join_status_sql = ""
+                join_params = []
+            if include_unowned == "full":
+                # Full set: one row per (scryfall_id, finish) via json_each
+                query = f"""
+                    SELECT
+                        card.oracle_id, card.name, card.type_line, card.mana_cost, card.cmc,
+                        card.colors, card.color_identity,
+                        p.set_code, s.set_name, p.collector_number, p.rarity,
+                        p.scryfall_id, p.image_uri, p.artist,
+                        p.frame_effects, p.border_color, p.full_art, p.promo,
+                        p.promo_types, p.finishes,
+                        COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
+                        json_extract(p.raw_json, '$.layout') as layout,
+                        json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                        json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
+                        COALESCE(c.finish, f.value) as finish,
+                        c.condition, c.status,
+                        COALESCE(COUNT(c.id), 0) as qty,
+                        MAX(c.acquired_at) as acquired_at,
+                        CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END as owned,
+                        c.order_id,
+                        o.seller_name as order_seller,
+                        o.order_number as order_number,
+                        o.order_date as order_date,
+                        c.purchase_price
+                    FROM printings p
+                    JOIN cards card ON p.oracle_id = card.oracle_id
+                    JOIN sets s ON p.set_code = s.set_code
+                    CROSS JOIN json_each(p.finishes) AS f
+                    LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id AND c.finish = f.value{join_status_sql}
+                    LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                    WHERE {where_sql}
+                    GROUP BY p.scryfall_id, f.value
+                    ORDER BY {sort_col} {order_dir}, card.name ASC
+                """
+            else:
+                # Base set: one row per scryfall_id
+                query = f"""
+                    SELECT
+                        card.oracle_id, card.name, card.type_line, card.mana_cost, card.cmc,
+                        card.colors, card.color_identity,
+                        p.set_code, s.set_name, p.collector_number, p.rarity,
+                        p.scryfall_id, p.image_uri, p.artist,
+                        p.frame_effects, p.border_color, p.full_art, p.promo,
+                        p.promo_types, p.finishes,
+                        COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
+                        json_extract(p.raw_json, '$.layout') as layout,
+                        json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                        json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
+                        c.finish, c.condition, c.status,
+                        COALESCE(COUNT(c.id), 0) as qty,
+                        MAX(c.acquired_at) as acquired_at,
+                        CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END as owned,
+                        c.order_id,
+                        o.seller_name as order_seller,
+                        o.order_number as order_number,
+                        o.order_date as order_date,
+                        c.purchase_price
+                    FROM printings p
+                    JOIN cards card ON p.oracle_id = card.oracle_id
+                    JOIN sets s ON p.set_code = s.set_code
+                    LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id{join_status_sql}
+                    LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                    WHERE {where_sql}
+                    GROUP BY p.scryfall_id
+                    ORDER BY {sort_col} {order_dir}, card.name ASC
+                """
+            sql_params = join_params + sql_params
+        else:
+            query = f"""
+                SELECT
+                    card.oracle_id, card.name, card.type_line, card.mana_cost, card.cmc,
+                    card.colors, card.color_identity,
+                    p.set_code, s.set_name, p.collector_number, p.rarity,
+                    p.scryfall_id, p.image_uri, p.artist,
+                    p.frame_effects, p.border_color, p.full_art, p.promo,
+                    p.promo_types, p.finishes,
+                    COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
+                    json_extract(p.raw_json, '$.layout') as layout,
+                    json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                    json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
+                    c.finish, c.condition, c.status,
+                    COUNT(*) as qty,
+                    MAX(c.acquired_at) as acquired_at,
+                    c.order_id,
+                    o.seller_name as order_seller,
+                    o.order_number as order_number,
+                    o.order_date as order_date,
+                    c.purchase_price
+                FROM collection c
+                JOIN printings p ON c.scryfall_id = p.scryfall_id
+                JOIN cards card ON p.oracle_id = card.oracle_id
+                JOIN sets s ON p.set_code = s.set_code
+                LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                WHERE {where_sql}
+                GROUP BY p.scryfall_id, c.finish, c.condition, c.status
+                ORDER BY {sort_col} {order_dir}, card.name ASC
+            """
 
         cursor = conn.execute(query, sql_params)
         rows = cursor.fetchall()
@@ -1030,6 +1199,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 if face0 or face1:
                     mana_cost = " // ".join(p for p in [face0, face1] if p)
             card = {
+                "oracle_id": row["oracle_id"],
                 "name": row["flavor_name"] or row["name"],
                 "oracle_name": row["name"] if row["flavor_name"] and row["flavor_name"] != row["name"] else None,
                 "type_line": row["type_line"],
@@ -1056,7 +1226,16 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 "status": row["status"],
                 "qty": row["qty"],
                 "acquired_at": row["acquired_at"],
+                "owned": bool(row["owned"]) if include_unowned else True,
             }
+            # Order info
+            order_id = row["order_id"] if "order_id" in row.keys() else None
+            if order_id:
+                card["order_id"] = order_id
+                card["order_seller"] = row["order_seller"]
+                card["order_number"] = row["order_number"]
+                card["order_date"] = row["order_date"]
+                card["purchase_price"] = row["purchase_price"]
             card["tcg_price"] = None
             card["ck_price"] = None
             card["ck_url"] = ""
@@ -1073,6 +1252,82 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         conn.close()
         self._send_json(results)
+
+    def _api_card(self, scryfall_id: str):
+        """Return full card data for a single printing by scryfall_id."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        row = conn.execute(
+            """
+            SELECT
+                card.oracle_id, card.name, card.type_line, card.mana_cost, card.cmc,
+                card.colors, card.color_identity,
+                p.set_code, s.set_name, p.collector_number, p.rarity,
+                p.scryfall_id, p.image_uri, p.artist,
+                p.frame_effects, p.border_color, p.full_art, p.promo,
+                p.promo_types, p.finishes,
+                COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
+                json_extract(p.raw_json, '$.layout') as layout,
+                json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana
+            FROM printings p
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code
+            WHERE p.scryfall_id = ?
+            """,
+            (scryfall_id,),
+        ).fetchone()
+
+        if not row:
+            conn.close()
+            self._send_json({"error": "Card not found"}, 404)
+            return
+
+        mana_cost = row["mana_cost"]
+        if not mana_cost:
+            face0 = row["face0_mana"] or ""
+            face1 = row["face1_mana"] or ""
+            if face0 or face1:
+                mana_cost = " // ".join(p for p in [face0, face1] if p)
+
+        result = {
+            "oracle_id": row["oracle_id"],
+            "name": row["flavor_name"] or row["name"],
+            "oracle_name": row["name"] if row["flavor_name"] and row["flavor_name"] != row["name"] else None,
+            "type_line": row["type_line"],
+            "mana_cost": mana_cost,
+            "cmc": row["cmc"],
+            "colors": row["colors"],
+            "color_identity": row["color_identity"],
+            "set_code": row["set_code"],
+            "set_name": row["set_name"],
+            "collector_number": row["collector_number"],
+            "rarity": row["rarity"],
+            "scryfall_id": row["scryfall_id"],
+            "image_uri": row["image_uri"],
+            "artist": row["artist"],
+            "frame_effects": row["frame_effects"],
+            "border_color": row["border_color"],
+            "full_art": bool(row["full_art"]),
+            "promo": bool(row["promo"]),
+            "promo_types": row["promo_types"],
+            "finishes": row["finishes"],
+            "layout": row["layout"] or "normal",
+        }
+
+        # Prices
+        result["tcg_price"] = None
+        result["ck_price"] = None
+        result["ck_url"] = ""
+        uuid = self.generator.get_uuid_for_scryfall_id(scryfall_id)
+        if uuid:
+            result["tcg_price"] = _get_tcg_price(uuid, False)
+            result["ck_price"] = _get_ck_price(uuid, False)
+        result["ck_url"] = self.generator.get_ck_url(scryfall_id, False)
+
+        conn.close()
+        self._send_json(result)
 
     def _api_prices_status(self):
         path = get_allpricestoday_path()
@@ -2149,11 +2404,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _process_image_sse(self, sid, img_idx, img, force, send_event):
         """Process a single image: OCR -> Claude -> Scryfall, streaming SSE events."""
-        from mtg_collector.services.ocr import run_ocr_with_boxes
-        from mtg_collector.services.claude import ClaudeVision
-        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.cli.ingest_ocr import _build_scryfall_query
         from mtg_collector.db.schema import init_db
+        from mtg_collector.services.claude import ClaudeVision
+        from mtg_collector.services.ocr import run_ocr_with_boxes
+        from mtg_collector.services.scryfall import ScryfallAPI
         from mtg_collector.utils import now_iso
 
         image_path = str(_get_ingest_images_dir() / img["stored_name"])
@@ -2369,11 +2624,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_ingest_confirm(self):
         """Confirm a card: add to collection + ingest_lineage."""
-        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.db.models import (
-            CardRepository, SetRepository, PrintingRepository, CollectionRepository, CollectionEntry,
+            CardRepository,
+            CollectionEntry,
+            CollectionRepository,
+            PrintingRepository,
+            SetRepository,
         )
         from mtg_collector.db.schema import init_db
+        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.utils import now_iso
 
         data = self._read_json_body()
@@ -2502,6 +2761,250 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         self._send_json({"candidates": formatted})
 
+    # ── Order API endpoints ──
+
+    def _api_orders_list(self):
+        """List all orders with card counts."""
+        from mtg_collector.db.models import OrderRepository
+        from mtg_collector.db.schema import init_db
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = OrderRepository(conn)
+        orders = repo.list_all()
+        conn.close()
+        self._send_json(orders)
+
+    def _api_order_cards(self, order_id: int):
+        """Get cards in an order."""
+        from mtg_collector.db.models import OrderRepository
+        from mtg_collector.db.schema import init_db
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = OrderRepository(conn)
+        cards = repo.get_order_cards(order_id)
+        conn.close()
+        self._send_json(cards)
+
+    def _api_order_parse(self):
+        """Parse order text into structured data."""
+        from mtg_collector.services.order_parser import parse_order
+        data = self._read_json_body()
+        if data is None:
+            return
+        text = data.get("text", "")
+        fmt = data.get("format")
+        if fmt == "auto":
+            fmt = None
+        orders = parse_order(text, fmt)
+        # Serialize to JSON-safe dicts
+        result = []
+        for o in orders:
+            result.append({
+                "order_number": o.order_number,
+                "source": o.source,
+                "seller_name": o.seller_name,
+                "order_date": o.order_date,
+                "subtotal": o.subtotal,
+                "shipping": o.shipping,
+                "tax": o.tax,
+                "total": o.total,
+                "shipping_status": o.shipping_status,
+                "estimated_delivery": o.estimated_delivery,
+                "items": [
+                    {
+                        "card_name": item.card_name,
+                        "set_hint": item.set_hint,
+                        "condition": item.condition,
+                        "foil": item.foil,
+                        "quantity": item.quantity,
+                        "price": item.price,
+                        "treatment": item.treatment,
+                        "rarity_hint": item.rarity_hint,
+                    }
+                    for item in o.items
+                ],
+            })
+        self._send_json(result)
+
+    def _api_order_resolve(self):
+        """Resolve parsed orders against Scryfall."""
+        from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.order_parser import ParsedOrder, ParsedOrderItem
+        from mtg_collector.services.order_resolver import resolve_orders
+        from mtg_collector.services.scryfall import ScryfallAPI
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        # Reconstruct ParsedOrder objects from JSON
+        orders = []
+        for od in data.get("orders", []):
+            order = ParsedOrder(
+                order_number=od.get("order_number"),
+                source=od.get("source", "tcgplayer"),
+                seller_name=od.get("seller_name"),
+                order_date=od.get("order_date"),
+                subtotal=od.get("subtotal"),
+                shipping=od.get("shipping"),
+                tax=od.get("tax"),
+                total=od.get("total"),
+                shipping_status=od.get("shipping_status"),
+                estimated_delivery=od.get("estimated_delivery"),
+            )
+            for item_d in od.get("items", []):
+                order.items.append(ParsedOrderItem(
+                    card_name=item_d["card_name"],
+                    set_hint=item_d.get("set_hint"),
+                    condition=item_d.get("condition", "Near Mint"),
+                    foil=item_d.get("foil", False),
+                    quantity=item_d.get("quantity", 1),
+                    price=item_d.get("price"),
+                    treatment=item_d.get("treatment"),
+                    rarity_hint=item_d.get("rarity_hint"),
+                ))
+            orders.append(order)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        scryfall = ScryfallAPI()
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        resolved = resolve_orders(orders, scryfall, card_repo, set_repo, printing_repo, conn)
+
+        # Serialize
+        result = []
+        for ro in resolved:
+            items = []
+            for item in ro.items:
+                items.append({
+                    "card_name": item.card_name or item.parsed.card_name,
+                    "parsed_name": item.parsed.card_name,
+                    "set_hint": item.parsed.set_hint,
+                    "set_code": item.set_code,
+                    "collector_number": item.collector_number,
+                    "scryfall_id": item.scryfall_id,
+                    "image_uri": item.image_uri,
+                    "condition": item.parsed.condition,
+                    "foil": item.parsed.foil,
+                    "quantity": item.parsed.quantity,
+                    "price": item.parsed.price,
+                    "treatment": item.parsed.treatment,
+                    "rarity_hint": item.parsed.rarity_hint,
+                    "error": item.error,
+                    "resolved": item.scryfall_id is not None,
+                })
+            result.append({
+                "order_number": ro.parsed.order_number,
+                "source": ro.parsed.source,
+                "seller_name": ro.parsed.seller_name,
+                "order_date": ro.parsed.order_date,
+                "subtotal": ro.parsed.subtotal,
+                "shipping": ro.parsed.shipping,
+                "tax": ro.parsed.tax,
+                "total": ro.parsed.total,
+                "shipping_status": ro.parsed.shipping_status,
+                "estimated_delivery": ro.parsed.estimated_delivery,
+                "items": items,
+            })
+
+        conn.close()
+        self._send_json(result)
+
+    def _api_order_commit(self):
+        """Commit resolved orders to the database."""
+        from mtg_collector.db.models import (
+            CollectionRepository,
+            OrderRepository,
+        )
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.order_parser import ParsedOrder, ParsedOrderItem
+        from mtg_collector.services.order_resolver import (
+            ResolvedItem,
+            ResolvedOrder,
+            commit_orders,
+        )
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        status = data.get("status", "ordered")
+        source = data.get("source", "order_import")
+
+        # Reconstruct ResolvedOrder objects
+        resolved_orders = []
+        for od in data.get("orders", []):
+            parsed = ParsedOrder(
+                order_number=od.get("order_number"),
+                source=od.get("source", "tcgplayer"),
+                seller_name=od.get("seller_name"),
+                order_date=od.get("order_date"),
+                subtotal=od.get("subtotal"),
+                shipping=od.get("shipping"),
+                tax=od.get("tax"),
+                total=od.get("total"),
+                shipping_status=od.get("shipping_status"),
+                estimated_delivery=od.get("estimated_delivery"),
+            )
+            ro = ResolvedOrder(parsed=parsed)
+            for item_d in od.get("items", []):
+                parsed_item = ParsedOrderItem(
+                    card_name=item_d.get("parsed_name", item_d["card_name"]),
+                    set_hint=item_d.get("set_hint"),
+                    condition=item_d.get("condition", "Near Mint"),
+                    foil=item_d.get("foil", False),
+                    quantity=item_d.get("quantity", 1),
+                    price=item_d.get("price"),
+                    treatment=item_d.get("treatment"),
+                    rarity_hint=item_d.get("rarity_hint"),
+                )
+                ri = ResolvedItem(
+                    parsed=parsed_item,
+                    scryfall_id=item_d.get("scryfall_id"),
+                    card_name=item_d.get("card_name"),
+                    set_code=item_d.get("set_code"),
+                    collector_number=item_d.get("collector_number"),
+                    image_uri=item_d.get("image_uri"),
+                    error=item_d.get("error"),
+                )
+                ro.items.append(ri)
+            resolved_orders.append(ro)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        collection_repo = CollectionRepository(conn)
+        order_repo = OrderRepository(conn)
+
+        summary = commit_orders(
+            resolved_orders, order_repo, collection_repo, conn,
+            status=status, source=source,
+        )
+
+        conn.close()
+        self._send_json(summary)
+
+    def _api_order_receive(self, order_id: int):
+        """Mark all ordered cards in an order as owned."""
+        from mtg_collector.db.models import OrderRepository
+        from mtg_collector.db.schema import init_db
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = OrderRepository(conn)
+        count = repo.receive_order(order_id)
+        conn.commit()
+        conn.close()
+        self._send_json({"received": count})
+
     def _read_json_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length == 0:
@@ -2532,8 +3035,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_wishlist_list(self, params: dict):
         """List wishlist entries."""
-        from mtg_collector.db.schema import init_db
         from mtg_collector.db.models import WishlistRepository
+        from mtg_collector.db.schema import init_db
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -2557,10 +3060,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_wishlist_add(self, data: dict):
         """Add a wishlist entry."""
+        from mtg_collector.db.models import (
+            CardRepository,
+            PrintingRepository,
+            SetRepository,
+            WishlistEntry,
+            WishlistRepository,
+        )
         from mtg_collector.db.schema import init_db
-        from mtg_collector.db.models import WishlistRepository, WishlistEntry
         from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
-        from mtg_collector.db.models import CardRepository, SetRepository, PrintingRepository
         from mtg_collector.utils import now_iso
 
         name = data.get("name", "").strip()
@@ -2606,12 +3114,76 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        self._send_json({"id": new_id, "name": card_data["name"]})
+        self._send_json({"id": new_id, "name": card_data["name"], "oracle_id": oracle_id, "scryfall_id": scryfall_id})
+
+    def _api_wishlist_bulk_add(self, data: dict):
+        """Bulk-add cards to the wishlist."""
+        from mtg_collector.db.models import (
+            CardRepository,
+            PrintingRepository,
+            SetRepository,
+            WishlistEntry,
+            WishlistRepository,
+        )
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
+        from mtg_collector.utils import now_iso
+
+        cards = data.get("cards", [])
+        if not cards:
+            self._send_json({"added": [], "errors": []})
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+        wishlist_repo = WishlistRepository(conn)
+        scryfall = ScryfallAPI()
+
+        added = []
+        errors = []
+
+        for item in cards:
+            name = (item.get("name") or "").strip()
+            if not name:
+                errors.append({"name": name, "error": "name is required"})
+                continue
+            set_code = item.get("set_code")
+            cn = item.get("collector_number")
+            try:
+                results = scryfall.search_card(name, set_code=set_code, collector_number=cn)
+                if not results:
+                    errors.append({"name": name, "error": f"No card found matching '{name}'"})
+                    continue
+                card_data = results[0]
+                cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+                oracle_id = card_data["oracle_id"]
+                scryfall_id = card_data["id"] if set_code else None
+                entry = WishlistEntry(
+                    id=None,
+                    oracle_id=oracle_id,
+                    scryfall_id=scryfall_id,
+                    priority=item.get("priority", 0),
+                    added_at=now_iso(),
+                    source="server",
+                )
+                new_id = wishlist_repo.add(entry)
+                added.append({"id": new_id, "name": card_data["name"], "oracle_id": oracle_id, "scryfall_id": scryfall_id})
+            except Exception as exc:
+                errors.append({"name": name, "error": str(exc)})
+
+        conn.commit()
+        conn.close()
+        self._send_json({"added": added, "errors": errors})
 
     def _api_wishlist_delete(self, wid: int):
         """Delete a wishlist entry."""
-        from mtg_collector.db.schema import init_db
         from mtg_collector.db.models import WishlistRepository
+        from mtg_collector.db.schema import init_db
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -2629,8 +3201,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_wishlist_fulfill(self, wid: int):
         """Mark a wishlist entry as fulfilled."""
-        from mtg_collector.db.schema import init_db
         from mtg_collector.db.models import WishlistRepository
+        from mtg_collector.db.schema import init_db
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -2648,9 +3220,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_set_browse(self, set_code: str, params: dict):
         """Browse all printings in a set with owned/wanted annotations."""
+        from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
         from mtg_collector.db.schema import init_db
         from mtg_collector.services.scryfall import ScryfallAPI, ensure_set_cached
-        from mtg_collector.db.models import CardRepository, SetRepository, PrintingRepository
 
         set_code = set_code.lower()
 
@@ -2681,7 +3253,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             FROM printings p
             JOIN cards card ON p.oracle_id = card.oracle_id
             LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id AND c.status = 'owned'
-            LEFT JOIN wishlist w ON (p.oracle_id = w.oracle_id AND w.fulfilled_at IS NULL)
+            LEFT JOIN wishlist w ON (
+                w.scryfall_id = p.scryfall_id
+                OR (w.scryfall_id IS NULL AND w.oracle_id = p.oracle_id)
+            ) AND w.fulfilled_at IS NULL
             WHERE p.set_code = ?
             ORDER BY CAST(p.collector_number AS INTEGER), p.collector_number
         """
@@ -2835,6 +3410,7 @@ def run(args):
     print(f"Upload: {scheme}://localhost:{args.port}/upload")
     print(f"Recent: {scheme}://localhost:{args.port}/recent")
     print(f"Disambiguate: {scheme}://localhost:{args.port}/disambiguate")
+    print(f"Ingestor (Orders): {scheme}://localhost:{args.port}/ingestor-order")
     print("Press Ctrl+C to stop.")
 
     try:
