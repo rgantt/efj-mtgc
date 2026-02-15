@@ -2486,7 +2486,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             FROM printings p
             JOIN cards card ON p.oracle_id = card.oracle_id
             LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id AND c.status = 'owned'
-            LEFT JOIN wishlist w ON (p.oracle_id = w.oracle_id AND w.fulfilled_at IS NULL)
+            LEFT JOIN wishlist w ON (
+                w.scryfall_id = p.scryfall_id
+                OR (w.scryfall_id IS NULL AND w.oracle_id = p.oracle_id)
+            ) AND w.fulfilled_at IS NULL
             WHERE p.set_code = ?
             ORDER BY CAST(p.collector_number AS INTEGER), p.collector_number
         """
