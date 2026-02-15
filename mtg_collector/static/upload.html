@@ -65,8 +65,8 @@ button.danger:hover { background: #b71c1c; }
   background: rgba(0,0,0,0.5);
 }
 #camera-view .camera-controls button {
-  padding: 10px 24px;
-  font-size: 1rem;
+  padding: 15px 30px;
+  font-size: 1.4rem;
 }
 #camera-view canvas { display: none; }
 #camera-view .photo-count {
@@ -249,8 +249,8 @@ async function handleFiles(fileList) {
   }
 
   for (const u of data.uploaded) {
-    images.push(u);
-    addImageCard(u);
+    images.unshift(u);
+    addImageCard(u, true);
   }
   updateActions();
 }
@@ -272,8 +272,8 @@ async function uploadBlob(blob, filename) {
   }
 
   for (const u of data.uploaded) {
-    images.push(u);
-    addImageCard(u);
+    images.unshift(u);
+    addImageCard(u, true);
   }
   updateActions();
 }
@@ -329,7 +329,7 @@ function stopCamera() {
   document.getElementById('photo-count').style.display = 'none';
 }
 
-function addImageCard(img) {
+function addImageCard(img, prepend = false) {
   const card = document.createElement('div');
   card.className = 'image-card';
   card.dataset.id = img.id;
@@ -338,7 +338,8 @@ function addImageCard(img) {
     <div class="info">${img.filename}</div>
     <button class="delete-btn" onclick="deleteImage(${img.id}, this)" title="Delete">&times;</button>
   `;
-  imageList.appendChild(card);
+  if (prepend) imageList.prepend(card);
+  else imageList.appendChild(card);
 }
 
 async function deleteImage(id, btn) {

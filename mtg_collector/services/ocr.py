@@ -35,6 +35,7 @@ def run_ocr(image_path: str) -> list[str]:
     """
     reader = easyocr.Reader(
         ["en"],
+        gpu=False,
         model_storage_directory=_MODEL_DIR,
         verbose=False,
     )
@@ -52,6 +53,7 @@ def run_ocr_with_boxes(image_path: str) -> list[dict]:
     """
     reader = easyocr.Reader(
         ["en"],
+        gpu=False,
         model_storage_directory=_MODEL_DIR,
         verbose=False,
     )

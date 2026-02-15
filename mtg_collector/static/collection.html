@@ -1572,6 +1572,7 @@ function showCardModal(card) {
       <div class="modal-links">
         <a class="badge link" href="${sfUrl}" target="_blank" rel="noopener">SF${tcgPrice !== '—' ? ' ' + tcgPrice : ''}</a>
         <a class="badge link" href="${ckUrl}" target="_blank" rel="noopener">CK${ckPrice !== '—' ? ' ' + ckPrice : ''}</a>
+        ${card.ingest_image_id ? `<a class="badge link" href="/correct?image_id=${card.ingest_image_id}&card_idx=${card.ingest_card_idx}">Correct</a>` : ''}
         <button class="want-btn${getWishlistEntry(card) ? ' wanted' : ''}" id="modal-want-btn">${getWishlistEntry(card) ? 'Wanted' : 'Want'}</button>
       </div>
     `;
@@ -2076,6 +2077,10 @@ function applyClientSort(cards) {
       case 'qty': va = a.qty || 0; vb = b.qty || 0; break;
       case 'collector_number': va = parseInt(a.collector_number) || 0; vb = parseInt(b.collector_number) || 0; break;
       case 'date_added': va = a.acquired_at || ''; vb = b.acquired_at || ''; break;
+      case 'price': {
+        const pf = ((_settings.price_sources || 'tcg,ck').split(',')[0] === 'ck') ? 'ck_price' : 'tcg_price';
+        va = parseFloat(a[pf]) || 0; vb = parseFloat(b[pf]) || 0; break;
+      }
       default:
         // Price columns
         if (sortKey === 'tcg_price' || sortColumn === 'tcg_price') { va = parseFloat(a.tcg_price) || 0; vb = parseFloat(b.tcg_price) || 0; }

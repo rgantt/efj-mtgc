@@ -74,15 +74,15 @@ button.secondary:hover { background: #444; }
 
 .card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
   background: #0d1117;
   border-bottom: 1px solid #0f3460;
 }
 .card-header .crop-thumb {
-  width: 140px;
-  height: 196px;
+  width: 280px;
+  height: 392px;
   background: #0d1117;
   border-radius: 4px;
   overflow: hidden;
@@ -93,9 +93,12 @@ button.secondary:hover { background: #444; }
   position: absolute;
   transform-origin: 0 0;
 }
-.card-header .card-meta {
+.card-header .right-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .card-header .card-meta h3 {
   color: #e94560;
@@ -105,6 +108,7 @@ button.secondary:hover { background: #444; }
 .card-header .card-meta .meta-line {
   font-size: 0.8rem;
   color: #888;
+  margin-bottom: 1px;
 }
 .card-header .card-meta .image-source {
   font-size: 0.7rem;
@@ -114,10 +118,9 @@ button.secondary:hover { background: #444; }
 
 .card-header .actions-col {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  align-items: flex-end;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .card-header .actions-col .finish-select {
   padding: 4px 8px;
@@ -126,6 +129,12 @@ button.secondary:hover { background: #444; }
   background: #1a1a2e;
   color: #e0e0e0;
   font-size: 0.8rem;
+}
+@media (max-width: 600px) {
+  .card-header .crop-thumb {
+    width: 140px;
+    height: 196px;
+  }
 }
 
 .search-row {
@@ -198,8 +207,13 @@ button.secondary:hover { background: #444; }
 /* Grid mode for many candidates */
 .candidates-list.grid-mode {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(10, 1fr);
   gap: 4px;
+}
+@media (max-width: 600px) {
+  .candidates-list.grid-mode {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 .candidates-list.grid-mode .candidate-row {
   flex-direction: column; padding: 3px; gap: 3px; align-items: center;
@@ -331,30 +345,39 @@ function buildCardBlock(pc, idx) {
 
   const card = pc.card_info || {};
   const name = card.name || '(Unknown)';
-  const metaParts = [];
-  if (card.type) metaParts.push(card.type);
-  if (card.set_code) metaParts.push(`Set: ${card.set_code.toUpperCase()}`);
-  if (card.collector_number) metaParts.push(`#${card.collector_number}`);
-  if (card.artist) metaParts.push(`Art: ${card.artist}`);
+  const metaLines = [];
+  if (card.mana_cost) metaLines.push(card.mana_cost.replace(/\{|\}/g, ''));
+  if (card.type) {
+    let typeLine = card.type;
+    if (card.subtype) typeLine += ` — ${card.subtype}`;
+    metaLines.push(typeLine);
+  }
+  if (card.rules_text) metaLines.push(card.rules_text);
+  if (card.power != null || card.toughness != null) metaLines.push(`${card.power ?? '?'}/${card.toughness ?? '?'}`);
+  const idParts = [];
+  if (card.set_code) idParts.push(card.set_code.toUpperCase());
+  if (card.collector_number) idParts.push(`#${card.collector_number}`);
+  if (card.artist) idParts.push(card.artist);
+  if (idParts.length) metaLines.push(idParts.join(' · '));
 
   block.innerHTML = `
     <div class="card-header">
       <div class="crop-thumb" id="crop-${idx}"></div>
-      <div class="card-meta">
-        <h3>${escapeHtml(name)}</h3>
-        <div class="meta-line">${escapeHtml(metaParts.join(' | '))}</div>
-        <div class="image-source">${escapeHtml(pc.image_filename)}</div>
-      </div>
-      <div class="actions-col">
-        <div style="display:flex;gap:4px;">
+      <div class="right-col">
+        <div class="card-meta">
+          <h3>${escapeHtml(name)}</h3>
+          ${metaLines.map(l => `<div class="meta-line">${escapeHtml(l)}</div>`).join('')}
+          <div class="image-source">${escapeHtml(pc.image_filename)}</div>
+        </div>
+        <div class="actions-col">
           <button class="confirm-btn" data-idx="${idx}" disabled>Confirm</button>
           <select class="finish-select" data-idx="${idx}">
             <option value="nonfoil">Nonfoil</option>
             <option value="foil">Foil</option>
             <option value="etched">Etched</option>
           </select>
+          <button class="secondary skip-btn" data-idx="${idx}" style="font-size:0.8rem;padding:4px 10px;">Skip</button>
         </div>
-        <button class="secondary skip-btn" data-idx="${idx}" style="font-size:0.8rem;padding:4px 10px;">Skip</button>
       </div>
     </div>
     <div class="search-row">

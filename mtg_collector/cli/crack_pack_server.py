@@ -421,6 +421,19 @@ def _process_image_core(conn, image_id, img, log_fn):
                 card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
             if card_data:
                 candidates = [card_data]
+                # If the set+CN lookup returned a different card name than
+                # Claude extracted, also do a name search so the correct card
+                # appears in disambiguation.
+                extracted_name = card_info.get("name", "")
+                returned_name = card_data.get("name", "")
+                if extracted_name and extracted_name.lower() != returned_name.lower():
+                    _log_ingest(f"Name mismatch: Claude='{extracted_name}' vs Scryfall='{returned_name}', adding name search")
+                    _scryfall_rate_limit()
+                    name_results = scryfall.search_card(extracted_name)
+                    seen_ids = {c.get("id") for c in candidates}
+                    for r in name_results:
+                        if r.get("id") not in seen_ids:
+                            candidates.append(r)
 
         if not candidates:
             name = card_info.get("name")
@@ -1113,20 +1126,24 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                         json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
                         COALESCE(c.finish, f.value) as finish,
                         c.condition, c.status,
-                        COALESCE(COUNT(c.id), 0) as qty,
+                        COALESCE(COUNT(DISTINCT c.id), 0) as qty,
                         MAX(c.acquired_at) as acquired_at,
                         CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END as owned,
                         c.order_id,
                         o.seller_name as order_seller,
                         o.order_number as order_number,
                         o.order_date as order_date,
-                        c.purchase_price
+                        c.purchase_price,
+                        MAX(ii.id) as ingest_image_id,
+                        MAX(il.card_index) as ingest_card_idx
                     FROM printings p
                     JOIN cards card ON p.oracle_id = card.oracle_id
                     JOIN sets s ON p.set_code = s.set_code
                     CROSS JOIN json_each(p.finishes) AS f
                     LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id AND c.finish = f.value{join_status_sql}
-                    LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                    LEFT JOIN orders o ON c.order_id = o.id
+                    LEFT JOIN ingest_lineage il ON il.collection_id = c.id
+                    LEFT JOIN ingest_images ii ON il.image_md5 = ii.md5{wanted_join}
                     WHERE {where_sql}
                     GROUP BY p.scryfall_id, f.value
                     ORDER BY {sort_col} {order_dir}, card.name ASC
@@ -1146,19 +1163,23 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                         json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
                         json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
                         c.finish, c.condition, c.status,
-                        COALESCE(COUNT(c.id), 0) as qty,
+                        COALESCE(COUNT(DISTINCT c.id), 0) as qty,
                         MAX(c.acquired_at) as acquired_at,
                         CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END as owned,
                         c.order_id,
                         o.seller_name as order_seller,
                         o.order_number as order_number,
                         o.order_date as order_date,
-                        c.purchase_price
+                        c.purchase_price,
+                        MAX(ii.id) as ingest_image_id,
+                        MAX(il.card_index) as ingest_card_idx
                     FROM printings p
                     JOIN cards card ON p.oracle_id = card.oracle_id
                     JOIN sets s ON p.set_code = s.set_code
                     LEFT JOIN collection c ON p.scryfall_id = c.scryfall_id{join_status_sql}
-                    LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                    LEFT JOIN orders o ON c.order_id = o.id
+                    LEFT JOIN ingest_lineage il ON il.collection_id = c.id
+                    LEFT JOIN ingest_images ii ON il.image_md5 = ii.md5{wanted_join}
                     WHERE {where_sql}
                     GROUP BY p.scryfall_id
                     ORDER BY {sort_col} {order_dir}, card.name ASC
@@ -1178,18 +1199,22 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                     json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
                     json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana,
                     c.finish, c.condition, c.status,
-                    COUNT(*) as qty,
+                    COUNT(DISTINCT c.id) as qty,
                     MAX(c.acquired_at) as acquired_at,
                     c.order_id,
                     o.seller_name as order_seller,
                     o.order_number as order_number,
                     o.order_date as order_date,
-                    c.purchase_price
+                    c.purchase_price,
+                    MAX(ii.id) as ingest_image_id,
+                    MAX(il.card_index) as ingest_card_idx
                 FROM collection c
                 JOIN printings p ON c.scryfall_id = p.scryfall_id
                 JOIN cards card ON p.oracle_id = card.oracle_id
                 JOIN sets s ON p.set_code = s.set_code
-                LEFT JOIN orders o ON c.order_id = o.id{wanted_join}
+                LEFT JOIN orders o ON c.order_id = o.id
+                LEFT JOIN ingest_lineage il ON il.collection_id = c.id
+                LEFT JOIN ingest_images ii ON il.image_md5 = ii.md5{wanted_join}
                 WHERE {where_sql}
                 GROUP BY p.scryfall_id, c.finish, c.condition, c.status
                 ORDER BY {sort_col} {order_dir}, card.name ASC
@@ -1244,6 +1269,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 card["order_number"] = row["order_number"]
                 card["order_date"] = row["order_date"]
                 card["purchase_price"] = row["purchase_price"]
+            # Ingest lineage (for "Correct" link)
+            ingest_img = row["ingest_image_id"] if "ingest_image_id" in row.keys() else None
+            if ingest_img is not None:
+                card["ingest_image_id"] = ingest_img
+                card["ingest_card_idx"] = row["ingest_card_idx"]
             card["tcg_price"] = None
             card["ck_price"] = None
             card["ck_url"] = ""
