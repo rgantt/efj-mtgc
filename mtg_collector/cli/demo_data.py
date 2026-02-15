@@ -72,7 +72,7 @@ DEMO_CARDS = [
     ("mkm", "210", "foil", "Near Mint", "owned"),             # Teysa, Opulent Oligarch
 
     # --- Duplicate cards (same printing, different copies) ---
-    ("fdn", "132", "nonfoil", "Lightly Played", "owned"),     # Lightning Bolt #3
+    ("fdn", "132", "nonfoil", "Near Mint", "owned"),           # Lightning Bolt #3 (same finish+condition → aggregates)
     ("dsk", "119", "nonfoil", "Near Mint", "owned"),          # Blazemaw Hellion #2
 
     # === ORDERED cards (linked to demo orders) ===
