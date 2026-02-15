@@ -1,14 +1,16 @@
 # MTG Collection Builder
 
-A CLI + web UI tool for managing Magic: The Gathering card collections. Add cards by reading their corner info from photos (Claude Vision), full card photos (local OCR + Claude), or manual ID entry. Your collection is stored locally in SQLite and can be exported to Moxfield, Archidekt, or Deckbox. Includes a web UI for browsing your collection, cracking virtual booster packs, and image-based card ingestion.
+A CLI + web UI tool for managing Magic: The Gathering card collections. Add cards by reading their corner info from photos (Claude Vision), full card photos (local OCR + Claude), manual ID entry, or importing purchase orders from TCGPlayer and Card Kingdom. Your collection is stored locally in SQLite and can be exported to Moxfield, Archidekt, or Deckbox. Includes a web UI for browsing your collection, cracking virtual booster packs, image-based card ingestion, and order import.
 
 ## Features
 
 - **Corner photo ingestion**: Photograph card corners and Claude Vision extracts rarity, collector number, set code, and foil status
 - **Full card photo ingestion**: Upload full card images via the web UI — local OCR + Claude identifies card names
 - **Manual ID entry**: Add cards directly by rarity/collector-number/set (no API key needed)
+- **Order ingestion**: Import purchase orders from TCGPlayer (HTML or text) and Card Kingdom (text) with treatment-aware card matching
+- **Order tracking**: Track orders by seller with per-card pricing, batch-receive when orders arrive
 - **Bulk Scryfall caching**: Download all card data from Scryfall in 3 API calls for offline browsing
-- **Web UI**: Browse collection, crack virtual booster packs, explore sheet layouts, ingest cards from images
+- **Web UI**: Browse collection, crack virtual booster packs, explore sheet layouts, ingest cards from images or orders
 - **Card lifecycle tracking**: Track card status (owned → ordered → listed → sold → removed) with audit log
 - **Wishlist**: Track cards you want, with priority and price alerts
 - **Local caching**: Scryfall data cached in SQLite to minimize API calls
@@ -23,8 +25,14 @@ git clone https://github.com/thaen/efj-mtgc.git
 cd efj-mtgc
 uv sync
 
-# Initialize database
-mtg db init
+# One-command setup: init DB, cache Scryfall data, fetch MTGJSON
+mtg setup
+
+# Or with demo data (~50 cards) to browse immediately
+mtg setup --demo
+
+# Start the web UI
+mtg crack-pack-server   # Open http://localhost:8080
 
 # Add cards by ID (no API key needed)
 mtg ingest-ids --id R 0200 EOE --id C 0075 EOE foil
@@ -33,12 +41,8 @@ mtg ingest-ids --id R 0200 EOE --id C 0075 EOE foil
 export ANTHROPIC_API_KEY="sk-ant-..."
 mtg ingest-corners ~/photos/corners.jpg
 
-# Cache all Scryfall data for offline browsing
-mtg cache all
-
-# Start the web UI
-mtg data fetch          # Download MTGJSON data (for booster packs)
-mtg crack-pack-server   # Open http://localhost:8080
+# Import a TCGPlayer order
+mtg ingest-order ~/Downloads/order-page.html
 
 # See what you've got
 mtg list
@@ -47,6 +51,8 @@ mtg stats
 # Export to Moxfield
 mtg export -f moxfield -o collection.csv
 ```
+
+The `mtg setup` command handles database initialization, Scryfall bulk data caching (~80k cards), and MTGJSON data download in one step. Use `--skip-cache` or `--skip-data` to skip individual steps.
 
 ## Requirements
 
@@ -93,6 +99,29 @@ mtg ingest-corners *.jpg                               # Multiple photos
 mtg ingest-corners photo.jpg --review                  # Review before adding
 mtg ingest-corners photo.jpg --source "GP Vegas"       # Tag with source
 mtg ingest-corners photo.jpg --condition LP            # Set condition
+```
+
+### Ingest orders from TCGPlayer or Card Kingdom
+
+Import purchase orders to track cards as "ordered" with seller and pricing info. Supports TCGPlayer saved HTML pages (including paginated multi-file orders), TCGPlayer text (clipboard paste), and Card Kingdom text.
+
+```bash
+mtg ingest-order order.html                            # Single order page
+mtg ingest-order page1.html page2.html page3.html      # Multiple pages (paginated)
+mtg ingest-order order.txt -f tcg_text                  # Explicit format
+mtg ingest-order --dry-run order.html                   # Preview without saving
+mtg ingest-order --status owned order.html              # Import as owned (default: ordered)
+pbpaste | mtg ingest-order                              # From clipboard via stdin
+```
+
+Ingestion is idempotent — re-importing the same order (same order number + seller) is a no-op. Non-MTG products (Pokemon, Lorcana, Disney Lorcana) are automatically skipped. Treatment variants (borderless, extended art, showcase) are matched to the correct Scryfall printing.
+
+### Manage orders
+
+```bash
+mtg orders list                  # List all orders with card counts and totals
+mtg orders show 27               # Show order details with per-card printings
+mtg orders receive 27            # Batch flip all cards in order from ordered → owned
 ```
 
 ### Import/Export
@@ -187,6 +216,7 @@ Pages available at `http://localhost:8080`:
 - **Crack-a-Pack** (`/crack`) — Virtual booster pack simulator with price data
 - **Explore Sheets** (`/sheets`) — Browse booster sheet layouts by set and product type
 - **Card Ingestor** (`/ingestor-ocr`) — Upload card images for OCR-based identification and collection entry
+- **Order Ingestor** (`/ingestor-order`) — Import TCGPlayer/Card Kingdom orders via paste or file upload
 
 ## Data Model
 
@@ -199,18 +229,19 @@ Each physical card you own is stored as a separate row with:
 | Condition | Near Mint, Lightly Played, Moderately Played, Heavily Played, Damaged |
 | Finish | nonfoil, foil, etched |
 | Language | Default: English |
-| Purchase price | Optional |
+| Purchase price | Optional (auto-populated from order ingestion) |
 | Sale price | Optional (for sold cards) |
 | Acquired date | Auto-set on import |
-| Source | corner_ingest, manual_id, moxfield_import, etc. |
+| Source | corner_ingest, manual_id, moxfield_import, order_import, etc. |
+| Order | Optional link to purchase order (seller, order number, totals) |
 | Flags | tradelist, alter, proxy, signed, misprint |
 
 ## How It Works
 
-1. **Card Identification**: Manual entry (rarity/CN/set), Claude Vision (corner photos), or local OCR + Claude (full card photos)
-2. **Scryfall Lookup**: Cards resolved by set code + collector number via Scryfall API
+1. **Card Identification**: Manual entry (rarity/CN/set), Claude Vision (corner photos), local OCR + Claude (full card photos), or order import (TCGPlayer/Card Kingdom)
+2. **Scryfall Lookup**: Cards resolved by set code + collector number via Scryfall API. Order imports use treatment-aware matching to resolve borderless, extended art, and showcase variants to the correct printing.
 3. **Local Caching**: Full card data cached in SQLite to avoid repeated API calls. `mtg cache all` bulk-caches all ~80k cards from Scryfall's bulk data endpoint.
-4. **Collection Storage**: Cards added to your collection with finish, condition, source metadata, and lifecycle status tracking
+4. **Collection Storage**: Cards added to your collection with finish, condition, source metadata, and lifecycle status tracking. Order-imported cards are linked to their purchase order for per-seller tracking.
 
 ## Development
 

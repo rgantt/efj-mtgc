@@ -37,13 +37,13 @@ def register(subparsers):
 def run(args):
     """Run the cache command."""
     if args.cache_command == "all":
-        _cache_all(force=args.force, db_path=args.db_path)
+        cache_all(force=args.force, db_path=args.db_path)
     else:
         print("Usage: mtg cache all [--force]")
         sys.exit(1)
 
 
-def _cache_all(force: bool, db_path: str):
+def cache_all(force: bool, db_path: str):
     """Download Scryfall bulk data and cache all cards/sets/printings."""
     conn = get_connection(db_path)
     init_db(conn)

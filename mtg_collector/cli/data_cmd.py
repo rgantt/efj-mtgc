@@ -6,7 +6,6 @@ import sys
 import urllib.request
 from pathlib import Path
 
-
 from mtg_collector.utils import get_mtgc_home
 
 _USER_AGENT = "MTGCollectionTool/2.0"
@@ -65,7 +64,7 @@ def register(subparsers):
 def run(args):
     """Run the data command."""
     if args.data_command == "fetch":
-        _fetch(force=args.force)
+        fetch_allprintings(force=args.force)
     elif args.data_command == "fetch-prices":
         _fetch_prices(force=args.force)
     else:
@@ -73,7 +72,7 @@ def run(args):
         sys.exit(1)
 
 
-def _fetch(force: bool = False):
+def fetch_allprintings(force: bool = False):
     """Download AllPrintings.json from MTGJSON."""
     dest = get_allprintings_path()
     dest.parent.mkdir(parents=True, exist_ok=True)
