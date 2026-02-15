@@ -20,7 +20,6 @@ class ClaudeVision:
     def extract_cards_from_ocr(
         self,
         ocr_texts: List[str],
-        expected_count: int,
         hints: Dict = None,
     ) -> List[Dict]:
         """
@@ -28,7 +27,6 @@ class ClaudeVision:
 
         Args:
             ocr_texts: List of text fragments from EasyOCR
-            expected_count: Number of cards expected in the image
             hints: Optional dict with 'set' and/or 'color' to help disambiguation
 
         Returns:
@@ -44,7 +42,7 @@ class ClaudeVision:
 
         ocr_blob = "\n".join(ocr_texts)
 
-        prompt = f"""Below is raw OCR text extracted from a photo of {expected_count} Magic: The Gathering card(s).
+        prompt = f"""Below is raw OCR text extracted from a photo of one or more Magic: The Gathering card(s).
 The OCR is noisy — text may be misspelled, fragmented, or out of order.
 
 Your job: identify each card and extract whatever fields you can confidently read.
@@ -66,7 +64,7 @@ Collector numbers — the printed format has changed over Magic's history:
 Known hints:
 {hint_block}
 
-Return a JSON array of exactly {expected_count} objects. Each object should include
+Return a JSON array with one object per card you can identify. Each object should include
 only the fields you can confidently identify from the OCR text:
 
 - "name": card name (string)
@@ -137,7 +135,6 @@ OCR TEXT:
     def extract_cards_from_ocr_with_positions(
         self,
         fragments: List[Dict],
-        expected_count: int,
         hints: Dict = None,
         status_callback: callable = None,
     ) -> tuple:
@@ -164,14 +161,28 @@ OCR TEXT:
             )
         frag_blob = "\n".join(frag_lines)
 
-        prompt = f"""Below are numbered OCR text fragments extracted from a photo of {expected_count} Magic: The Gathering card(s).
+        prompt = f"""Below are numbered OCR text fragments extracted from a photo of one or more Magic: The Gathering cards.
 Each fragment has a position (x, y, w, h) showing where it appeared in the image.
 The OCR is noisy — text may be misspelled, fragmented, or out of order.
 
-Your job: identify each card and extract whatever fields you can confidently read.
-Additionally, report which fragment indices belong to each card.
+Your job: figure out how many cards are present and extract data for each one.
 
-IMPORTANT CONSTRAINTS:
+CARD LAYOUT (top to bottom):
+  - Title (top of card)
+  - Type and Subtype (middle, below the art)
+  - Rules text (below type line — may be blank on vanilla creatures)
+  - Flavor text (italic, below rules — optional)
+  - Bottom-left corner: collector number, set code, artist name
+  - Bottom-right corner: power/toughness (creatures only)
+
+There will be large vertical gaps between the title and the type line — that is the card art.
+Cards with no rules text will have another gap between the type line and the collector info.
+All of these text regions belong to the SAME card. Do NOT split them into separate cards.
+
+If the photo contains multiple cards side by side, use horizontal position (x coordinates)
+to determine which fragments belong to which card.
+
+FIELD GUIDELINES:
 
 Card types — the ONLY valid card types in Magic are:
   Artifact, Creature, Enchantment, Instant, Land, Planeswalker, Sorcery, Battle, Tribal
@@ -188,10 +199,9 @@ Collector numbers — the printed format has changed over Magic's history:
 Known hints:
 {hint_block}
 
-Return exactly {expected_count} cards. For each card, include only the fields you can
-confidently identify from the OCR text. Always include fragment_indices.
-Omit any field you are not confident about.
-Do NOT guess or hallucinate.
+Return one object per card. Each object should consolidate ALL fragments from that card.
+Include only fields you can confidently identify. Always include fragment_indices.
+Omit any field you are not confident about. Do NOT guess or hallucinate.
 If a hint provides the set code, include "set_code" in every card object.
 
 OCR FRAGMENTS:
@@ -225,131 +235,6 @@ OCR FRAGMENTS:
                 status_callback(msg)
 
         _status(f"Sending {len(fragments)} fragments to Claude...")
-
-        last_error = None
-        for attempt in range(self.max_retries + 1):
-            try:
-                if attempt > 0:
-                    wait_time = 3 * (2 ** (attempt - 1))
-                    _status(f"Retry {attempt + 1}/{self.max_retries + 1} in {wait_time}s...")
-                    print(f"  Retrying in {wait_time}s (attempt {attempt + 1}/{self.max_retries + 1})...")
-                    time.sleep(wait_time)
-
-                _status(f"Waiting for Claude... (attempt {attempt + 1}/{self.max_retries + 1})")
-                response = self.client.messages.create(
-                    model="claude-sonnet-4-5-20250929",
-                    max_tokens=4000,
-                    messages=[{"role": "user", "content": prompt}],
-                    output_config={
-                        "format": {
-                            "type": "json_schema",
-                            "schema": {
-                                "type": "object",
-                                "properties": {
-                                    "cards": {
-                                        "type": "array",
-                                        "items": card_schema,
-                                    },
-                                },
-                                "required": ["cards"],
-                                "additionalProperties": False,
-                            },
-                        },
-                    },
-                )
-
-                text_content = response.content[0].text
-
-                if not text_content.strip():
-                    raise ValueError("Empty response from Claude")
-
-                _status("Parsing Claude response...")
-                result = json.loads(text_content)
-                cards = result["cards"]
-
-                return cards, response.usage
-            except anthropic.BadRequestError as e:
-                print(f"  Error: {e}")
-                return [], None
-            except Exception as e:
-                last_error = str(e)
-                if "api_key" in str(e).lower() or "authentication" in str(e).lower():
-                    print(f"  Error: {e}")
-                    return [], None
-                print(f"  Error: {e}")
-
-        print(f"  Failed after {self.max_retries + 1} attempts. Last error: {last_error}")
-        return [], None
-
-    def extract_names_from_ocr(
-        self,
-        fragments: List[Dict],
-        expected_count: int,
-        status_callback: callable = None,
-    ) -> tuple:
-        """
-        Extract card names from OCR fragments of stacked cards with only name bars visible.
-
-        Each fragment has: text, bbox ({x, y, w, h}), confidence.
-        Returns (cards_list, usage) where each card has name, quantity, uncertain,
-        and fragment_indices (list of lists — one inner list per physical copy).
-        """
-        frag_lines = []
-        for i, f in enumerate(fragments):
-            b = f["bbox"]
-            frag_lines.append(
-                f'[{i}] (x={int(b["x"])},y={int(b["y"])} w={int(b["w"])},h={int(b["h"])}): "{f["text"]}"'
-            )
-        frag_blob = "\n".join(frag_lines)
-
-        prompt = f"""Below are numbered OCR text fragments from a photo of Magic: The Gathering cards
-stacked so only their NAME BARS are visible. The cards may be arranged in multiple
-columns side by side. Use the x-coordinates to distinguish columns and y-coordinates
-for vertical ordering within each column.
-
-The OCR is noisy — names may be misspelled, fragmented across multiple fragments,
-or partially obscured. Your job is to figure out the actual card name for each visible
-name bar, and count how many copies of each card appear.
-
-Two fragments that are at nearly the same y-position but very different x-positions
-are from different columns (different cards). Two fragments at similar x but different
-y are different cards in the same column.
-
-IMPORTANT: The total quantity across all cards MUST equal exactly {expected_count}.
-
-Rules:
-- Merge duplicate card names and sum their quantities.
-- Use the official English card name (correct any OCR misspellings).
-- If you cannot confidently identify a name, include it as-is with uncertain: true.
-- fragment_indices is a list of lists — one inner list per physical copy of that card.
-  Each inner list contains the OCR fragment indices that belong to that particular copy.
-
-OCR FRAGMENTS:
-{frag_blob}"""
-
-        card_schema = {
-            "type": "object",
-            "properties": {
-                "name": {"type": "string"},
-                "quantity": {"type": "integer"},
-                "uncertain": {"type": "boolean"},
-                "fragment_indices": {
-                    "type": "array",
-                    "items": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                    },
-                },
-            },
-            "required": ["name", "quantity", "fragment_indices"],
-            "additionalProperties": False,
-        }
-
-        def _status(msg):
-            if status_callback:
-                status_callback(msg)
-
-        _status(f"Sending {len(fragments)} fragments to Claude (names mode)...")
 
         last_error = None
         for attempt in range(self.max_retries + 1):

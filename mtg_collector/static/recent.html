@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recent Images - Card Ingest</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+header {
+  background: #16213e;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #0f3460;
+}
+header h1 { font-size: 1.1rem; color: #e94560; }
+header a { color: #888; text-decoration: none; font-size: 0.8rem; }
+header a:hover { color: #e94560; }
+
+.controls {
+  margin: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.controls label { font-size: 0.8rem; color: #888; }
+.pill-row { display: flex; gap: 0; }
+.pill-row .pill {
+  padding: 5px 12px;
+  border: 1px solid #0f3460;
+  background: #16213e;
+  color: #888;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.pill-row .pill:first-child { border-radius: 6px 0 0 6px; }
+.pill-row .pill:last-child { border-radius: 0 6px 6px 0; }
+.pill-row .pill + .pill { border-left: none; }
+.pill-row .pill.active { background: #e94560; border-color: #e94560; color: #fff; }
+.pill-row .pill:hover:not(.active) { border-color: #e94560; color: #e0e0e0; }
+
+.disambig-link {
+  margin-left: auto;
+  padding: 6px 16px;
+  background: #e94560;
+  color: #fff;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.disambig-link:hover { background: #c73651; }
+
+.summary {
+  margin: 0 12px 8px;
+  font-size: 0.8rem;
+  color: #888;
+}
+
+#grid {
+  margin: 0 12px 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.img-card {
+  background: #16213e;
+  border: 3px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s;
+}
+.img-card.processing { border-color: #888; }
+.img-card.done { border-color: #4caf50; }
+.img-card.needs_disambiguation { border-color: #e94560; }
+.img-card.error { border-color: #c62828; }
+
+.img-card img {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  display: block;
+}
+.img-card .info {
+  padding: 4px 6px;
+  font-size: 0.7rem;
+  color: #888;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.img-card .card-list {
+  padding: 2px 6px 6px;
+  font-size: 0.7rem;
+  line-height: 1.4;
+}
+.img-card .card-list .card-entry {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #ccc;
+}
+.img-card .card-list .card-entry .set-tag {
+  color: #888;
+  font-size: 0.6rem;
+  margin-left: 2px;
+}
+.img-card .badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fff;
+}
+.img-card.processing .badge { background: rgba(136,136,136,0.8); }
+.img-card.done .badge { background: rgba(76,175,80,0.8); }
+.img-card.needs_disambiguation .badge { background: rgba(233,69,96,0.8); }
+.img-card.error .badge { background: rgba(198,40,40,0.8); }
+
+.img-card .error-icon {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 2rem;
+  color: #c62828;
+  text-shadow: 0 0 8px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+.spinner-icon {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 3px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.empty-state {
+  text-align: center;
+  padding: 60px 24px;
+  color: #555;
+}
+.empty-state h2 { color: #888; margin-bottom: 8px; }
+
+/* Error tooltip */
+.img-card .error-tooltip {
+  display: none;
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: rgba(30,0,0,0.95);
+  color: #e94560;
+  font-size: 0.65rem;
+  padding: 6px;
+  max-height: 80px;
+  overflow-y: auto;
+  word-break: break-word;
+}
+.img-card.error:hover .error-tooltip { display: block; }
+.img-card.done, .img-card.needs_disambiguation { cursor: pointer; }
+.img-card.done:hover { border-color: #66bb6a; }
+.img-card.needs_disambiguation:hover { border-color: #f06080; }
+
+/* Detail modal */
+.detail-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0,0,0,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.detail-modal .modal-content {
+  background: #16213e;
+  border: 2px solid #0f3460;
+  border-radius: 10px;
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+.detail-modal .modal-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #0f3460;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.detail-modal .modal-header h2 {
+  font-size: 1rem;
+  color: #e94560;
+}
+.detail-modal .modal-close {
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.detail-modal .modal-close:hover { color: #e94560; }
+.detail-modal .modal-time {
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  color: #888;
+  border-bottom: 1px solid #0f3460;
+}
+.detail-modal .card-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  border-bottom: 1px solid #0a0e1a;
+}
+.detail-modal .card-row:last-child { border-bottom: none; }
+.detail-modal .card-row img {
+  width: 60px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.detail-modal .card-row .card-details {
+  flex: 1;
+  min-width: 0;
+}
+.detail-modal .card-row .card-details .card-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+.detail-modal .card-row .card-details .card-set {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 2px;
+}
+.detail-modal .card-row .card-details .card-meta {
+  font-size: 0.7rem;
+  color: #666;
+  margin-top: 2px;
+}
+.detail-modal .card-row .card-price {
+  font-size: 0.8rem;
+  color: #4caf50;
+  background: rgba(76, 175, 80, 0.12);
+  padding: 2px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.detail-modal .card-row.skipped {
+  opacity: 0.5;
+}
+.detail-modal .card-row.skipped .card-name::after {
+  content: ' (skipped)';
+  color: #888;
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+.detail-modal .card-row.pending {
+  opacity: 0.6;
+}
+.detail-modal .card-row.pending .card-name::after {
+  content: ' (pending)';
+  color: #e94560;
+  font-weight: 400;
+  font-size: 0.8rem;
+}
+.detail-modal .remove-card-btn {
+  background: none;
+  border: none;
+  color: #555;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 6px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.detail-modal .remove-card-btn:hover { color: #e94560; }
+.detail-modal .loading {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+}
+.detail-modal .add-card-section {
+  padding: 10px 16px;
+  border-top: 1px solid #0f3460;
+}
+.detail-modal .add-card-section h3 {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 8px;
+}
+.detail-modal .add-search-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.detail-modal .add-search-row input {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid #0f3460;
+  background: #0d1117;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+}
+.detail-modal .add-search-row button {
+  padding: 5px 12px;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #333;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.detail-modal .add-search-row button:hover { background: #444; }
+.detail-modal .add-results {
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+.detail-modal .add-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+.detail-modal .add-result-row:hover { background: #1a1a3e; border-color: #0f3460; }
+.detail-modal .add-result-row.selected { border-color: #e94560; background: #1a1a3e; }
+.detail-modal .add-result-row img {
+  width: 40px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.detail-modal .add-result-row .result-name {
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+.detail-modal .add-result-row .result-set {
+  font-size: 0.7rem;
+  color: #888;
+  flex-shrink: 0;
+}
+.detail-modal .add-confirm-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.detail-modal .add-confirm-row select {
+  padding: 4px 8px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+.detail-modal .add-confirm-row button {
+  padding: 6px 14px;
+  border: 1px solid #e94560;
+  border-radius: 6px;
+  background: #e94560;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.detail-modal .add-confirm-row button:hover { background: #c73651; }
+.detail-modal .add-confirm-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="/" style="color:inherit;text-decoration:none">Recent Images</a></h1>
+  <a href="/">Home</a>
+  <a href="/upload">Upload</a>
+  <a href="/disambiguate">Disambiguate</a>
+</header>
+
+<div class="controls">
+  <label>Time window:</label>
+  <div class="pill-row" id="time-pills">
+    <div class="pill" data-hours="0.5">30m</div>
+    <div class="pill active" data-hours="2">2h</div>
+    <div class="pill" data-hours="4">4h</div>
+    <div class="pill" data-hours="12">12h</div>
+    <div class="pill" data-hours="24">24h</div>
+  </div>
+  <a id="disambig-btn" class="disambig-link" href="/disambiguate" style="display:none">Disambiguate</a>
+</div>
+
+<div class="summary" id="summary"></div>
+<div id="grid"></div>
+<div id="empty" class="empty-state" style="display:none">
+  <h2>No recent images</h2>
+  <p><a href="/upload" style="color:#e94560">Upload some photos</a></p>
+</div>
+
+<script>
+let currentHours = 2;
+let pollTimer = null;
+
+document.querySelectorAll('#time-pills .pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('#time-pills .pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    currentHours = parseFloat(pill.dataset.hours);
+    loadRecent();
+  });
+});
+
+async function loadRecent() {
+  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}`);
+  const images = await resp.json();
+
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+  const summary = document.getElementById('summary');
+  const disambigBtn = document.getElementById('disambig-btn');
+
+  if (images.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    summary.textContent = '';
+    disambigBtn.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Summary counts
+  const counts = { processing: 0, done: 0, needs_disambiguation: 0, error: 0 };
+  let totalPending = 0;
+  for (const img of images) {
+    counts[img.border_status] = (counts[img.border_status] || 0) + 1;
+    totalPending += img.pending_count;
+  }
+
+  const parts = [];
+  if (counts.processing > 0) parts.push(`${counts.processing} processing`);
+  if (counts.done > 0) parts.push(`${counts.done} done`);
+  if (counts.needs_disambiguation > 0) parts.push(`${counts.needs_disambiguation} need disambiguation`);
+  if (counts.error > 0) parts.push(`${counts.error} error`);
+  summary.textContent = `${images.length} image(s): ${parts.join(', ')}`;
+
+  if (totalPending > 0) {
+    disambigBtn.style.display = '';
+    disambigBtn.textContent = `Disambiguate ${totalPending} card(s)`;
+  } else {
+    disambigBtn.style.display = 'none';
+  }
+
+  grid.innerHTML = images.map(img => {
+    let badgeText = '';
+    if (img.border_status === 'processing') {
+      badgeText = '<span class="spinner-icon"></span>';
+    } else if (img.border_status === 'done') {
+      badgeText = `${img.total_cards}`;
+    } else if (img.border_status === 'needs_disambiguation') {
+      badgeText = `${img.pending_count}/${img.total_cards}`;
+    } else if (img.border_status === 'error') {
+      badgeText = '!';
+    }
+
+    const errorTooltip = img.border_status === 'error' && img.error_message
+      ? `<div class="error-tooltip">${escapeHtml(img.error_message.substring(0, 200))}</div>`
+      : '';
+
+    const errorIcon = img.border_status === 'error' ? '<div class="error-icon">&times;</div>' : '';
+
+    const cardsHtml = (img.cards || []).length > 0
+      ? `<div class="card-list">${img.cards.map(c =>
+          `<div class="card-entry">${escapeHtml(c.name)}${c.set_code ? `<span class="set-tag">${escapeHtml(c.set_code)}</span>` : ''}</div>`
+        ).join('')}</div>`
+      : '';
+
+    const clickable = (img.border_status === 'done' || img.border_status === 'needs_disambiguation') ? `onclick="showImageDetail(${img.id})"` : '';
+
+    return `
+      <div class="img-card ${img.border_status}" ${clickable}>
+        <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy">
+        <div class="badge">${badgeText}</div>
+        ${errorIcon}
+        <div class="info">${escapeHtml(img.filename)}</div>
+        ${cardsHtml}
+        ${errorTooltip}
+      </div>
+    `;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function showImageDetail(imageId) {
+  // Create modal with loading state
+  const modal = document.createElement('div');
+  modal.className = 'detail-modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Ingested Cards</h2>
+        <button class="modal-close">&times;</button>
+      </div>
+      <div class="loading">Loading...</div>
+    </div>
+  `;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+  document.body.appendChild(modal);
+
+  const resp = await fetch(`/api/ingest2/images/${imageId}`);
+  const img = await resp.json();
+
+  const disambiguated = img.disambiguated || [];
+  const matches = img.scryfall_matches || [];
+  const claude = img.claude_result || [];
+  const content = modal.querySelector('.modal-content');
+
+  // Build time info
+  const created = new Date(img.created_at);
+  const updated = new Date(img.updated_at);
+  const fmt = d => d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+  let html = `
+    <div class="modal-header">
+      <h2>Ingested Cards</h2>
+      <button class="modal-close">&times;</button>
+    </div>
+    <div class="modal-time">
+      Uploaded ${fmt(created)} &middot; Completed ${fmt(updated)}
+    </div>
+  `;
+
+  for (let i = 0; i < disambiguated.length; i++) {
+    const sid = disambiguated[i];
+    const claudeCard = claude[i] || {};
+
+    if (sid === 'skipped') {
+      html += `
+        <div class="card-row skipped">
+          <div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>
+          <div class="card-details">
+            <div class="card-name">${escapeHtml(claudeCard.name || 'Unknown')}</div>
+            <div class="card-set">${escapeHtml(claudeCard.set_code ? claudeCard.set_code.toUpperCase() : '')}</div>
+          </div>
+        </div>
+      `;
+      continue;
+    }
+    if (sid === null) {
+      html += `
+        <div class="card-row pending">
+          <div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>
+          <div class="card-details">
+            <div class="card-name">${escapeHtml(claudeCard.name || 'Unknown')}</div>
+            <div class="card-set">${escapeHtml(claudeCard.set_code ? claudeCard.set_code.toUpperCase() : '')}</div>
+          </div>
+          <a href="/disambiguate" style="color:#e94560;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;">Disambiguate</a>
+          <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
+        </div>
+      `;
+      continue;
+    }
+
+    // Find the confirmed candidate in scryfall_matches
+    const candidates = matches[i] || [];
+    const card = candidates.find(c => c.scryfall_id === sid) || {};
+
+    const imgUri = (card.image_uri || '').replace('/small/', '/normal/');
+    const priceHtml = card.price ? `<span class="card-price">$${card.price}</span>` : '';
+    const rarity = card.rarity ? card.rarity.charAt(0).toUpperCase() + card.rarity.slice(1) : '';
+    const cn = card.collector_number ? `#${card.collector_number}` : '';
+    const metaParts = [rarity, cn].filter(Boolean).join(' \u00b7 ');
+
+    html += `
+      <div class="card-row">
+        ${imgUri ? `<img src="${imgUri}" loading="lazy">` : `<div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>`}
+        <div class="card-details">
+          <div class="card-name">${escapeHtml(card.name || claudeCard.name || 'Unknown')}</div>
+          <div class="card-set">${escapeHtml(card.set_name || '')}${card.set_code ? ` (${card.set_code.toUpperCase()})` : ''}</div>
+          ${metaParts ? `<div class="card-meta">${escapeHtml(metaParts)}</div>` : ''}
+        </div>
+        ${priceHtml}
+        <a href="/correct?image_id=${imageId}&card_idx=${i}" style="color:#888;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">Correct</a>
+        <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
+      </div>
+    `;
+  }
+
+  // Add card section
+  html += `
+    <div class="add-card-section">
+      <h3>Add a card</h3>
+      <div class="add-search-row">
+        <input type="text" id="add-card-search" placeholder="Search by card name...">
+        <button id="add-card-search-btn">Search</button>
+      </div>
+      <div class="add-results" id="add-card-results"></div>
+      <div class="add-confirm-row">
+        <select id="add-card-finish">
+          <option value="nonfoil">Nonfoil</option>
+          <option value="foil">Foil</option>
+          <option value="etched">Etched</option>
+        </select>
+        <button id="add-card-btn" disabled>Add</button>
+      </div>
+    </div>
+  `;
+
+  content.innerHTML = html;
+  content.querySelector('.modal-close').addEventListener('click', () => modal.remove());
+
+  // Remove card buttons
+  content.querySelectorAll('.remove-card-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const imgId = parseInt(btn.dataset.imageId);
+      const cardIdx = parseInt(btn.dataset.cardIdx);
+      const row = btn.closest('.card-row');
+      const isConfirmed = !row.classList.contains('pending') && !row.classList.contains('skipped');
+      const msg = isConfirmed
+        ? 'Remove this card from the image and your collection?'
+        : 'Remove this card slot from the image?';
+      if (!confirm(msg)) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      const resp = await fetch('/api/ingest2/remove-card', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ image_id: imgId, card_idx: cardIdx }),
+      });
+      const result = await resp.json();
+      if (result.ok) {
+        row.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = '\u00d7';
+      }
+    });
+  });
+
+  // Add card search + confirm wiring
+  let _addSelectedCandidate = null;
+
+  const addSearchBtn = content.querySelector('#add-card-search-btn');
+  const addSearchInput = content.querySelector('#add-card-search');
+  const addResults = content.querySelector('#add-card-results');
+  const addBtn = content.querySelector('#add-card-btn');
+
+  async function doAddSearch() {
+    const query = addSearchInput.value.trim();
+    if (!query) return;
+    addSearchBtn.disabled = true;
+    addSearchBtn.textContent = '...';
+    const resp = await fetch('/api/ingest2/search-card', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query }),
+    });
+    const data = await resp.json();
+    addSearchBtn.disabled = false;
+    addSearchBtn.textContent = 'Search';
+    _addSelectedCandidate = null;
+    addBtn.disabled = true;
+    addResults.innerHTML = '';
+    for (const c of (data.candidates || [])) {
+      const row = document.createElement('div');
+      row.className = 'add-result-row';
+      const imgTag = c.image_uri ? `<img src="${c.image_uri}" loading="lazy">` : `<div style="width:40px;height:56px;background:#0d1117;border-radius:3px;flex-shrink:0;"></div>`;
+      row.innerHTML = `${imgTag}<span class="result-name">${escapeHtml(c.name)}</span><span class="result-set">${escapeHtml(c.set_code ? c.set_code.toUpperCase() : '')}</span>`;
+      row.addEventListener('click', () => {
+        addResults.querySelectorAll('.add-result-row').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        _addSelectedCandidate = c;
+        addBtn.disabled = false;
+        // Auto-set finish
+        if (c.foil && !(c.finishes || []).includes('nonfoil')) {
+          content.querySelector('#add-card-finish').value = 'foil';
+        } else {
+          content.querySelector('#add-card-finish').value = 'nonfoil';
+        }
+      });
+      addResults.appendChild(row);
+    }
+  }
+
+  addSearchBtn.addEventListener('click', doAddSearch);
+  addSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAddSearch(); });
+
+  addBtn.addEventListener('click', async () => {
+    if (!_addSelectedCandidate) return;
+    addBtn.disabled = true;
+    addBtn.textContent = '...';
+    const finish = content.querySelector('#add-card-finish').value;
+    const resp = await fetch('/api/ingest2/add-card', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        image_id: imageId,
+        scryfall_id: _addSelectedCandidate.scryfall_id,
+        finish,
+      }),
+    });
+    const result = await resp.json();
+    addBtn.textContent = 'Add';
+    addBtn.disabled = false;
+    if (result.ok) {
+      // Append new card row to modal
+      const imgUri = (_addSelectedCandidate.image_uri || '').replace('/small/', '/normal/');
+      const priceHtml = _addSelectedCandidate.price ? `<span class="card-price">$${_addSelectedCandidate.price}</span>` : '';
+      const newRow = document.createElement('div');
+      newRow.className = 'card-row';
+      newRow.innerHTML = `
+        ${imgUri ? `<img src="${imgUri}" loading="lazy">` : `<div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>`}
+        <div class="card-details">
+          <div class="card-name">${escapeHtml(result.name)}</div>
+          <div class="card-set">${escapeHtml(_addSelectedCandidate.set_name || '')}${result.set_code ? ` (${result.set_code.toUpperCase()})` : ''}</div>
+        </div>
+        ${priceHtml}
+      `;
+      // Insert before the add-card-section
+      content.querySelector('.add-card-section').insertAdjacentElement('beforebegin', newRow);
+      // Clear search
+      _addSelectedCandidate = null;
+      addResults.innerHTML = '';
+      addSearchInput.value = '';
+      addBtn.disabled = true;
+    }
+  });
+}
+
+// Auto-poll
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(loadRecent, 3000);
+}
+
+loadRecent();
+startPolling();
+</script>
+</body>
+</html>

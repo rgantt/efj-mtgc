@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Process - Card Ingest</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+header {
+  background: #16213e;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 2px solid #0f3460;
+}
+header h1 { font-size: 1.3rem; color: #e94560; }
+header a { color: #888; text-decoration: none; font-size: 0.85rem; }
+header a:hover { color: #e94560; }
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+button:hover { background: #c73651; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.secondary { background: #333; border-color: #555; }
+button.secondary:hover { background: #444; }
+
+.empty-state {
+  text-align: center;
+  padding: 80px 40px;
+  color: #555;
+}
+.empty-state h2 { color: #888; margin-bottom: 12px; }
+
+.batch-controls {
+  margin: 16px 24px 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.batch-controls .batch-info {
+  font-size: 0.85rem;
+  color: #888;
+  margin-left: auto;
+}
+
+#image-list {
+  margin: 12px 24px 24px;
+}
+.image-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #16213e;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border: 1px solid #0f3460;
+}
+.image-row input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #e94560;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.image-row .thumb {
+  width: 60px;
+  height: 45px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.image-row .name { flex: 1; font-size: 0.9rem; }
+.image-row label { font-size: 0.85rem; color: #888; }
+.image-row .status-text { font-size: 0.8rem; color: #888; }
+
+.count-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.count-group button {
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  border-radius: 0;
+  background: #333;
+  border: 1px solid #555;
+  color: #e0e0e0;
+  min-width: 28px;
+}
+.count-group button:first-child { border-radius: 4px 0 0 4px; }
+.count-group button:last-child { border-radius: 0 4px 4px 0; }
+.count-group button:hover { background: #444; }
+.count-group .count-display {
+  padding: 4px 10px;
+  background: #1a1a2e;
+  border: 1px solid #555;
+  border-left: none;
+  border-right: none;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-width: 32px;
+  text-align: center;
+}
+
+#processing-log {
+  margin: 0 24px 16px;
+  padding: 12px 16px;
+  background: #0d1117;
+  border-radius: 8px;
+  font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+  font-size: 0.8rem;
+  max-height: 200px;
+  overflow-y: auto;
+  display: none;
+  line-height: 1.6;
+}
+#processing-log .log-line { color: #888; }
+#processing-log .log-line.running { color: #f0c040; }
+#processing-log .log-line.done { color: #4caf50; }
+#processing-log .log-line.error { color: #e94560; }
+#processing-log .log-line.cached { color: #64b5f6; }
+
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="/" style="color:inherit;text-decoration:none">Process</a></h1>
+  <a href="/">Home</a>
+  <a href="/upload">Upload</a>
+  <a href="/disambiguate">Disambiguate</a>
+</header>
+
+<div id="empty-state" class="empty-state" style="display:none">
+  <h2>No images to process</h2>
+  <p><a href="/upload" style="color:#e94560">Upload some card photos first</a></p>
+</div>
+
+<div class="batch-controls" id="batch-controls" style="display:none">
+  <button class="secondary" id="select-all-btn" onclick="toggleSelectAll()">Select All</button>
+  <button id="process-selected-btn" onclick="processSelected()" disabled>Process Selected</button>
+  <span class="batch-info" id="batch-info"></span>
+</div>
+
+<div id="image-list"></div>
+<div id="processing-log"></div>
+
+<script>
+let images = [];
+let processingId = null;
+let batchQueue = [];
+let batchRunning = false;
+let batchIdx = 0;
+
+async function loadImages() {
+  const resp = await fetch('/api/ingest2/images?status=READY_FOR_OCR');
+  images = await resp.json();
+  renderImages();
+}
+
+function renderImages() {
+  const list = document.getElementById('image-list');
+  const empty = document.getElementById('empty-state');
+  const controls = document.getElementById('batch-controls');
+
+  if (images.length === 0) {
+    empty.style.display = 'block';
+    list.innerHTML = '';
+    controls.style.display = 'none';
+    return;
+  }
+  empty.style.display = 'none';
+  controls.style.display = 'flex';
+
+  list.innerHTML = images.map((img, i) => `
+    <div class="image-row" id="row-${img.id}">
+      <input type="checkbox" class="img-check" data-id="${img.id}" onchange="updateBatchUI()" ${batchRunning ? 'disabled' : ''}>
+      <img class="thumb" src="/api/ingest/image/${img.stored_name}" alt="${img.filename}">
+      <span class="name">${img.filename}</span>
+      <label>Cards:</label>
+      <div class="count-group">
+        <button onclick="adjustCount(${img.id}, -5)">-5</button>
+        <button onclick="adjustCount(${img.id}, -1)">-1</button>
+        <span class="count-display" id="count-${img.id}">${img.card_count || 1}</span>
+        <button onclick="adjustCount(${img.id}, 1)">+1</button>
+        <button onclick="adjustCount(${img.id}, 5)">+5</button>
+      </div>
+      <button onclick="processImage(${img.id})" id="process-btn-${img.id}" ${processingId || batchRunning ? 'disabled' : ''}>Process</button>
+      <span class="status-text" id="status-${img.id}"></span>
+    </div>
+  `).join('');
+  updateBatchUI();
+}
+
+function getCheckedIds() {
+  return [...document.querySelectorAll('.img-check:checked')].map(cb => parseInt(cb.dataset.id));
+}
+
+function updateBatchUI() {
+  const checked = getCheckedIds();
+  const btn = document.getElementById('process-selected-btn');
+  btn.disabled = checked.length === 0 || batchRunning;
+  btn.textContent = checked.length > 0 ? `Process Selected (${checked.length})` : 'Process Selected';
+}
+
+function toggleSelectAll() {
+  const boxes = document.querySelectorAll('.img-check');
+  const allChecked = [...boxes].every(cb => cb.checked);
+  boxes.forEach(cb => cb.checked = !allChecked);
+  document.getElementById('select-all-btn').textContent = allChecked ? 'Select All' : 'Deselect All';
+  updateBatchUI();
+}
+
+async function processSelected() {
+  batchQueue = getCheckedIds();
+  if (batchQueue.length === 0) return;
+  batchIdx = 0;
+  batchRunning = true;
+
+  // Disable controls
+  document.querySelectorAll('.img-check').forEach(cb => cb.disabled = true);
+  document.getElementById('select-all-btn').disabled = true;
+  document.getElementById('process-selected-btn').disabled = true;
+  document.querySelectorAll('[id^="process-btn-"]').forEach(b => b.disabled = true);
+
+  processNextInBatch();
+}
+
+function processNextInBatch() {
+  if (batchIdx >= batchQueue.length) {
+    // Batch complete
+    batchRunning = false;
+    document.getElementById('batch-info').textContent = `Batch complete: ${batchQueue.length} images processed`;
+    document.querySelectorAll('.img-check').forEach(cb => cb.disabled = false);
+    document.getElementById('select-all-btn').disabled = false;
+    updateBatchUI();
+    // Re-enable remaining process buttons
+    document.querySelectorAll('[id^="process-btn-"]').forEach(b => {
+      const id = parseInt(b.id.replace('process-btn-', ''));
+      if (images.some(img => img.id === id)) b.disabled = false;
+    });
+    return;
+  }
+
+  const id = batchQueue[batchIdx];
+  document.getElementById('batch-info').textContent = `Processing ${batchIdx + 1} of ${batchQueue.length}...`;
+  processImage(id, true);
+}
+
+async function adjustCount(id, delta) {
+  const img = images.find(i => i.id === id);
+  if (!img) return;
+  const current = img.card_count || 1;
+  const next = Math.max(1, current + delta);
+  img.card_count = next;
+  document.getElementById(`count-${id}`).textContent = next;
+
+  await fetch('/api/ingest2/set-params', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({image_id: id, card_count: next}),
+  });
+}
+
+async function processImage(id, isBatch) {
+  processingId = id;
+  const btn = document.getElementById(`process-btn-${id}`);
+  const status = document.getElementById(`status-${id}`);
+  btn.disabled = true;
+  status.innerHTML = '<span class="spinner"></span> Processing...';
+
+  // Disable all other process buttons
+  document.querySelectorAll('[id^="process-btn-"]').forEach(b => b.disabled = true);
+
+  const log = document.getElementById('processing-log');
+  log.style.display = 'block';
+  if (!isBatch) log.innerHTML = '';
+
+  function addLog(msg, cls) {
+    const line = document.createElement('div');
+    line.className = 'log-line ' + (cls || '');
+    line.textContent = msg;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  if (isBatch) {
+    const img = images.find(i => i.id === id);
+    addLog(`--- ${img ? img.filename : 'Image ' + id} (${batchIdx + 1}/${batchQueue.length}) ---`, 'running');
+  }
+
+  const es = new EventSource(`/api/ingest2/process/${id}`);
+
+  es.addEventListener('status', e => {
+    const data = JSON.parse(e.data);
+    addLog(data.message, 'running');
+  });
+
+  es.addEventListener('cached', e => {
+    const data = JSON.parse(e.data);
+    addLog(`Cache hit: ${data.step}`, 'cached');
+  });
+
+  es.addEventListener('ocr_complete', e => {
+    const data = JSON.parse(e.data);
+    addLog(`OCR: ${data.fragment_count} fragments`, 'done');
+  });
+
+  es.addEventListener('claude_complete', e => {
+    const data = JSON.parse(e.data);
+    addLog(`Claude: ${data.card_count} cards`, 'done');
+  });
+
+  es.addEventListener('count_mismatch', e => {
+    const data = JSON.parse(e.data);
+    addLog(`Count mismatch: expected ${data.expected}, found ${data.found}`, 'error');
+  });
+
+  es.addEventListener('matches_ready', e => {
+    addLog('Scryfall matches ready', 'done');
+  });
+
+  es.addEventListener('error', e => {
+    const data = JSON.parse(e.data);
+    addLog(`Error: ${data.message}`, 'error');
+  });
+
+  es.addEventListener('done', e => {
+    es.close();
+    processingId = null;
+
+    const data = JSON.parse(e.data);
+    if (data.error) {
+      // Error: keep image in list, re-enable its button
+      status.textContent = 'Error — retry?';
+      status.style.color = '#e94560';
+      btn.disabled = false;
+    } else {
+      // Success: remove from list
+      status.textContent = 'Done';
+      status.style.color = '#4caf50';
+      images = images.filter(i => i.id !== id);
+      const row = document.getElementById(`row-${id}`);
+      if (row) row.style.opacity = '0.5';
+    }
+
+    if (isBatch) {
+      batchIdx++;
+      processNextInBatch();
+    } else {
+      // Re-enable remaining buttons
+      document.querySelectorAll('[id^="process-btn-"]').forEach(b => {
+        if (b.id !== `process-btn-${id}`) b.disabled = false;
+      });
+    }
+  });
+
+  es.onerror = () => {
+    es.close();
+    processingId = null;
+    status.textContent = 'Connection lost';
+    status.style.color = '#e94560';
+
+    if (isBatch) {
+      addLog(`Connection lost for image ${id}, skipping`, 'error');
+      batchIdx++;
+      processNextInBatch();
+    } else {
+      document.querySelectorAll('[id^="process-btn-"]').forEach(b => b.disabled = false);
+    }
+  };
+}
+
+loadImages();
+</script>
+</body>
+</html>
