@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -45,6 +45,24 @@ CREATE TABLE IF NOT EXISTS printings (
     UNIQUE(set_code, collector_number)
 );
 
+-- Orders (TCGPlayer, Card Kingdom, etc.)
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_number TEXT,
+    source TEXT,            -- 'tcgplayer', 'cardkingdom', 'other'
+    seller_name TEXT,
+    order_date TEXT,
+    subtotal REAL,
+    shipping REAL,
+    tax REAL,
+    total REAL,
+    shipping_status TEXT,
+    estimated_delivery TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_orders_number ON orders(order_number);
+
 -- User's collection (one row per physical card owned)
 CREATE TABLE IF NOT EXISTS collection (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +84,8 @@ CREATE TABLE IF NOT EXISTS collection (
     misprint INTEGER DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'owned'
         CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed')),
-    sale_price REAL
+    sale_price REAL,
+    order_id INTEGER REFERENCES orders(id)
 );
 
 -- Status audit log (append-only)
@@ -167,7 +186,8 @@ SELECT
     c.status,
     c.sale_price,
     c.scryfall_id,
-    p.oracle_id
+    p.oracle_id,
+    c.order_id
 FROM collection c
 JOIN printings p ON c.scryfall_id = p.scryfall_id
 JOIN cards card ON p.oracle_id = card.oracle_id
@@ -227,6 +247,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v6_to_v7(conn)
         if current < 8:
             _migrate_v7_to_v8(conn)
+        if current < 9:
+            _migrate_v8_to_v9(conn)
 
     # Record schema version
     conn.execute(
@@ -453,6 +475,73 @@ def _migrate_v7_to_v8(conn: sqlite3.Connection):
     """, (ts,))
 
 
+def _migrate_v8_to_v9(conn: sqlite3.Connection):
+    """Add orders table and order_id FK on collection."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_number TEXT,
+            source TEXT,
+            seller_name TEXT,
+            order_date TEXT,
+            subtotal REAL,
+            shipping REAL,
+            tax REAL,
+            total REAL,
+            shipping_status TEXT,
+            estimated_delivery TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_orders_number ON orders(order_number);
+    """)
+
+    cursor = conn.execute("PRAGMA table_info(collection)")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if "order_id" not in columns:
+        conn.execute("ALTER TABLE collection ADD COLUMN order_id INTEGER REFERENCES orders(id)")
+
+    # Rebuild collection_view to include order_id
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+    conn.execute("""
+        CREATE VIEW collection_view AS
+        SELECT
+            c.id,
+            card.name,
+            s.set_name,
+            p.set_code,
+            p.collector_number,
+            p.rarity,
+            p.promo,
+            c.finish,
+            c.condition,
+            c.language,
+            card.type_line,
+            card.mana_cost,
+            card.cmc,
+            card.colors,
+            card.color_identity,
+            p.artist,
+            c.purchase_price,
+            c.acquired_at,
+            c.source,
+            c.source_image,
+            c.notes,
+            c.tags,
+            c.tradelist,
+            c.status,
+            c.sale_price,
+            c.scryfall_id,
+            p.oracle_id,
+            c.order_id
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        JOIN cards card ON p.oracle_id = card.oracle_id
+        JOIN sets s ON p.set_code = s.set_code
+    """)
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
@@ -463,6 +552,7 @@ def drop_all_tables(conn: sqlite3.Connection):
         DROP TABLE IF EXISTS ingest_lineage;
         DROP TABLE IF EXISTS ingest_cache;
         DROP TABLE IF EXISTS collection;
+        DROP TABLE IF EXISTS orders;
         DROP TABLE IF EXISTS printings;
         DROP TABLE IF EXISTS cards;
         DROP TABLE IF EXISTS sets;

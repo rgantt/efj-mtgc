@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Order Ingestion - MTG Collection</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+}
+header a { color: #e94560; text-decoration: none; font-weight: 600; }
+header h1 { font-size: 1.2rem; color: #e0e0e0; }
+.container {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+.input-panel {
+  width: 400px;
+  min-width: 350px;
+  padding: 24px;
+  background: #16213e;
+  border-right: 1px solid #0f3460;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.input-panel label {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 600;
+}
+.input-panel textarea {
+  flex: 1;
+  min-height: 200px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  color: #e0e0e0;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+.input-panel textarea:focus { outline: none; border-color: #e94560; }
+.file-upload {
+  border: 2px dashed #0f3460;
+  border-radius: 6px;
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.file-upload:hover { border-color: #e94560; }
+.file-upload.has-files { border-color: #4caf50; color: #4caf50; }
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.controls select, .controls button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.controls select {
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+}
+.btn-primary {
+  background: #e94560;
+  border: none;
+  color: #fff;
+}
+.btn-primary:hover { background: #d63851; }
+.btn-primary:disabled { background: #555; cursor: not-allowed; }
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+}
+.btn-secondary:hover { border-color: #e94560; }
+.pill-row {
+  display: flex;
+  gap: 0;
+}
+.pill-row .pill {
+  padding: 6px 16px;
+  border: 1px solid #0f3460;
+  background: #1a1a2e;
+  color: #888;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+.pill-row .pill:first-child { border-radius: 6px 0 0 6px; }
+.pill-row .pill:last-child { border-radius: 0 6px 6px 0; }
+.pill-row .pill + .pill { border-left: none; }
+.pill-row .pill.active {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+.result-panel {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.status-msg.info { background: rgba(15, 52, 96, 0.5); color: #88c0d0; }
+.status-msg.error { background: rgba(233, 69, 96, 0.15); color: #e94560; }
+.status-msg.success { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+.order-group {
+  margin-bottom: 24px;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.order-header {
+  padding: 12px 16px;
+  background: #16213e;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.order-header .seller {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #e0e0e0;
+}
+.order-header .meta {
+  font-size: 0.8rem;
+  color: #888;
+}
+.order-header .total {
+  margin-left: auto;
+  font-weight: 700;
+  color: #4caf50;
+}
+.item-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.item-table th {
+  text-align: left;
+  padding: 6px 12px;
+  background: #0f1a30;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.item-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #0f3460;
+  vertical-align: middle;
+}
+.item-table tr.unresolved td {
+  background: rgba(233, 69, 96, 0.08);
+  color: #888;
+}
+.item-table .card-thumb {
+  width: 32px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.foil-tag {
+  background: rgba(200, 170, 80, 0.2);
+  color: #d4af37;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.error-tag {
+  color: #e94560;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+.summary-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.summary-bar .stat {
+  font-size: 0.9rem;
+  color: #888;
+}
+.summary-bar .stat b { color: #e0e0e0; }
+.action-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">&larr; Home</a>
+  <h1>Order Ingestion</h1>
+</header>
+
+<div class="container">
+  <div class="input-panel">
+    <label>Paste order text or upload HTML file(s)</label>
+    <textarea id="order-text" placeholder="Paste TCGPlayer/CK order text here..."></textarea>
+
+    <div class="file-upload" id="file-drop">
+      <input type="file" id="file-input" multiple accept=".html,.htm,.txt" style="display:none">
+      Click or drop .html / .txt files
+    </div>
+
+    <label>Format</label>
+    <div class="controls">
+      <select id="format-select">
+        <option value="auto">Auto-detect</option>
+        <option value="tcg_html">TCGPlayer HTML</option>
+        <option value="tcg_text">TCGPlayer Text</option>
+        <option value="ck_text">Card Kingdom Text</option>
+      </select>
+    </div>
+
+    <label>Status</label>
+    <div class="pill-row" id="status-pills">
+      <div class="pill active" data-value="ordered">Ordered</div>
+      <div class="pill" data-value="owned">Owned</div>
+    </div>
+
+    <button class="btn-primary" id="parse-btn">Parse</button>
+  </div>
+
+  <div class="result-panel" id="results">
+    <div class="status-msg info">Paste order data or upload files, then click Parse.</div>
+  </div>
+</div>
+
+<script>
+const orderText = document.getElementById('order-text');
+const fileInput = document.getElementById('file-input');
+const fileDrop = document.getElementById('file-drop');
+const formatSelect = document.getElementById('format-select');
+const parseBtn = document.getElementById('parse-btn');
+const results = document.getElementById('results');
+
+let selectedStatus = 'ordered';
+let parsedOrders = null;
+let resolvedOrders = null;
+
+// Status pill toggle
+document.querySelectorAll('#status-pills .pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    document.querySelectorAll('#status-pills .pill').forEach(p => p.classList.remove('active'));
+    pill.classList.add('active');
+    selectedStatus = pill.dataset.value;
+  });
+});
+
+// File upload
+fileDrop.addEventListener('click', () => fileInput.click());
+fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.style.borderColor = '#e94560'; });
+fileDrop.addEventListener('dragleave', () => { fileDrop.style.borderColor = ''; });
+fileDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  fileDrop.style.borderColor = '';
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+function handleFiles(files) {
+  if (!files.length) return;
+  const names = Array.from(files).map(f => f.name);
+  fileDrop.textContent = names.join(', ');
+  fileDrop.classList.add('has-files');
+
+  // Read all files and concatenate
+  const readers = Array.from(files).map(f => f.text());
+  Promise.all(readers).then(contents => {
+    orderText.value = contents.join('\n');
+  });
+}
+
+// Parse
+parseBtn.addEventListener('click', async () => {
+  const text = orderText.value.trim();
+  if (!text) {
+    results.innerHTML = '<div class="status-msg error">No input provided.</div>';
+    return;
+  }
+
+  results.innerHTML = '<div class="status-msg info"><span class="spinner"></span>Parsing orders...</div>';
+  parseBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/order/parse', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text, format: formatSelect.value }),
+    });
+    parsedOrders = await res.json();
+
+    if (!parsedOrders.length) {
+      results.innerHTML = '<div class="status-msg error">No orders found in input.</div>';
+      parseBtn.disabled = false;
+      return;
+    }
+
+    const totalItems = parsedOrders.reduce((s, o) => s + o.items.length, 0);
+    results.innerHTML = `<div class="status-msg info"><span class="spinner"></span>Parsed ${parsedOrders.length} order(s), ${totalItems} items. Resolving via Scryfall...</div>`;
+
+    // Auto-resolve
+    const res2 = await fetch('/api/order/resolve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ orders: parsedOrders }),
+    });
+    resolvedOrders = await res2.json();
+
+    renderResolved();
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Error: ${err.message}</div>`;
+  }
+  parseBtn.disabled = false;
+});
+
+function renderResolved() {
+  if (!resolvedOrders) return;
+
+  let resolvedCount = 0, failedCount = 0;
+  for (const o of resolvedOrders) {
+    for (const item of o.items) {
+      if (item.resolved) resolvedCount += item.quantity;
+      else failedCount += item.quantity;
+    }
+  }
+
+  let html = `<div class="summary-bar">
+    <span class="stat">Orders: <b>${resolvedOrders.length}</b></span>
+    <span class="stat">Resolved: <b>${resolvedCount}</b></span>
+    ${failedCount ? `<span class="stat" style="color:#e94560">Failed: <b>${failedCount}</b></span>` : ''}
+  </div>
+  <div class="action-bar">
+    <button class="btn-primary" id="commit-btn">Add All to Collection</button>
+    <button class="btn-secondary" id="cancel-btn">Cancel</button>
+  </div>`;
+
+  for (const order of resolvedOrders) {
+    const seller = order.seller_name || 'Unknown Seller';
+    const totalStr = order.total != null ? `$${order.total.toFixed(2)}` : '';
+    const itemCount = order.items.reduce((s, i) => s + i.quantity, 0);
+
+    html += `<div class="order-group">
+      <div class="order-header">
+        <span class="seller">${seller}</span>
+        <span class="meta">${order.order_number || ''}</span>
+        <span class="meta">${order.order_date || ''}</span>
+        <span class="meta">${itemCount} cards</span>
+        <span class="total">${totalStr}</span>
+      </div>
+      <table class="item-table">
+        <thead><tr>
+          <th>Card</th><th>Set</th><th>Condition</th><th>Qty</th><th>Price</th>
+        </tr></thead>
+        <tbody>`;
+
+    for (const item of order.items) {
+      const resolved = item.resolved;
+      const rowClass = resolved ? '' : ' class="unresolved"';
+      const thumb = item.image_uri ? `<img class="card-thumb" src="${item.image_uri}" loading="lazy">` : '';
+      const foilTag = item.foil ? '<span class="foil-tag">Foil</span>' : '';
+      const name = item.card_name || item.parsed_name;
+      const setInfo = resolved ? `${(item.set_code || '').toUpperCase()} #${item.collector_number || ''}` : (item.set_hint || '');
+      const price = item.price != null ? `$${item.price.toFixed(2)}` : '';
+      const errorInfo = !resolved ? `<div class="error-tag">${item.error || 'Not resolved'}</div>` : '';
+
+      html += `<tr${rowClass}>
+        <td>${thumb}${name}${foilTag}${errorInfo}</td>
+        <td>${setInfo}</td>
+        <td>${item.condition}</td>
+        <td>${item.quantity}</td>
+        <td>${price}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+  }
+
+  results.innerHTML = html;
+
+  // Wire up commit button
+  document.getElementById('commit-btn').addEventListener('click', commitOrders);
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    resolvedOrders = null;
+    results.innerHTML = '<div class="status-msg info">Cancelled. Paste new data to start over.</div>';
+  });
+}
+
+async function commitOrders() {
+  const btn = document.getElementById('commit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Adding...';
+
+  try {
+    const res = await fetch('/api/order/commit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        orders: resolvedOrders,
+        status: selectedStatus,
+        source: 'order_import',
+      }),
+    });
+    const summary = await res.json();
+
+    let msg = `Added ${summary.cards_added} card(s)`;
+    if (summary.cards_linked > 0) msg += `, linked ${summary.cards_linked} existing`;
+    msg += ` across ${summary.orders_created} order(s).`;
+    if (summary.errors && summary.errors.length > 0) msg += ` ${summary.errors.length} error(s).`;
+
+    results.innerHTML = `<div class="status-msg success">${msg}</div>`;
+    resolvedOrders = null;
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Commit failed: ${err.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Add All to Collection';
+  }
+}
+</script>
+</body>
+</html>
