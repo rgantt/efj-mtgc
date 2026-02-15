@@ -381,6 +381,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_collection(params)
         elif path == "/api/wishlist":
             self._api_wishlist_list(params)
+        elif path.startswith("/api/card/"):
+            scryfall_id = path[len("/api/card/"):]
+            self._api_card(scryfall_id)
         elif path.startswith("/api/set-browse/"):
             set_code = path[len("/api/set-browse/"):]
             self._api_set_browse(set_code, params)
@@ -934,6 +937,82 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         conn.close()
         self._send_json(results)
+
+    def _api_card(self, scryfall_id: str):
+        """Return full card data for a single printing by scryfall_id."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+
+        row = conn.execute(
+            """
+            SELECT
+                card.oracle_id, card.name, card.type_line, card.mana_cost, card.cmc,
+                card.colors, card.color_identity,
+                p.set_code, s.set_name, p.collector_number, p.rarity,
+                p.scryfall_id, p.image_uri, p.artist,
+                p.frame_effects, p.border_color, p.full_art, p.promo,
+                p.promo_types, p.finishes,
+                COALESCE(json_extract(p.raw_json, '$.flavor_name'), json_extract(p.raw_json, '$.card_faces[0].flavor_name')) as flavor_name,
+                json_extract(p.raw_json, '$.layout') as layout,
+                json_extract(p.raw_json, '$.card_faces[0].mana_cost') as face0_mana,
+                json_extract(p.raw_json, '$.card_faces[1].mana_cost') as face1_mana
+            FROM printings p
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code
+            WHERE p.scryfall_id = ?
+            """,
+            (scryfall_id,),
+        ).fetchone()
+
+        if not row:
+            conn.close()
+            self._send_json({"error": "Card not found"}, 404)
+            return
+
+        mana_cost = row["mana_cost"]
+        if not mana_cost:
+            face0 = row["face0_mana"] or ""
+            face1 = row["face1_mana"] or ""
+            if face0 or face1:
+                mana_cost = " // ".join(p for p in [face0, face1] if p)
+
+        result = {
+            "oracle_id": row["oracle_id"],
+            "name": row["flavor_name"] or row["name"],
+            "oracle_name": row["name"] if row["flavor_name"] and row["flavor_name"] != row["name"] else None,
+            "type_line": row["type_line"],
+            "mana_cost": mana_cost,
+            "cmc": row["cmc"],
+            "colors": row["colors"],
+            "color_identity": row["color_identity"],
+            "set_code": row["set_code"],
+            "set_name": row["set_name"],
+            "collector_number": row["collector_number"],
+            "rarity": row["rarity"],
+            "scryfall_id": row["scryfall_id"],
+            "image_uri": row["image_uri"],
+            "artist": row["artist"],
+            "frame_effects": row["frame_effects"],
+            "border_color": row["border_color"],
+            "full_art": bool(row["full_art"]),
+            "promo": bool(row["promo"]),
+            "promo_types": row["promo_types"],
+            "finishes": row["finishes"],
+            "layout": row["layout"] or "normal",
+        }
+
+        # Prices
+        result["tcg_price"] = None
+        result["ck_price"] = None
+        result["ck_url"] = ""
+        uuid = self.generator.get_uuid_for_scryfall_id(scryfall_id)
+        if uuid:
+            result["tcg_price"] = _get_tcg_price(uuid, False)
+            result["ck_price"] = _get_ck_price(uuid, False)
+        result["ck_url"] = self.generator.get_ck_url(scryfall_id, False)
+
+        conn.close()
+        self._send_json(result)
 
     def _api_prices_status(self):
         path = get_allpricestoday_path()

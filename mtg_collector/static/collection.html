@@ -2460,8 +2460,9 @@ function renderWishlistPanel() {
   }
   list.innerHTML = entries.map(e => {
     const setLabel = e.set_code ? ` <span class="wl-set">${e.set_code.toUpperCase()}</span>` : '';
-    return `<div class="wl-entry" data-wl-id="${e.id}">
-      <span class="wl-name">${(e.name || '').split(' // ')[0]}${setLabel}</span>
+    const cnLabel = e.collector_number ? ` <span class="wl-set">#${e.collector_number}</span>` : '';
+    return `<div class="wl-entry" data-wl-id="${e.id}" data-scryfall-id="${e.scryfall_id || ''}" style="cursor:pointer">
+      <span class="wl-name">${(e.name || '').split(' // ')[0]}${setLabel}${cnLabel}</span>
       <button class="wl-remove" title="Remove">&times;</button>
     </div>`;
   }).join('');
@@ -2483,14 +2484,36 @@ document.getElementById('wishlist-backdrop').addEventListener('click', () => tog
 
 document.getElementById('wishlist-panel-list').addEventListener('click', async (e) => {
   const removeBtn = e.target.closest('.wl-remove');
-  if (!removeBtn) return;
-  const entryEl = removeBtn.closest('.wl-entry');
-  const wlId = parseInt(entryEl.dataset.wlId);
-  await fetch(`/api/wishlist/${wlId}`, { method: 'DELETE' });
-  const wl = wishlistMap[wlId];
-  if (wl) _removeWishlistEntry(wl);
-  updateWishlistCount();
-  renderWishlistPanel();
+  const entryEl = e.target.closest('.wl-entry');
+  if (!entryEl) return;
+
+  if (removeBtn) {
+    // Remove from wishlist
+    const wlId = parseInt(entryEl.dataset.wlId);
+    await fetch(`/api/wishlist/${wlId}`, { method: 'DELETE' });
+    const wl = wishlistMap[wlId];
+    if (wl) _removeWishlistEntry(wl);
+    updateWishlistCount();
+    renderWishlistPanel();
+    return;
+  }
+
+  // Click on entry name — open card modal
+  const scryfallId = entryEl.dataset.scryfallId;
+  if (!scryfallId) return;
+  const card = allCards.find(c => c.scryfall_id === scryfallId);
+  if (card) {
+    toggleWishlistPanel(false);
+    showCardModal(card);
+  } else {
+    // Card not in current view — fetch from API
+    const res = await fetch(`/api/card/${scryfallId}`);
+    if (res.ok) {
+      const cardData = await res.json();
+      toggleWishlistPanel(false);
+      showCardModal(cardData);
+    }
+  }
 });
 
 document.getElementById('wl-copy-ck').addEventListener('click', () => {
