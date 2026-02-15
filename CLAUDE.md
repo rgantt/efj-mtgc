@@ -32,6 +32,9 @@ uv run pytest tests/test_ingest_ids.py::TestResolveAndAddIds::test_single_card_h
 uv run ruff check mtg_collector/
 
 # CLI usage
+mtg setup                                              # Initialize DB + cache Scryfall + fetch MTGJSON
+mtg setup --demo                                       # Full setup + load demo data (~50 cards)
+mtg setup --skip-cache --skip-data                     # DB init only (no network)
 mtg db init                                            # Initialize database
 mtg ingest-ids --id R 0200 EOE --id C 0075 EOE foil   # Add cards by rarity/CN/set
 mtg ingest-corners photo.jpg                           # Read card corners via Claude Vision
@@ -48,8 +51,8 @@ mtg crack-pack-server                                  # Start web UI on port 80
 ```
 mtg_collector/
 ├── cli/           # Subcommands, each with register(subparsers) and run(args)
-│                  #   ingest_ids, ingest_corners, ingest_ocr, ingest_order, orders,
-│                  #   import_cmd, export, list_cmd, show, edit, delete, stats,
+│                  #   setup_cmd, ingest_ids, ingest_corners, ingest_ocr, ingest_order,
+│                  #   orders, import_cmd, export, list_cmd, show, edit, delete, stats,
 │                  #   db_cmd, cache_cmd, data_cmd, crack_pack, crack_pack_server, wishlist
 ├── db/            # SQLite layer (connection.py, schema.py, models.py with repositories)
 ├── services/      # claude.py (Vision API), scryfall.py (card data + caching),

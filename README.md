@@ -25,8 +25,14 @@ git clone https://github.com/thaen/efj-mtgc.git
 cd efj-mtgc
 uv sync
 
-# Initialize database
-mtg db init
+# One-command setup: init DB, cache Scryfall data, fetch MTGJSON
+mtg setup
+
+# Or with demo data (~50 cards) to browse immediately
+mtg setup --demo
+
+# Start the web UI
+mtg crack-pack-server   # Open http://localhost:8080
 
 # Add cards by ID (no API key needed)
 mtg ingest-ids --id R 0200 EOE --id C 0075 EOE foil
@@ -38,13 +44,6 @@ mtg ingest-corners ~/photos/corners.jpg
 # Import a TCGPlayer order
 mtg ingest-order ~/Downloads/order-page.html
 
-# Cache all Scryfall data for offline browsing
-mtg cache all
-
-# Start the web UI
-mtg data fetch          # Download MTGJSON data (for booster packs)
-mtg crack-pack-server   # Open http://localhost:8080
-
 # See what you've got
 mtg list
 mtg stats
@@ -52,6 +51,8 @@ mtg stats
 # Export to Moxfield
 mtg export -f moxfield -o collection.csv
 ```
+
+The `mtg setup` command handles database initialization, Scryfall bulk data caching (~80k cards), and MTGJSON data download in one step. Use `--skip-cache` or `--skip-data` to skip individual steps.
 
 ## Requirements
 
