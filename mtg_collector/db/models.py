@@ -2,7 +2,7 @@
 
 import sqlite3
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from mtg_collector.utils import now_iso, parse_json_array, to_json_array
 
@@ -57,6 +57,24 @@ class Printing:
 
 
 @dataclass
+class Order:
+    """An order from a card vendor."""
+    id: Optional[int]
+    order_number: Optional[str] = None
+    source: Optional[str] = None  # 'tcgplayer', 'cardkingdom', 'other'
+    seller_name: Optional[str] = None
+    order_date: Optional[str] = None
+    subtotal: Optional[float] = None
+    shipping: Optional[float] = None
+    tax: Optional[float] = None
+    total: Optional[float] = None
+    shipping_status: Optional[str] = None
+    estimated_delivery: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+@dataclass
 class CollectionEntry:
     """A physical card in the user's collection."""
     id: Optional[int]
@@ -77,6 +95,7 @@ class CollectionEntry:
     misprint: bool = False
     status: str = "owned"
     sale_price: Optional[float] = None
+    order_id: Optional[int] = None
 
 
 @dataclass
@@ -167,6 +186,43 @@ class CardRepository:
             color_identity=parse_json_array(row["color_identity"]),
         )
 
+    def search_by_name(self, name: str) -> Optional[Card]:
+        """Search for a card by name (case-insensitive, handles DFCs).
+
+        Handles double-faced cards where the DB stores "Front // Back"
+        but the search term is just "Front".
+        """
+        # Try case-insensitive exact match first
+        cursor = self.conn.execute(
+            "SELECT * FROM cards WHERE name COLLATE NOCASE = ?", (name,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_card(row)
+
+        # Try matching front face of double-faced cards ("Name // ...")
+        cursor = self.conn.execute(
+            "SELECT * FROM cards WHERE name LIKE ? LIMIT 1",
+            (name + " // %",),
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_card(row)
+
+        return None
+
+    def _row_to_card(self, row) -> Card:
+        return Card(
+            oracle_id=row["oracle_id"],
+            name=row["name"],
+            type_line=row["type_line"],
+            mana_cost=row["mana_cost"],
+            cmc=row["cmc"],
+            oracle_text=row["oracle_text"],
+            colors=parse_json_array(row["colors"]),
+            color_identity=parse_json_array(row["color_identity"]),
+        )
+
 
 class SetRepository:
     """CRUD operations for sets table."""
@@ -198,6 +254,38 @@ class SetRepository:
         if row is None:
             return None
 
+        return Set(
+            set_code=row["set_code"],
+            set_name=row["set_name"],
+            set_type=row["set_type"],
+            released_at=row["released_at"],
+            cards_fetched_at=row["cards_fetched_at"],
+        )
+
+    def get_by_name(self, name: str) -> Optional[Set]:
+        """Find a set by name (case-insensitive, with partial match fallback)."""
+        name_lower = name.lower()
+
+        # Try exact case-insensitive match
+        cursor = self.conn.execute(
+            "SELECT * FROM sets WHERE set_name COLLATE NOCASE = ?", (name,)
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_set(row)
+
+        # Try partial match (set name contains the search term)
+        cursor = self.conn.execute(
+            "SELECT * FROM sets WHERE LOWER(set_name) LIKE ? LIMIT 1",
+            (f"%{name_lower}%",),
+        )
+        row = cursor.fetchone()
+        if row:
+            return self._row_to_set(row)
+
+        return None
+
+    def _row_to_set(self, row) -> Set:
         return Set(
             set_code=row["set_code"],
             set_name=row["set_name"],
@@ -358,8 +446,8 @@ class CollectionRepository:
             INSERT INTO collection
             (scryfall_id, finish, condition, language, purchase_price,
              acquired_at, source, source_image, notes, tags, tradelist,
-             is_alter, proxy, signed, misprint, status, sale_price)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             is_alter, proxy, signed, misprint, status, sale_price, order_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 entry.scryfall_id,
@@ -379,6 +467,7 @@ class CollectionRepository:
                 1 if entry.misprint else 0,
                 entry.status,
                 entry.sale_price,
+                entry.order_id,
             ),
         )
         new_id = cursor.lastrowid
@@ -428,7 +517,8 @@ class CollectionRepository:
                 signed = ?,
                 misprint = ?,
                 status = ?,
-                sale_price = ?
+                sale_price = ?,
+                order_id = ?
             WHERE id = ?
             """,
             (
@@ -449,6 +539,7 @@ class CollectionRepository:
                 1 if entry.misprint else 0,
                 entry.status,
                 entry.sale_price,
+                entry.order_id,
                 entry.id,
             ),
         )
@@ -636,6 +727,12 @@ class CollectionRepository:
         except (IndexError, KeyError):
             pass
 
+        order_id = None
+        try:
+            order_id = row["order_id"]
+        except (IndexError, KeyError):
+            pass
+
         return CollectionEntry(
             id=row["id"],
             scryfall_id=row["scryfall_id"],
@@ -655,6 +752,142 @@ class CollectionRepository:
             misprint=bool(row["misprint"]),
             status=status,
             sale_price=sale_price,
+            order_id=order_id,
+        )
+
+
+class OrderRepository:
+    """CRUD operations for orders table."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def add(self, order: Order) -> int:
+        """Add a new order. Returns the new ID."""
+        if order.created_at is None:
+            order.created_at = now_iso()
+
+        cursor = self.conn.execute(
+            """
+            INSERT INTO orders
+            (order_number, source, seller_name, order_date, subtotal,
+             shipping, tax, total, shipping_status, estimated_delivery,
+             notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                order.order_number,
+                order.source,
+                order.seller_name,
+                order.order_date,
+                order.subtotal,
+                order.shipping,
+                order.tax,
+                order.total,
+                order.shipping_status,
+                order.estimated_delivery,
+                order.notes,
+                order.created_at,
+            ),
+        )
+        return cursor.lastrowid
+
+    def get(self, order_id: int) -> Optional[Order]:
+        """Get an order by ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM orders WHERE id = ?", (order_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_order(row)
+
+    def get_by_number(self, order_number: str) -> List[Order]:
+        """Get orders by order number (may be multiple sellers per order)."""
+        cursor = self.conn.execute(
+            "SELECT * FROM orders WHERE order_number = ? ORDER BY seller_name",
+            (order_number,),
+        )
+        return [self._row_to_order(row) for row in cursor]
+
+    def list_all(self, source: Optional[str] = None) -> List[Dict[str, Any]]:
+        """List all orders with card counts."""
+        query = """
+            SELECT o.*, COUNT(c.id) as card_count
+            FROM orders o
+            LEFT JOIN collection c ON c.order_id = o.id
+            WHERE 1=1
+        """
+        params = []
+        if source:
+            query += " AND o.source = ?"
+            params.append(source)
+        query += " GROUP BY o.id ORDER BY o.created_at DESC"
+
+        cursor = self.conn.execute(query, params)
+        return [dict(row) for row in cursor]
+
+    def get_order_cards(self, order_id: int) -> List[Dict[str, Any]]:
+        """Get all collection entries for an order."""
+        cursor = self.conn.execute(
+            """
+            SELECT c.*, card.name, p.set_code, p.collector_number, p.rarity,
+                   p.image_uri, s.set_name
+            FROM collection c
+            JOIN printings p ON c.scryfall_id = p.scryfall_id
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code
+            WHERE c.order_id = ?
+            ORDER BY card.name
+            """,
+            (order_id,),
+        )
+        return [dict(row) for row in cursor]
+
+    def receive_order(self, order_id: int) -> int:
+        """Batch flip all ordered cards in this order to owned. Returns count."""
+        ts = now_iso()
+        # Get IDs of cards to update
+        cursor = self.conn.execute(
+            "SELECT id FROM collection WHERE order_id = ? AND status = 'ordered'",
+            (order_id,),
+        )
+        ids = [row["id"] for row in cursor]
+        if not ids:
+            return 0
+
+        # Update status
+        placeholders = ",".join("?" * len(ids))
+        self.conn.execute(
+            f"UPDATE collection SET status = 'owned' WHERE id IN ({placeholders})",
+            ids,
+        )
+
+        # Log status changes
+        for cid in ids:
+            self.conn.execute(
+                "INSERT INTO status_log (collection_id, from_status, to_status, changed_at, note) "
+                "VALUES (?, 'ordered', 'owned', ?, 'order received')",
+                (cid, ts),
+            )
+
+        return len(ids)
+
+    def _row_to_order(self, row: sqlite3.Row) -> Order:
+        return Order(
+            id=row["id"],
+            order_number=row["order_number"],
+            source=row["source"],
+            seller_name=row["seller_name"],
+            order_date=row["order_date"],
+            subtotal=row["subtotal"],
+            shipping=row["shipping"],
+            tax=row["tax"],
+            total=row["total"],
+            shipping_status=row["shipping_status"],
+            estimated_delivery=row["estimated_delivery"],
+            notes=row["notes"],
+            created_at=row["created_at"],
         )
 
 
