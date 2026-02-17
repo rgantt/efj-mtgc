@@ -35,4 +35,4 @@ ENV EASYOCR_MODEL_STORAGE=/app/models/ocr
 
 EXPOSE 8081
 
-ENTRYPOINT ["mtg", "crack-pack-server", "--port", "8081"]
+ENTRYPOINT ["mtg", "crack-pack-server", "--port", "8081", "--https"]
