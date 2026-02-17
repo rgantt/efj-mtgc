@@ -46,7 +46,7 @@ if [ $# -ge 2 ]; then
 else
     # Auto-assign: find highest port in existing Quadlets, add 1 (start at 8081)
     MAX_PORT=8080
-    for unit in "$QUADLET_DIR"/mtgc-*.container 2>/dev/null; do
+    for unit in "$QUADLET_DIR"/mtgc-*.container; do
         [ -f "$unit" ] || continue
         P=$(grep -oP 'PublishPort=\K[0-9]+' "$unit" 2>/dev/null || true)
         if [ -n "$P" ] && [ "$P" -gt "$MAX_PORT" ]; then
