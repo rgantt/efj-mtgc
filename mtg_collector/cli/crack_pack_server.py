@@ -3536,18 +3536,30 @@ def run(args):
         import ssl
         import subprocess
 
-        cert_dir = Path.home() / ".mtgc"
+        import socket
+
+        cert_dir = Path(os.environ.get("MTGC_HOME", Path.home() / ".mtgc"))
         cert_file = cert_dir / "server.pem"
         key_file = cert_dir / "server-key.pem"
 
         if not cert_file.exists() or not key_file.exists():
             print("Generating self-signed certificate...")
+            san = "DNS:localhost,IP:127.0.0.1"
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))
+                local_ip = s.getsockname()[0]
+                s.close()
+                san += f",IP:{local_ip}"
+            except Exception:
+                pass
             subprocess.run(
                 [
                     "openssl", "req", "-x509", "-newkey", "rsa:2048",
                     "-keyout", str(key_file), "-out", str(cert_file),
                     "-days", "3650", "-nodes",
                     "-subj", "/CN=mtgc-local",
+                    "-addext", f"subjectAltName={san}",
                 ],
                 check=True,
             )
