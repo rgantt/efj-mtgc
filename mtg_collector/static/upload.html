@@ -292,9 +292,24 @@ async function startCamera() {
   sessionPhotos = 0;
 }
 
-document.getElementById('camera-btn').addEventListener('click', () => {
-  startCamera().catch(e => alert('Camera error: ' + e.message));
-});
+// Fall back to native capture input when getUserMedia is unavailable (e.g. HTTP on iOS)
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  const captureInput = document.createElement('input');
+  captureInput.type = 'file';
+  captureInput.accept = 'image/jpeg,image/png,image/webp';
+  captureInput.capture = 'environment';
+  captureInput.style.display = 'none';
+  document.body.appendChild(captureInput);
+  captureInput.addEventListener('change', () => {
+    if (captureInput.files.length > 0) handleFiles(captureInput.files);
+    captureInput.value = '';
+  });
+  document.getElementById('camera-btn').addEventListener('click', () => captureInput.click());
+} else {
+  document.getElementById('camera-btn').addEventListener('click', () => {
+    startCamera().catch(e => alert('Camera error: ' + e.message));
+  });
+}
 
 function takePhoto() {
   const video = document.getElementById('camera-video');
