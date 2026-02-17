@@ -4,13 +4,21 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      instance:
+        description: 'Instance name (e.g. prod, staging)'
+        required: true
+        default: 'prod'
+
+env:
+  INSTANCE: ${{ github.event.inputs.instance || 'prod' }}
 
 jobs:
   deploy:
     runs-on: self-hosted
     steps:
       - name: Pull latest code
-        run: git config --global --add safe.directory /opt/mtgc && git -C /opt/mtgc pull --ff-only origin main
+        run: git -C /opt/mtgc-${{ env.INSTANCE }} pull --ff-only origin ${{ github.ref_name }}
 
       - name: Build and restart
-        run: bash /opt/mtgc/deploy/deploy.sh
+        run: bash /opt/mtgc-${{ env.INSTANCE }}/deploy/deploy.sh ${{ env.INSTANCE }}
