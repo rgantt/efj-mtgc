@@ -3,6 +3,7 @@
 import gzip
 import hashlib
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -3456,6 +3457,11 @@ def register(subparsers):
 
 def run(args):
     """Run the crack-pack-server command."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        print("Error: ANTHROPIC_API_KEY environment variable is not set", file=sys.stderr)
+        print("Card ingestion (OCR + corner reading) requires an Anthropic API key.", file=sys.stderr)
+        sys.exit(1)
+
     mtgjson_path = Path(args.mtgjson) if args.mtgjson else None
     db_path = get_db_path(getattr(args, "db", None))
 
