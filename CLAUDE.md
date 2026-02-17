@@ -44,6 +44,14 @@ mtg cache all                                          # Bulk-cache all Scryfall
 mtg list                                               # List collection
 mtg export -f moxfield -o out.csv
 mtg crack-pack-server                                  # Start web UI on port 8080
+
+# Deployment — rootless Podman, per-instance isolation
+bash deploy/setup.sh my-feature          # Create instance (auto-port, inherits API key)
+bash deploy/deploy.sh my-feature         # Rebuild image + restart
+bash deploy/teardown.sh my-feature       # Stop + remove (add --purge to delete data)
+systemctl --user start mtgc-my-feature   # Start instance
+systemctl --user status mtgc-my-feature  # Check status
+podman exec -it systemd-mtgc-my-feature mtg setup  # Init data inside container
 ```
 
 ## Architecture
@@ -130,6 +138,20 @@ Key API patterns:
 - `mtg cache all` uses Scryfall bulk data endpoint (3 HTTP requests total) to cache all ~80k cards
 - Price data comes from MTGJSON AllPricesToday.json (TCGplayer + CardKingdom), cached in memory with 24h TTL
 - Order resolver uses `SET_NAME_MAP` for vendor→Scryfall set code mapping (e.g. "FINAL FANTASY" → "fin")
+
+## Deployment
+
+Rootless Podman Quadlet. Each instance is a separate repo clone with its own image (`mtgc:<instance>`), data volume, env file, and port. No sudo required. See `deploy/README.md` for full docs.
+
+Key files: `Containerfile` (multi-stage build), `deploy/setup.sh`, `deploy/deploy.sh`, `deploy/teardown.sh`, `deploy/mtgc.container` (Quadlet template with `{{INSTANCE}}`/`{{PORT}}` placeholders).
+
+- `~/.config/mtgc/default.env` has the shared API key; setup.sh copies it to new instances automatically
+- `~/.config/mtgc/<instance>.env` — per-instance env file
+- `~/.config/containers/systemd/mtgc-<instance>.container` — generated Quadlet unit
+- Service name: `mtgc-<instance>`, container name: `systemd-mtgc-<instance>`
+- Server checks `ANTHROPIC_API_KEY` at startup and fails fast if missing
+- CI: push to main → auto-deploys `prod` at `/opt/mtgc-prod/`. Workflow dispatch for other instances.
+- Deploy repo (private CI config): `rgantt/efj-mtgc-deploy`
 
 ## Web UI Shared Conventions (crack_pack.html)
 

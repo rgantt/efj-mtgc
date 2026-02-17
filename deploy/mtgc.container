@@ -1,0 +1,20 @@
+[Unit]
+Description=MTG Card Collection Server ({{INSTANCE}})
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/mtgc:{{INSTANCE}}
+EnvironmentFile=%h/.config/mtgc/{{INSTANCE}}.env
+Environment=MTGC_HOME=/data
+PublishPort={{PORT}}:8081
+Volume=mtgc-{{INSTANCE}}-data.volume:/data:Z
+AutoUpdate=local
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target
