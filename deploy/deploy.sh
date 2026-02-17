@@ -29,17 +29,24 @@ cd "$REPO_DIR"
 # CI runners and non-interactive sessions often lack this.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-echo "==> Building container image (mtgc:$INSTANCE)..."
-podman build -t "mtgc:${INSTANCE}" -f Containerfile .
-
-echo "==> Reloading systemd (picks up Quadlet changes)..."
-systemctl --user daemon-reload
-
-echo "==> Restarting $SERVICE_NAME..."
-systemctl --user restart "$SERVICE_NAME"
-
-# Health check
 QUADLET_FILE="$HOME/.config/containers/systemd/${SERVICE_NAME}.container"
+
+# If Quadlet doesn't exist yet, delegate to setup.sh for initial install
+if [ ! -f "$QUADLET_FILE" ]; then
+    echo "==> No Quadlet found for $INSTANCE, running initial setup..."
+    bash "$SCRIPT_DIR/setup.sh" "$INSTANCE"
+    echo "==> Starting $SERVICE_NAME..."
+    systemctl --user start "$SERVICE_NAME"
+else
+    echo "==> Building container image (mtgc:$INSTANCE)..."
+    podman build -t "mtgc:${INSTANCE}" -f Containerfile .
+
+    echo "==> Reloading systemd (picks up Quadlet changes)..."
+    systemctl --user daemon-reload
+
+    echo "==> Restarting $SERVICE_NAME..."
+    systemctl --user restart "$SERVICE_NAME"
+fi
 PORT=$(grep -oP 'PublishPort=\K[0-9]+' "$QUADLET_FILE")
 echo "==> Health check: $SERVICE_NAME (port $PORT)..."
 for i in 1 2 3 4 5; do
