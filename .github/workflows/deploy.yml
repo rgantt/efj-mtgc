@@ -10,7 +10,7 @@ jobs:
     runs-on: self-hosted
     steps:
       - name: Pull latest code
-        run: sudo -u mtgc git -C /opt/mtgc pull --ff-only origin main
+        run: git config --global --add safe.directory /opt/mtgc && git -C /opt/mtgc pull --ff-only origin main
 
-      - name: Run deploy script
+      - name: Build and restart
         run: bash /opt/mtgc/deploy/deploy.sh
