@@ -235,11 +235,11 @@ def _call_api(fn, status_callback, trace_lines=None, **kwargs):
 
     After 3 Haiku failures switches to Sonnet for remaining retries.
     """
-    for attempt in range(5):
+    for attempt in range(6):
         try:
             return fn(**kwargs)
         except anthropic.APIStatusError as e:
-            if e.status_code != 529 or attempt == 4:
+            if e.status_code != 529 or attempt == 5:
                 raise
             if attempt == 2 and kwargs.get("model") == AGENT_MODEL_HAIKU:
                 kwargs["model"] = AGENT_MODEL_SONNET
