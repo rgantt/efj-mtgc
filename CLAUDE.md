@@ -81,7 +81,7 @@ mtg_collector/
 
 ## Database Schema
 
-Schema version tracked in `schema_version` table with auto-migrations (current: v12).
+Schema version tracked in `schema_version` table with auto-migrations (current: v13).
 
 Core tables with foreign key relationships:
 - `cards` (oracle_id PK) → Oracle-level card identity
@@ -90,6 +90,10 @@ Core tables with foreign key relationships:
 - `orders` (id PK) → Purchase orders from TCGPlayer/Card Kingdom with seller, totals, shipping status
 - `collection` (id PK) → Owned cards, FK to printings and optionally orders (one row per physical card). Status lifecycle: owned/ordered/listed/sold/removed
 - `wishlist` (id PK) → Cards user wants, FK to cards (oracle-level) or printings (specific)
+- `mtgjson_uuid_map` (uuid PK) → Maps MTGJSON UUIDs to (set_code, collector_number) for price lookups
+- `prices` → Append-only price time series (set_code, collector_number, source, price_type, price, observed_at)
+- `price_fetch_log` → Audit trail of price imports with stats
+- `latest_prices` (VIEW) → Most recent prices per card/source/type (global max observed_at)
 - `status_log` → Append-only audit trail of collection status changes
 - `ingest_cache` (image_md5 PK) → Cached OCR + Claude results to avoid reprocessing
 - `ingest_lineage` → Tracks which collection entry came from which image
@@ -145,7 +149,7 @@ Key API patterns:
 - RARITY_MAP: C (common), U (uncommon), R (rare), M (mythic), P (promo), L (land, treated as common), T (token)
 - Tests use a pre-populated `tests/fixtures/scryfall-cache.sqlite` for offline testing
 - `mtg cache all` uses Scryfall bulk data endpoint (3 HTTP requests total) to cache all ~80k cards
-- Price data comes from MTGJSON AllPricesToday.json (TCGplayer + CardKingdom), cached in memory with 24h TTL
+- Price data comes from MTGJSON AllPricesToday.json (TCGplayer + CardKingdom), imported into SQLite `prices` table as time series. `mtg data import-prices` for manual import, `mtg data fetch-prices` auto-imports after download
 - Order resolver uses `SET_NAME_MAP` for vendor→Scryfall set code mapping (e.g. "FINAL FANTASY" → "fin")
 
 ## Deployment
