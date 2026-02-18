@@ -1567,17 +1567,26 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         self._send_json(counts)
 
     def _api_ingest2_recent(self, params):
-        """Return images from last N hours with computed status info."""
+        """Return images from last N hours with computed status info.
+
+        Optional ?id=X filters to a single image (for per-image polling).
+        """
         hours = float(params.get("hours", ["2"])[0])
+        image_id = params.get("id", [None])[0]
         conn = self._ingest2_db()
+        where = "WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)"
+        args = [f"-{int(hours * 3600)} seconds"]
+        if image_id is not None:
+            where += " AND id = ?"
+            args.append(int(image_id))
         rows = conn.execute(
-            """SELECT id, filename, stored_name, status, error_message,
+            f"""SELECT id, filename, stored_name, status, error_message,
                       ocr_result, claude_result, scryfall_matches, disambiguated,
                       created_at, updated_at
                FROM ingest_images
-               WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)
+               {where}
                ORDER BY id DESC""",
-            (f"-{int(hours * 3600)} seconds",),
+            args,
         ).fetchall()
         conn.close()
 

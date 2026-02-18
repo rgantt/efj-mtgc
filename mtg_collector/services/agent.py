@@ -9,32 +9,53 @@ import anthropic
 
 from mtg_collector.db.connection import get_db_path
 from mtg_collector.services.claude import ClaudeVision
-from mtg_collector.services.ocr import run_ocr_with_boxes
+
 
 AGENT_MODEL_HAIKU = "claude-haiku-4-5-20251001"
 AGENT_MODEL_SONNET = "claude-sonnet-4-6"
 VISION_MODEL = "claude-opus-4-6"
-DEFAULT_MAX_CALLS = 8
+DEFAULT_MAX_CALLS = 12
 LARGE_FRAGMENT_THRESHOLD = 70
+CONTEXT_UPGRADE_THRESHOLD = 8_000  # input tokens; switch Haiku → Sonnet if context grows large
 
 SYSTEM_PROMPT = """\
-You are an expert Magic: The Gathering card identifier. You have OCR text fragments
-from a photo of MTG cards.
+You are an expert Magic: The Gathering card identifier. 
+You have OCR text fragments from a photo of MTG cards indicating position (bounding boxes),
+text at that position, and confidence scores from OCR. 
 
-CARD LAYOUT (top to bottom):
-  - Title (top of card)
-  - Type and Subtype (middle, below the art)
-  - Rules text (below type line — may be blank on vanilla creatures)
-  - Flavor text (italic, below rules — optional)
-  - Bottom-left corner: collector number, set code, artist name
-  - Bottom-right corner: power/toughness (creatures only)
+YOUR JOB:
+Do your best to identify every card in the image. Repeat this strategy for all cards in the image:
+1. Interpret OCR fragments to find card data. The most important indicators are name, set code, and collector number
+2. Search to verify using query_local_db — when disambiguating printings, JOIN sets to get
+   set_name and released_at so you can reason about which sets are plausible
+3. If you still cannot determine which printing after 4 search attempts, call analyze_image —
+   it can identify border color (black/white/silver), card frame era, set icon shape, and other
+   visual details that OCR misses, especially useful for older cards. It is quite expensive.
+4. Continue searching until no further disambiguation is possible
+5. Stop calling tools and list candidate cards. 
 
-There will be large vertical gaps between the title and the type line — that is the card art.
-Cards with no rules text will have another gap between the type line and the collector info.
-All of these text regions belong to the SAME card. Do NOT split them into separate cards.
+OCR BOUNDING BOXES
+
+Start by identifying how many cards are in the image, then use your knowledge to identify each one.
 
 If the photo contains multiple cards side by side, use horizontal position (x coordinates)
-to determine which fragments belong to which card.
+to determine which fragments belong to which card. Cards will ALWAYS be positioned vertically
+in an image. The aspect ratio of a Magic card is 63:88 (wide:tall).
+
+CARD LAYOUT (top to bottom):
+  - Title (top left of card)
+  - Colorless portion of a mana cost (optional; top right of card)
+  - Type and Subtype (middle left of card, below the art; subtype optional)
+  - Rules text (below type line — may be blank on vanilla creatures)
+  - Flavor text (italic, below rules — optional)
+  - Bottom-left corner: collector number, set code, artist name (on newer cards: see Collector Numbers below)
+  - Bottom-right corner: power/toughness (creatures only)
+
+There may be large vertical gaps between the title and the type line — that is the card art.
+Cards with no rules text will have another gap between the type line and the collector info.
+All of these text regions belong to the SAME card. Do NOT split them into separate cards.
+Some cards hae wildly different faces. Usually if text appears directly below the title of a card,
+it is rules text. Use your judgment and knowledge as an expert.
 
 Collector numbers — the printed format has changed over Magic's history:
   - Pre-1998 (before Exodus): NO collector number printed on card at all.
@@ -44,20 +65,37 @@ Collector numbers — the printed format has changed over Magic's history:
     If you see fewer than 4 digits from a 4-digit-era card, the OCR is truncated — omit it.
   - Some cards across all eras have letter suffixes (a, b, s, z) or prefixes (A-) for variants.
 
-Identify every card in the image with high confidence. Strategy:
-1. Interpret OCR fragments to find card name, set code, collector number
-2. Search to verify using query_local_db
-3. If OCR quality seems poor, call rerun_ocr once to get fresh data
-4. Only call analyze_image if you cannot identify a card after 2–3 search attempts
+USING OCR DATA TO SEARCH
+The most reliable indicators of a card are its name, set code, and collector number.
+For older cards without a set code or collector number, artist and flavor text are
+the best tools to narrow potential printings. If a date is present
+Card text can be used also, but older card rules text wording may not match Scryfall.
 
-When confident about all cards, stop calling tools. Your findings will be collected
-and formatted automatically.
+DISAMBIGUATION RULE — this is critical:
+If you cannot distinguish between printings of a card, you MUST return one entry for EVERY
+plausible printing with confidence "low" or "medium". This is not a failure, this is success!
+Do NOT pick one and declare confidence "high" based solely on artist name or rules text match
+unless you have other reasons to be certain (such as a high-confidence date stamp from OCR).
 
-If you can identify the card name but cannot determine which specific printing it is,
-return one entry per candidate printing (same name, different set_code/collector_number),
-all with confidence "low" or "medium". Do not guess — if multiple printings are equally
-plausible, list them all.
+Example: OCR shows card name "Grizzly Bears" with artist "Jeff A. Menges" and no date.
+DB query returns many printings, all with identical features: Unlimited (2ed), Revised (3ed) both do not have dates, and on several sets, dates are extremely small: OCR may have just missed it.
+CORRECT: return ALL the separate printings, each with confidence "low".
+WRONG: return a single entry with set_code="sum", confidence="high".
 
+This rule applies even after calling analyze_image — if vision analysis cannot definitively
+resolve the printing, still return all remaining plausible candidates.
+
+KNOWN HARD CASES
+The DISAMBIGUATION RULE applies in these cases: Return all reasonable candidates and let the user decie.
+* 3rd Edition (Revised, set code 3ed), 4th Edition (4ed), and 5th edition (5ed) are
+  very similar: White-bordered, no set symbol, similar wording. 4th edition and 5th edition
+  have dates under the artist line, so high-confidence OCR can help disinguish, but 4ed and 5ed
+  are nearly identical.
+* Similarly, distinguishing between Alpha and Beta can be difficult even for humans: Both
+  black-bordered with identical wordings across most cards.
+* OCR gives you text printed on the card. Scryfall's data contains modern wordings of rules
+  text on cards (aka Oracle text). These can be very different, so have caution when doing
+  rules text matching. 
 """
 
 OUTPUT_SCHEMA = {
@@ -103,12 +141,14 @@ TOOLS = [
             "  sets(set_code, set_name, set_type, released_at)\n\n"
             "IMPORTANT: The local cache is incomplete — only cards from sets the user has explicitly "
             "cached are present. Empty results mean the card is not cached locally, not that it "
-            "doesn't exist. Prefer querying only cards and printings; only join sets if you need "
-            "set_name, and use LEFT JOIN since not all sets are guaranteed to have a row.\n\n"
+            "doesn't exist. When listing candidate printings for disambiguation, JOIN sets to include "
+            "set_name and released_at — this helps reason about which sets are plausible. "
+            "Always use LEFT JOIN since not all sets are guaranteed to have a row.\n\n"
             "Notes:\n"
             "- finishes is a JSON array stored as TEXT (e.g. '[\"nonfoil\"]', '[\"foil\"]')\n"
             "- Use LIKE with % for substring matching; COLLATE NOCASE for case-insensitivity\n"
-            "- Always LIMIT results (e.g. LIMIT 10)\n"
+            "- Do NOT use LIMIT when fetching printings of a specific card — you need all rows to find the right printing\n"
+            "- Use LIMIT only for broad/exploratory queries (e.g. browsing sets)\n"
             "- Only SELECT is permitted"
         ),
         "input_schema": {
@@ -123,23 +163,14 @@ TOOLS = [
         },
     },
     {
-        "name": "rerun_ocr",
-        "description": (
-            "Re-run EasyOCR on the image to get a fresh text extraction. "
-            "Use if initial OCR seems poor or incomplete."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
-    },
-    {
         "name": "analyze_image",
         "description": (
             "Use Claude Vision to directly analyze the full card image. "
-            "EXPENSIVE — only use as a last resort after OCR and Scryfall search "
-            "have failed to identify a card."
+            "Can only be called ONCE per session. "
+            "Use when OCR and DB search have not been enough to identify the card or narrow down the printing. "
+            "Especially useful for older cards: it can read border color (black border = Alpha/Beta/Unlimited/some promos; "
+            "white border = Revised through 7th edition; silver = Unsets), card frame era, set icon shape and color, "
+            "and all card text directly from the image."
         ),
         "input_schema": {
             "type": "object",
@@ -170,6 +201,10 @@ def _format_fragments(fragments: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_DB_ROW_CAP = 200
+_DB_CHAR_CAP = 12_000
+
+
 def _tool_query_local_db(sql: str, conn: sqlite3.Connection) -> str:
     sql_stripped = sql.strip()
     if not sql_stripped.upper().startswith("SELECT"):
@@ -178,13 +213,25 @@ def _tool_query_local_db(sql: str, conn: sqlite3.Connection) -> str:
     if not rows:
         return "No results found in local cache"
     cols = rows[0].keys()
-    lines = [" | ".join(str(row[c]) for c in cols) for row in rows]
+    lines = []
+    total_chars = 0
+    for i, row in enumerate(rows):
+        if i >= _DB_ROW_CAP:
+            lines.append(
+                f"[Truncated: row cap of {_DB_ROW_CAP} reached. "
+                f"{len(rows) - _DB_ROW_CAP} rows omitted. Refine your query.]"
+            )
+            break
+        line = " | ".join(str(row[c]) for c in cols)
+        total_chars += len(line) + 1
+        if total_chars > _DB_CHAR_CAP:
+            lines.append(
+                f"[Truncated: character cap of {_DB_CHAR_CAP} reached. "
+                f"{len(rows) - i} rows omitted. Refine your query.]"
+            )
+            break
+        lines.append(line)
     return "\n".join(lines)
-
-
-def _tool_rerun_ocr(image_path: str) -> str:
-    fragments = run_ocr_with_boxes(image_path)
-    return _format_fragments(fragments)
 
 
 def _tool_analyze_image(image_path: str, client: anthropic.Anthropic) -> str:
@@ -194,7 +241,7 @@ def _tool_analyze_image(image_path: str, client: anthropic.Anthropic) -> str:
 
     response = client.messages.create(
         model=VISION_MODEL,
-        max_tokens=2000,
+        max_tokens=4000,
         messages=[
             {
                 "role": "user",
@@ -211,8 +258,11 @@ def _tool_analyze_image(image_path: str, client: anthropic.Anthropic) -> str:
                         "type": "text",
                         "text": (
                             "This is a photo of one or more Magic: The Gathering cards. "
-                            "Describe every card you can see: name, set code, collector number, "
-                            "rarity, and any other identifying information visible on the card."
+                            "For each card, describe everything clearly visible that would help "
+                            "identify it and its specific printing — card text, border color, frame "
+                            "style, set symbol, any numbers or codes, artist line, and anything else "
+                            "you notice. Only describe what you can clearly see; if something is "
+                            "unclear or not visible, say so explicitly rather than guessing."
                         ),
                     },
                 ],
@@ -306,11 +356,23 @@ def run_agent(
             messages=messages,
         )
 
+        model_label = "haiku" if agent_model == AGENT_MODEL_HAIKU else "sonnet"
         for block in response.content:
             if block.type == "text":
-                _trace(f"[AGENT] {block.text.strip()}", status_callback, trace_lines)
+                _trace(f"[AGENT/{model_label}] {block.text.strip()}", status_callback, trace_lines)
             elif block.type == "tool_use":
-                _trace(f"[TOOL CALL] {block.name}: {json.dumps(block.input)}", status_callback, trace_lines)
+                _trace(f"[TOOL CALL/{model_label}] {block.name}: {json.dumps(block.input)}", status_callback, trace_lines)
+
+        if (
+            agent_model == AGENT_MODEL_HAIKU
+            and response.usage.input_tokens >= CONTEXT_UPGRADE_THRESHOLD
+        ):
+            agent_model = AGENT_MODEL_SONNET
+            _trace(
+                f"[AGENT] Context at {response.usage.input_tokens} tokens, upgrading to Sonnet",
+                status_callback,
+                trace_lines,
+            )
 
         if response.stop_reason == "end_turn" or not _has_tool_use(response):
             break
@@ -326,8 +388,6 @@ def run_agent(
 
             if name == "query_local_db":
                 result = _tool_query_local_db(inputs.get("sql", ""), conn)
-            elif name == "rerun_ocr":
-                result = _tool_rerun_ocr(image_path)
             elif name == "analyze_image":
                 if vision_used[0]:
                     result = vision_cached_result[0] or (
@@ -359,13 +419,19 @@ def run_agent(
 
     _trace(f"[FINAL] Tool calls used: {tool_call_count}/{max_calls}", status_callback, trace_lines)
 
+    FINAL_PROMPT = (
+        "Output your final identification now. "
+        "Exhaustively list every card candidate visible in this image. "
+        "If you are uncertain which printing a card is, include one entry per plausible printing "
+        "(same name, different set_code/collector_number), all with confidence 'low' or 'medium'. "
+        "Do not collapse uncertain printings into a single guess."
+    )
     # If the last response was end_turn it hasn't been appended to messages yet.
     # Add it so the conversation is complete, then ask for the final answer.
     if response is not None and response.stop_reason == "end_turn":
         messages.append({"role": "assistant", "content": response.content})
-        messages.append({"role": "user", "content": "Output your final identification now."})
-    # Budget-exhausted case: messages already ends with the tool results (user turn),
-    # so the structured output call below will naturally close the loop.
+    # Both paths get the same final prompt.
+    messages.append({"role": "user", "content": FINAL_PROMPT})
 
     _trace("[FINAL] Requesting structured output...", status_callback, trace_lines)
     final_response = _call_api(
