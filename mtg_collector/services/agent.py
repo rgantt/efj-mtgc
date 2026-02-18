@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import sys
+import time
 
 import anthropic
 
@@ -227,6 +228,19 @@ def _has_tool_use(response) -> bool:
     return any(block.type == "tool_use" for block in response.content)
 
 
+def _call_api(fn, status_callback, **kwargs):
+    """Call fn(**kwargs) with exponential backoff on 529 Overloaded errors."""
+    for attempt in range(5):
+        try:
+            return fn(**kwargs)
+        except anthropic.APIStatusError as e:
+            if e.status_code != 529 or attempt == 4:
+                raise
+            wait = 3 * (2 ** attempt)
+            _trace(f"[AGENT] Overloaded (529), retrying in {wait}s...", status_callback)
+            time.sleep(wait)
+
+
 def run_agent(
     image_path: str,
     ocr_fragments: list[dict],
@@ -270,7 +284,9 @@ def run_agent(
     response = None
 
     while tool_call_count < max_calls:
-        response = client.messages.create(
+        response = _call_api(
+            client.messages.create,
+            status_callback,
             model=agent_model,
             max_tokens=4000,
             system=SYSTEM_PROMPT,
@@ -339,8 +355,10 @@ def run_agent(
     # so the structured output call below will naturally close the loop.
 
     _trace("[FINAL] Requesting structured output...", status_callback)
-    final_response = client.messages.create(
-        model=AGENT_MODEL_HAIKU,
+    final_response = _call_api(
+        client.messages.create,
+        status_callback,
+        model=agent_model,
         max_tokens=2000,
         system=SYSTEM_PROMPT,
         messages=messages,
