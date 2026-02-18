@@ -2,14 +2,12 @@
 
 import json
 import sys
-import urllib.request
 
 from mtg_collector.db import get_connection, init_db
 from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
 from mtg_collector.services.scryfall import ScryfallAPI
 from mtg_collector.utils import get_mtgc_home
 
-_USER_AGENT = "MTGCollectionTool/2.0"
 _BULK_DATA_URL = "https://api.scryfall.com/bulk-data"
 
 
@@ -76,9 +74,9 @@ def cache_all(force: bool, db_path: str):
 
     # Step 3: Get bulk data download URL
     print("Fetching bulk data metadata...")
-    req = urllib.request.Request(_BULK_DATA_URL, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req) as resp:
-        bulk_meta = json.loads(resp.read())
+    resp = api.session.get(_BULK_DATA_URL)
+    resp.raise_for_status()
+    bulk_meta = resp.json()
 
     download_uri = None
     for entry in bulk_meta.get("data", []):
@@ -96,17 +94,14 @@ def cache_all(force: bool, db_path: str):
     tmp_path = tmp_dir / "bulk-default-cards.json"
 
     print(f"Downloading bulk data to {tmp_path}...")
-    req = urllib.request.Request(download_uri, headers={"User-Agent": _USER_AGENT})
-    with urllib.request.urlopen(req) as resp:
+    with api.session.get(download_uri, stream=True) as resp:
+        resp.raise_for_status()
         total = resp.headers.get("Content-Length")
         total_mb = int(total) / (1024 * 1024) if total else None
 
         downloaded = 0
         with open(tmp_path, "wb") as f:
-            while True:
-                chunk = resp.read(1024 * 1024)  # 1MB chunks
-                if not chunk:
-                    break
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
                 f.write(chunk)
                 downloaded += len(chunk)
                 mb = downloaded / (1024 * 1024)

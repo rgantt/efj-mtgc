@@ -453,8 +453,8 @@ def _process_image_core(conn, image_id, img, log_fn):
     Used by both the SSE endpoint and background workers.
     log_fn(event_type, data_dict) is called for progress events.
     """
+    from mtg_collector.services.agent import run_agent
     from mtg_collector.services.ocr import run_ocr_with_boxes
-    from mtg_collector.services.claude import ClaudeVision
     from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
     from mtg_collector.cli.ingest_ocr import _build_scryfall_query
     from mtg_collector.utils import now_iso
@@ -493,24 +493,18 @@ def _process_image_core(conn, image_id, img, log_fn):
         _log_ingest(f"Merged {len(raw_fragments)} -> {len(ocr_fragments)} fragments")
         log_fn("ocr_complete", {"fragment_count": len(ocr_fragments), "fragments": ocr_fragments})
 
-    # Step 2: Claude extraction
+    # Step 2: Agent extraction
     if claude_cards is None:
-        log_fn("status", {"message": "Calling Claude..."})
+        log_fn("status", {"message": "Calling agent..."})
         t0 = time.time()
-        claude = ClaudeVision()
-        claude_cards, usage = claude.extract_cards_from_ocr_with_positions(
-            ocr_fragments,
+        claude_cards = run_agent(
+            image_path,
+            ocr_fragments=ocr_fragments,
             status_callback=lambda msg: log_fn("status", {"message": msg}),
         )
         elapsed = time.time() - t0
-        token_info = {}
-        if usage:
-            token_info = {"in": usage.input_tokens, "out": usage.output_tokens}
-        _log_ingest(f"Claude complete: {len(claude_cards)} cards in {elapsed:.1f}s, tokens={token_info}")
-        log_fn("claude_complete", {
-            "cards": claude_cards,
-            "tokens": token_info,
-        })
+        _log_ingest(f"Agent complete: {len(claude_cards)} cards in {elapsed:.1f}s")
+        log_fn("claude_complete", {"cards": claude_cards})
 
     # Merge cards whose fragment bboxes heavily overlap (e.g. ghost artist-only card)
     claude_cards = _merge_overlapping_cards(claude_cards, ocr_fragments)
