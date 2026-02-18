@@ -283,7 +283,6 @@ button.secondary:hover { background: #444; }
 <script>
 let _settings = {};
 let confirmedCount = 0;
-let skippedCount = 0;
 let pendingCards = [];
 
 const KEYRUNE_FALLBACKS = {
@@ -376,7 +375,7 @@ function buildCardBlock(pc, idx) {
             <option value="foil">Foil</option>
             <option value="etched">Etched</option>
           </select>
-          <button class="secondary skip-btn" data-idx="${idx}" style="font-size:0.8rem;padding:4px 10px;">Skip</button>
+          <button class="secondary goto-correct-btn" data-idx="${idx}" style="font-size:0.8rem;padding:4px 10px;">Go to image correction</button>
         </div>
       </div>
     </div>
@@ -414,7 +413,10 @@ function buildCardBlock(pc, idx) {
 
   // Event listeners
   block.querySelector('.confirm-btn').addEventListener('click', () => confirmCard(idx));
-  block.querySelector('.skip-btn').addEventListener('click', () => skipCard(idx));
+  block.querySelector('.goto-correct-btn').addEventListener('click', () => {
+    const imageId = parseInt(block.dataset.imageId);
+    window.open(`/correct?image_id=${imageId}`, '_blank');
+  });
   block.querySelector('.search-btn').addEventListener('click', () => searchCard(idx));
   block.querySelector('.search-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') searchCard(idx);
@@ -563,25 +565,6 @@ async function confirmCard(idx) {
   }
 }
 
-async function skipCard(idx) {
-  const block = document.getElementById(`card-block-${idx}`);
-  const imageId = parseInt(block.dataset.imageId);
-  const cardIdx = parseInt(block.dataset.cardIdx);
-
-  const btn = block.querySelector('.skip-btn');
-  btn.disabled = true;
-
-  await fetch('/api/ingest2/skip', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ image_id: imageId, card_idx: cardIdx }),
-  });
-
-  skippedCount++;
-  updateStatusBar();
-  removeBlock(block);
-}
-
 async function searchCard(idx) {
   const block = document.getElementById(`card-block-${idx}`);
   const input = block.querySelector('.search-input');
@@ -619,11 +602,11 @@ function removeBlock(block) {
     const remaining = document.querySelectorAll('.card-block:not(.resolved)');
     if (remaining.length === 0) {
       document.getElementById('status-summary').textContent =
-        `All done! Confirmed ${confirmedCount}, skipped ${skippedCount}.`;
+        `All done! Confirmed ${confirmedCount}.`;
       document.getElementById('empty-state').style.display = 'block';
       document.querySelector('#empty-state h2').textContent = 'All done!';
       document.querySelector('#empty-state p').innerHTML =
-        `Confirmed ${confirmedCount} card(s), skipped ${skippedCount}. ` +
+        `Confirmed ${confirmedCount} card(s). ` +
         `<a href="/collection" style="color:#e94560">View Collection</a>`;
     } else {
       document.getElementById('status-summary').textContent =
@@ -633,8 +616,7 @@ function removeBlock(block) {
 }
 
 function updateStatusBar() {
-  document.getElementById('status-bar').textContent =
-    `Confirmed: ${confirmedCount} | Skipped: ${skippedCount}`;
+  document.getElementById('status-bar').textContent = `Confirmed: ${confirmedCount}`;
 }
 
 function showPhotoModal(imageSrc) {

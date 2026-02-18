@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Correct Card - Card Ingest</title>
+<title>Correct Cards - Card Ingest</title>
 <link href="https://cdn.jsdelivr.net/npm/keyrune@latest/css/keyrune.min.css" rel="stylesheet">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -41,7 +41,51 @@ button:hover { background: #c73651; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.secondary { background: #333; border-color: #555; }
 button.secondary:hover { background: #444; }
+button.danger { background: #c62828; border-color: #c62828; }
+button.danger:hover { background: #a31515; }
 
+/* Image status bar */
+.image-status-bar {
+  margin: 12px 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  flex-wrap: wrap;
+}
+.image-status-bar .filename { color: #888; }
+.status-badge {
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+}
+.status-badge.queued { background: #555; }
+.status-badge.processing { background: #888; }
+.status-badge.needs-disambiguation { background: #e94560; }
+.status-badge.done { background: #4caf50; }
+.status-badge.error { background: #c62828; }
+.image-status-bar .timestamps { color: #666; font-size: 0.75rem; margin-left: auto; }
+
+/* Processing spinner */
+.processing-state {
+  text-align: center;
+  padding: 60px 24px;
+  color: #888;
+}
+.processing-state .big-spinner {
+  display: inline-block;
+  width: 40px; height: 40px;
+  border: 4px solid #333;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Per-card block */
 .card-block {
   margin: 12px 16px;
   background: #16213e;
@@ -49,18 +93,17 @@ button.secondary:hover { background: #444; }
   border-radius: 8px;
   overflow: hidden;
 }
-
 .card-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
   background: #0d1117;
   border-bottom: 1px solid #0f3460;
 }
 .card-header .crop-thumb {
-  width: 140px;
-  height: 196px;
+  width: 280px;
+  height: 392px;
   background: #0d1117;
   border-radius: 4px;
   overflow: hidden;
@@ -72,9 +115,12 @@ button.secondary:hover { background: #444; }
   position: absolute;
   transform-origin: 0 0;
 }
-.card-header .card-meta {
+.card-header .right-col {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .card-header .card-meta h3 {
   color: #e94560;
@@ -84,62 +130,29 @@ button.secondary:hover { background: #444; }
 .card-header .card-meta .meta-line {
   font-size: 0.8rem;
   color: #888;
+  margin-bottom: 1px;
 }
-.card-header .card-meta .image-source {
+.skipped-note {
   font-size: 0.7rem;
-  color: #555;
+  color: #666;
+  font-style: italic;
   margin-top: 2px;
 }
-.card-header .card-meta .name-compare {
-  font-size: 0.75rem;
-  color: #888;
-  margin-top: 4px;
-  line-height: 1.5;
-}
-.card-header .card-meta .name-compare .label {
-  color: #666;
-  font-size: 0.65rem;
-}
-
-/* Current identification */
-.current-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid #0f3460;
-  background: rgba(76, 175, 80, 0.06);
-}
-.current-card img {
-  width: 60px;
-  height: 84px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.current-card .card-details { flex: 1; min-width: 0; }
-.current-card .card-name { font-weight: 600; font-size: 0.9rem; }
-.current-card .card-set { font-size: 0.8rem; color: #888; margin-top: 2px; }
-.current-card .card-price {
-  font-size: 0.8rem; color: #4caf50;
-  background: rgba(76, 175, 80, 0.12);
-  padding: 2px 8px; border-radius: 4px;
-  flex-shrink: 0;
-}
-.current-label {
+.already-ingested-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid #4caf50;
+  border-radius: 8px;
   font-size: 0.7rem;
   color: #4caf50;
-  font-weight: 600;
-  text-transform: uppercase;
-  padding: 6px 12px 0;
+  margin-top: 4px;
 }
-
-.actions-col {
+.card-header .actions-col {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  align-items: flex-end;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .finish-select {
   padding: 4px 8px;
@@ -165,13 +178,10 @@ button.secondary:hover { background: #444; }
   color: #e0e0e0;
   font-size: 0.85rem;
 }
-.search-row button {
-  padding: 5px 12px;
-  font-size: 0.8rem;
-}
+.search-row button { padding: 5px 12px; font-size: 0.8rem; }
 
 .candidates-list {
-  max-height: 1600px;
+  max-height: 1200px;
   overflow-y: auto;
   padding: 4px;
 }
@@ -188,7 +198,6 @@ button.secondary:hover { background: #444; }
 }
 .candidate-row:hover { background: #1a1a3e; border-color: #0f3460; }
 .candidate-row.selected { border-color: #e94560; background: #1a1a3e; }
-
 .candidate-row .set-icon {
   font-size: 1.8rem;
   width: 42px; height: 42px; line-height: 42px;
@@ -217,9 +226,32 @@ button.secondary:hover { background: #444; }
   border-radius: 3px; flex-shrink: 0;
 }
 
+/* Grid mode */
+.candidates-list.grid-mode {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+}
+@media (max-width: 600px) {
+  .candidates-list.grid-mode { grid-template-columns: repeat(4, 1fr); }
+}
+.candidates-list.grid-mode .candidate-row {
+  flex-direction: column; padding: 3px; gap: 3px; align-items: center;
+  position: relative;
+}
+.candidates-list.grid-mode .candidate-row .set-icon {
+  position: absolute; top: 3px; left: 3px; z-index: 1;
+  font-size: 1.8rem; width: 38px; height: 38px; line-height: 38px;
+  border: 2px solid #0f3460;
+}
+.candidates-list.grid-mode .card-img-grid {
+  width: 100%; aspect-ratio: 63 / 44;
+  object-fit: cover; object-position: top center; border-radius: 3px;
+}
+
 /* Agent trace */
 details.agent-trace {
-  margin: 0 16px 8px;
+  margin: 8px 16px;
   border: 1px solid #0f3460;
   border-radius: 6px;
   overflow: hidden;
@@ -249,38 +281,7 @@ details.agent-trace summary:hover { color: #e0e0e0; }
 .trace-lines .tl-result { color: #888; }
 .trace-lines .tl-final  { color: #4caf50; }
 
-/* Grid mode */
-.candidates-list.grid-mode {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-}
-.candidates-list.grid-mode .candidate-row {
-  flex-direction: column; padding: 3px; gap: 3px; align-items: center;
-  position: relative;
-}
-.candidates-list.grid-mode .candidate-row .set-icon {
-  position: absolute; top: 3px; left: 3px; z-index: 1;
-  font-size: 1.2rem; width: 28px; height: 28px; line-height: 28px;
-  border: 2px solid #0f3460;
-}
-.candidates-list.grid-mode .card-img-grid {
-  width: 100%; aspect-ratio: 63 / 44;
-  object-fit: cover; object-position: top center; border-radius: 3px;
-}
-
-.spinner {
-  display: inline-block;
-  width: 14px; height: 14px;
-  border: 2px solid #555;
-  border-top-color: #e94560;
-  border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  vertical-align: middle;
-  margin-right: 6px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-
+/* Photo modal */
 .photo-modal {
   position: fixed;
   inset: 0;
@@ -298,21 +299,76 @@ details.agent-trace summary:hover { color: #e0e0e0; }
   border-radius: 6px;
 }
 
-.success-banner {
+/* Add card section */
+.add-card-section {
   margin: 12px 16px;
-  padding: 12px 16px;
-  background: rgba(76, 175, 80, 0.15);
-  border: 1px solid #4caf50;
+  background: #16213e;
+  border: 1px solid #0f3460;
   border-radius: 8px;
-  text-align: center;
-  font-size: 0.9rem;
+  padding: 12px 16px;
 }
-.success-banner a { color: #e94560; }
-
-.loading-state {
-  text-align: center;
-  padding: 60px 24px;
+.add-card-section h3 {
+  font-size: 0.9rem;
   color: #888;
+  margin-bottom: 10px;
+}
+.add-search-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.add-search-row input {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 4px;
+  border: 1px solid #0f3460;
+  background: #0d1117;
+  color: #e0e0e0;
+  font-size: 0.85rem;
+}
+.add-search-row button { padding: 5px 12px; font-size: 0.8rem; }
+.add-results {
+  max-height: 240px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+.add-result-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+  margin-bottom: 2px;
+}
+.add-result-row:hover { background: #1a1a3e; border-color: #0f3460; }
+.add-result-row.selected { border-color: #e94560; background: #1a1a3e; }
+.add-result-row img {
+  width: 40px; height: 56px;
+  object-fit: cover; border-radius: 3px; flex-shrink: 0;
+}
+.add-result-row .result-name {
+  font-weight: 600; font-size: 0.8rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  flex: 1; min-width: 0;
+}
+.add-result-row .result-set { font-size: 0.7rem; color: #888; flex-shrink: 0; }
+.add-confirm-row { display: flex; gap: 6px; align-items: center; }
+.add-confirm-row select {
+  padding: 4px 8px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+.add-confirm-row button { padding: 6px 14px; font-size: 0.85rem; }
+
+.loading-state { text-align: center; padding: 60px 24px; color: #888; }
+
+@media (max-width: 600px) {
+  .card-header .crop-thumb { width: 140px; height: 196px; }
 }
 </style>
 <style id="dynamic-settings-style"></style>
@@ -320,27 +376,67 @@ details.agent-trace summary:hover { color: #e0e0e0; }
 <body>
 
 <header>
-  <h1><a href="/" style="color:inherit;text-decoration:none">Correct Card</a></h1>
+  <h1><a href="/" style="color:inherit;text-decoration:none">Correct Cards</a></h1>
   <a href="/">Home</a>
   <a href="/recent">Recent</a>
   <a href="/disambiguate">Disambiguate</a>
 </header>
 
 <div id="loading" class="loading-state">Loading...</div>
-<div id="content" style="display:none"></div>
-<div id="success" class="success-banner" style="display:none"></div>
+<div id="image-status-bar" class="image-status-bar" style="display:none"></div>
+<div id="processing-state" class="processing-state" style="display:none">
+  <div class="big-spinner"></div>
+  <div>Processing image...</div>
+</div>
+<div id="agent-trace-container"></div>
+<div id="cards-container"></div>
+<div id="add-card-section" class="add-card-section" style="display:none">
+  <h3>Add a missed card</h3>
+  <div class="add-search-row">
+    <input type="text" id="add-card-search" placeholder="Search by card name...">
+    <button id="add-card-search-btn" class="secondary">Search</button>
+  </div>
+  <div class="add-results" id="add-card-results"></div>
+  <div class="add-confirm-row">
+    <select id="add-card-finish">
+      <option value="nonfoil">Nonfoil</option>
+      <option value="foil">Foil</option>
+      <option value="etched">Etched</option>
+    </select>
+    <button id="add-card-btn" disabled>Add</button>
+  </div>
+</div>
 
 <script>
 let _settings = {};
-let _selectedCandidate = null;
-let _imageId, _cardIdx;
+let _imageId;
+let _imgData = null;
+let _pollTimer = null;
+let _addSelectedCandidate = null;
 
-const KEYRUNE_FALLBACKS = {
-  tsb: 'tsp', pspm: 'spm', cst: 'csp',
+const STATUS_LABELS = {
+  READY_FOR_OCR: 'Queued',
+  PROCESSING: 'Processing',
+  READY_FOR_DISAMBIGUATION: 'Needs Disambiguation',
+  DONE: 'Done',
+  ERROR: 'Error',
 };
+const STATUS_CLASSES = {
+  READY_FOR_OCR: 'queued',
+  PROCESSING: 'processing',
+  READY_FOR_DISAMBIGUATION: 'needs-disambiguation',
+  DONE: 'done',
+  ERROR: 'error',
+};
+
+const KEYRUNE_FALLBACKS = { tsb: 'tsp', pspm: 'spm', cst: 'csp' };
 function keyruneSetCode(code) {
   const lc = (code || '').toLowerCase();
   return KEYRUNE_FALLBACKS[lc] || lc;
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function applySettings() {
@@ -357,10 +453,6 @@ function applySettings() {
 }
 fetch('/api/settings').then(r => r.json()).then(s => { _settings = s; applySettings(); });
 
-function escapeHtml(s) {
-  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
 function showPhotoModal(imageSrc) {
   const modal = document.createElement('div');
   modal.className = 'photo-modal';
@@ -369,134 +461,13 @@ function showPhotoModal(imageSrc) {
   document.body.appendChild(modal);
 }
 
-
-async function init() {
-  const params = new URLSearchParams(window.location.search);
-  _imageId = parseInt(params.get('image_id'));
-  _cardIdx = parseInt(params.get('card_idx'));
-
-  const resp = await fetch(`/api/ingest2/images/${_imageId}`);
-  const img = await resp.json();
-
-  const disambiguated = img.disambiguated || [];
-  const matches = img.scryfall_matches || [];
-  const claude = img.claude_result || [];
-  const crops = img.crops || [];
-  const cardNames = img.card_names || [];
-
-  const currentSid = disambiguated[_cardIdx];
-  const candidates = matches[_cardIdx] || [];
-  const claudeCard = claude[_cardIdx] || {};
-  const crop = crops[_cardIdx] || null;
-  const ocrName = (cardNames[_cardIdx] || {}).ocr_name || '';
-  const claudeName = (cardNames[_cardIdx] || {}).claude_name || '';
-
-  // Find current card in candidates
-  const currentCard = candidates.find(c => c.scryfall_id === currentSid) || {};
-
-  document.getElementById('loading').style.display = 'none';
-  const content = document.getElementById('content');
-  content.style.display = '';
-
-  // Claude metadata
-  const metaParts = [];
-  if (claudeCard.type) metaParts.push(claudeCard.type);
-  if (claudeCard.set_code) metaParts.push(`Set: ${claudeCard.set_code.toUpperCase()}`);
-  if (claudeCard.collector_number) metaParts.push(`#${claudeCard.collector_number}`);
-  if (claudeCard.artist) metaParts.push(`Art: ${claudeCard.artist}`);
-
-  // Current card details
-  const currentImgUri = (currentCard.image_uri || '').replace('/small/', '/normal/');
-  const currentRarity = currentCard.rarity ? currentCard.rarity.charAt(0).toUpperCase() + currentCard.rarity.slice(1) : '';
-  const currentCn = currentCard.collector_number ? `#${currentCard.collector_number}` : '';
-  const currentMeta = [currentRarity, currentCn].filter(Boolean).join(' \u00b7 ');
-  const currentPriceHtml = currentCard.price ? `<span class="card-price">$${currentCard.price}</span>` : '';
-
-  const imgSrc = `/api/ingest/image/${img.stored_name}`;
-
-  content.innerHTML = `
-    <div class="card-block">
-      <div class="card-header">
-        <div class="crop-thumb" id="crop-thumb"></div>
-        <div class="card-meta">
-          <h3>${escapeHtml(claudeCard.name || 'Unknown')}</h3>
-          <div class="meta-line">${escapeHtml(metaParts.join(' | '))}</div>
-          <div class="image-source">${escapeHtml(img.filename || img.stored_name)}</div>
-          <div class="name-compare">
-            ${ocrName ? `<div><span class="label">OCR:</span> ${escapeHtml(ocrName)}</div>` : ''}
-            ${claudeName ? `<div><span class="label">Claude:</span> ${escapeHtml(claudeName)}</div>` : ''}
-          </div>
-        </div>
-        <div class="actions-col">
-          <div style="display:flex;gap:4px;">
-            <button id="confirm-btn" disabled>Confirm Correction</button>
-            <select class="finish-select" id="finish-select">
-              <option value="nonfoil">Nonfoil</option>
-              <option value="foil">Foil</option>
-              <option value="etched">Etched</option>
-            </select>
-          </div>
-        </div>
-      </div>
-      <div class="current-label">Current identification</div>
-      <div class="current-card">
-        ${currentImgUri ? `<img src="${currentImgUri}" loading="lazy">` : `<div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>`}
-        <div class="card-details">
-          <div class="card-name">${escapeHtml(currentCard.name || claudeCard.name || 'Unknown')}</div>
-          <div class="card-set">${escapeHtml(currentCard.set_name || '')}${currentCard.set_code ? ` (${currentCard.set_code.toUpperCase()})` : ''}</div>
-          ${currentMeta ? `<div style="font-size:0.7rem;color:#666;margin-top:2px;">${escapeHtml(currentMeta)}</div>` : ''}
-        </div>
-        ${currentPriceHtml}
-      </div>
-      <div class="search-row">
-        <input type="text" id="search-input" placeholder="Search by card name..." value="${escapeHtml(claudeCard.name || currentCard.name || '')}">
-        <button class="secondary" id="search-btn">Search</button>
-      </div>
-      <div class="candidates-list" id="candidates"></div>
-    </div>
-  `;
-
-  // Agent trace
-  const traceLines = img.agent_trace || [];
-  if (traceLines.length) {
-    function traceClass(line) {
-      if (line.startsWith('[TOOL RESULT]')) return 'tl-result';
-      if (line.startsWith('[TOOL CALL]'))   return 'tl-tool';
-      if (line.startsWith('[FINAL]'))       return 'tl-final';
-      return 'tl-agent';
-    }
-    const traceHtml = traceLines.map(l =>
-      `<span class="${traceClass(l)}">${escapeHtml(l)}</span>`
-    ).join('\n');
-    const details = document.createElement('details');
-    details.className = 'agent-trace';
-    details.innerHTML = `<summary>Agent trace (${traceLines.length} lines)</summary><div class="trace-lines">${traceHtml}</div>`;
-    content.appendChild(details);
-  }
-
-  // Set up crop thumbnail
-  setupCropThumb(crop, imgSrc);
-
-  // Render candidates (excluding current)
-  renderCandidates(candidates);
-
-  // Event listeners
-  document.getElementById('confirm-btn').addEventListener('click', confirmCorrection);
-  document.getElementById('search-btn').addEventListener('click', doSearch);
-  document.getElementById('search-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSearch();
-  });
-}
-
-function setupCropThumb(crop, imgSrc) {
-  const container = document.getElementById('crop-thumb');
+function setupCropThumb(containerId, crop, imgSrc) {
+  const container = document.getElementById(containerId);
   if (!container) return;
-
   const img = document.createElement('img');
   img.src = imgSrc;
   container.appendChild(img);
   container.addEventListener('click', () => showPhotoModal(imgSrc));
-
   img.onload = () => {
     const cw = container.clientWidth;
     const ch = container.clientHeight;
@@ -512,11 +483,33 @@ function setupCropThumb(crop, imgSrc) {
   };
 }
 
-function renderCandidates(candidates) {
-  const list = document.getElementById('candidates');
+function narrowCandidates(candidates, cardInfo) {
+  if (candidates.length <= 1) return candidates;
+  let result = candidates;
+  const artist = cardInfo.artist;
+  if (artist) {
+    const al = artist.toLowerCase();
+    const matched = result.filter(c => (c.artist || '').toLowerCase().includes(al));
+    if (matched.length) result = matched;
+  }
+  const setCode = cardInfo.set_code;
+  if (setCode) {
+    const sl = setCode.toLowerCase();
+    const matched = result.filter(c => c.set_code.toLowerCase() === sl);
+    if (matched.length) result = matched;
+  }
+  const cn = cardInfo.collector_number;
+  if (cn) {
+    const matched = result.filter(c => c.collector_number === cn);
+    if (matched.length) result = matched;
+  }
+  return result;
+}
+
+function renderCandidates(listId, candidates, currentSid, onSelect) {
+  const list = document.getElementById(listId);
+  if (!list) return;
   list.innerHTML = '';
-  _selectedCandidate = null;
-  document.getElementById('confirm-btn').disabled = true;
 
   if (!candidates.length) {
     list.innerHTML = '<div style="padding:12px;color:#888;text-align:center;font-size:0.85rem;">No candidates found. Try searching.</div>';
@@ -541,78 +534,442 @@ function renderCandidates(candidates) {
     `;
     row.title = `${c.name} — ${c.set_name}${showPrice ? ' ($' + c.price + ')' : ''}`;
 
+    if (currentSid && c.scryfall_id === currentSid) {
+      row.classList.add('selected');
+    }
+
     row.addEventListener('click', () => {
       list.querySelectorAll('.candidate-row').forEach(r => r.classList.remove('selected'));
       row.classList.add('selected');
-      _selectedCandidate = c;
-      document.getElementById('confirm-btn').disabled = false;
-
-      // Auto-set finish
-      const finishSel = document.getElementById('finish-select');
-      if (c.foil && !(c.finishes || []).includes('nonfoil')) {
-        finishSel.value = 'foil';
-      } else {
-        finishSel.value = 'nonfoil';
-      }
+      onSelect(c);
     });
 
     list.appendChild(row);
   }
 }
 
-async function doSearch() {
-  const input = document.getElementById('search-input');
-  const query = input.value.trim();
-  if (!query) return;
-
-  const btn = document.getElementById('search-btn');
-  btn.disabled = true;
-  btn.textContent = '...';
-
-  const resp = await fetch('/api/ingest2/search-card', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ image_id: _imageId, card_idx: _cardIdx, query }),
-  });
-  const data = await resp.json();
-
-  btn.disabled = false;
-  btn.textContent = 'Search';
-
-  renderCandidates(data.candidates || []);
+async function fetchImage() {
+  const resp = await fetch(`/api/ingest2/images/${_imageId}`);
+  return await resp.json();
 }
 
-async function confirmCorrection() {
-  if (!_selectedCandidate) return;
+function renderStatusBar(img) {
+  const bar = document.getElementById('image-status-bar');
+  bar.style.display = '';
+  const status = img.status || 'DONE';
+  const labelText = status === 'ERROR'
+    ? `Error: ${img.error_message || 'Unknown error'}`
+    : (STATUS_LABELS[status] || status);
+  const badgeClass = STATUS_CLASSES[status] || 'done';
+  const created = new Date(img.created_at);
+  const updated = new Date(img.updated_at);
+  const fmt = d => d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  bar.innerHTML = `
+    <span class="filename">${escapeHtml(img.filename || img.stored_name)}</span>
+    <span class="status-badge ${badgeClass}">${escapeHtml(labelText)}</span>
+    <span class="timestamps">Uploaded ${fmt(created)} · Updated ${fmt(updated)}</span>
+  `;
+}
 
-  const btn = document.getElementById('confirm-btn');
+function renderAgentTrace(img) {
+  const container = document.getElementById('agent-trace-container');
+  container.innerHTML = '';
+  const traceLines = img.agent_trace || [];
+  if (!traceLines.length) return;
+  function traceClass(line) {
+    if (line.startsWith('[TOOL RESULT]')) return 'tl-result';
+    if (line.startsWith('[TOOL CALL'))    return 'tl-tool';
+    if (line.startsWith('[FINAL]'))       return 'tl-final';
+    return 'tl-agent';
+  }
+  const traceHtml = traceLines.map(l =>
+    `<span class="${traceClass(l)}">${escapeHtml(l)}</span>`
+  ).join('\n');
+  const details = document.createElement('details');
+  details.className = 'agent-trace';
+  details.innerHTML = `<summary>Agent trace (${traceLines.length} lines)</summary><div class="trace-lines">${traceHtml}</div>`;
+  container.appendChild(details);
+}
+
+function buildCardBlock(i, sid, cardInfo, ocrName, candidates, imgSrc) {
+  const block = document.createElement('div');
+  block.className = 'card-block';
+  block.id = `card-block-${i}`;
+  block._selectedCandidate = null;
+
+  const name = cardInfo.name || '(Unknown)';
+  const metaLines = [];
+  if (cardInfo.mana_cost) metaLines.push(cardInfo.mana_cost.replace(/\{|\}/g, ''));
+  if (cardInfo.type) {
+    let typeLine = cardInfo.type;
+    if (cardInfo.subtype) typeLine += ` — ${cardInfo.subtype}`;
+    metaLines.push(typeLine);
+  }
+  if (cardInfo.rules_text) metaLines.push(cardInfo.rules_text.length > 80 ? cardInfo.rules_text.slice(0, 80) + '…' : cardInfo.rules_text);
+  if (cardInfo.power != null || cardInfo.toughness != null) metaLines.push(`${cardInfo.power ?? '?'}/${cardInfo.toughness ?? '?'}`);
+  const idParts = [];
+  if (cardInfo.set_code) idParts.push(cardInfo.set_code.toUpperCase());
+  if (cardInfo.collector_number) idParts.push(`#${cardInfo.collector_number}`);
+  if (cardInfo.artist) idParts.push(cardInfo.artist);
+  if (idParts.length) metaLines.push(idParts.join(' · '));
+  if (ocrName) metaLines.push(`OCR: ${ocrName}`);
+
+  if (sid === 'already_ingested') {
+    block.innerHTML = `
+      <div class="card-header">
+        <div class="crop-thumb" id="crop-${i}"></div>
+        <div class="right-col">
+          <div class="card-meta">
+            <h3>${escapeHtml(name)}</h3>
+            ${metaLines.map(l => `<div class="meta-line">${escapeHtml(l)}</div>`).join('')}
+          </div>
+          <span class="already-ingested-badge">Already in collection</span>
+        </div>
+      </div>
+    `;
+    return block;
+  }
+
+  const isPending = sid === null || sid === 'skipped';
+  const actionBtn = isPending
+    ? `<button class="confirm-btn" data-idx="${i}" disabled>Confirm</button>`
+    : `<button class="correct-btn" data-idx="${i}" disabled>Correct</button>`;
+  const skippedNote = sid === 'skipped' ? `<div class="skipped-note">Previously skipped</div>` : '';
+
+  block.innerHTML = `
+    <div class="card-header">
+      <div class="crop-thumb" id="crop-${i}"></div>
+      <div class="right-col">
+        <div class="card-meta">
+          <h3>${escapeHtml(name)}</h3>
+          ${metaLines.map(l => `<div class="meta-line">${escapeHtml(l)}</div>`).join('')}
+          ${skippedNote}
+        </div>
+        <div class="actions-col">
+          ${actionBtn}
+          <select class="finish-select" data-idx="${i}">
+            <option value="nonfoil">Nonfoil</option>
+            <option value="foil">Foil</option>
+            <option value="etched">Etched</option>
+          </select>
+          <button class="danger delete-btn" data-idx="${i}" style="font-size:0.8rem;padding:4px 10px;">Delete</button>
+        </div>
+      </div>
+    </div>
+    <div class="search-row">
+      <input type="text" class="search-input" data-idx="${i}" placeholder="Search by card name..." value="${escapeHtml(cardInfo.name || '')}">
+      <button class="search-btn secondary" data-idx="${i}">Search</button>
+    </div>
+    <div class="candidates-list" id="candidates-${i}"></div>
+  `;
+
+  const confirmBtn = block.querySelector('.confirm-btn');
+  const correctBtn = block.querySelector('.correct-btn');
+
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', () => confirmCard(i));
+  }
+  if (correctBtn) {
+    correctBtn.addEventListener('click', () => correctCard(i));
+  }
+
+  block.querySelector('.delete-btn').addEventListener('click', () => deleteCard(i, sid));
+  block.querySelector('.search-btn').addEventListener('click', () => searchCard(i));
+  block.querySelector('.search-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') searchCard(i);
+  });
+
+  return block;
+}
+
+function renderCards(img) {
+  _imgData = img;
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+
+  const disambiguated = img.disambiguated || [];
+  const matches = img.scryfall_matches || [];
+  const claude = img.claude_result || [];
+  const crops = img.crops || [];
+  const cardNames = img.card_names || [];
+  const imgSrc = `/api/ingest/image/${encodeURIComponent(img.stored_name)}`;
+
+  for (let i = 0; i < disambiguated.length; i++) {
+    const sid = disambiguated[i];
+    const cardInfo = claude[i] || {};
+    const crop = crops[i] || null;
+    const ocrName = (cardNames[i] || {}).ocr_name || '';
+    const candidates = matches[i] || [];
+
+    const block = buildCardBlock(i, sid, cardInfo, ocrName, candidates, imgSrc);
+    container.appendChild(block);
+
+    setTimeout(() => setupCropThumb(`crop-${i}`, crop, imgSrc), 0);
+
+    if (sid === 'already_ingested') continue;
+
+    // Closure over per-iteration variables
+    (function(idx, currentSid, cardInfo, candidates) {
+      setTimeout(() => {
+        const block = document.getElementById(`card-block-${idx}`);
+        if (!block) return;
+
+        const isPending = currentSid === null || currentSid === 'skipped';
+        const highlightSid = isPending ? null : currentSid;
+        const all = candidates;
+        const narrowed = isPending ? narrowCandidates(all, cardInfo) : all;
+        const listId = `candidates-${idx}`;
+
+        const onSelect = (c) => {
+          block._selectedCandidate = c;
+          const confirmBtn = block.querySelector('.confirm-btn');
+          const correctBtn = block.querySelector('.correct-btn');
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (correctBtn) correctBtn.disabled = false;
+          const finishSel = block.querySelector('.finish-select');
+          if (finishSel) {
+            finishSel.value = (c.foil && !(c.finishes || []).includes('nonfoil')) ? 'foil' : 'nonfoil';
+          }
+        };
+
+        renderCandidates(listId, narrowed, highlightSid, onSelect);
+
+        if (narrowed.length < all.length) {
+          const list = document.getElementById(listId);
+          if (list) {
+            const showAllDiv = document.createElement('div');
+            showAllDiv.style.cssText = 'padding:8px;text-align:center;grid-column:1/-1;';
+            const btn = document.createElement('button');
+            btn.className = 'secondary';
+            btn.style.cssText = 'font-size:0.8rem;padding:4px 12px;';
+            btn.textContent = `Show all ${all.length} candidates`;
+            btn.addEventListener('click', () => {
+              renderCandidates(listId, all, highlightSid, onSelect);
+            });
+            showAllDiv.appendChild(btn);
+            list.appendChild(showAllDiv);
+          }
+        }
+      }, 0);
+    })(i, sid, cardInfo, candidates);
+  }
+
+  document.getElementById('add-card-section').style.display = '';
+}
+
+async function confirmCard(i) {
+  const block = document.getElementById(`card-block-${i}`);
+  const candidate = block._selectedCandidate;
+  if (!candidate) return;
+  const btn = block.querySelector('.confirm-btn');
   btn.disabled = true;
   btn.textContent = '...';
+  const finish = block.querySelector('.finish-select').value;
+  const resp = await fetch('/api/ingest2/confirm', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ image_id: _imageId, card_idx: i, scryfall_id: candidate.scryfall_id, finish }),
+  });
+  const data = await resp.json();
+  if (data.ok) {
+    await refreshCards();
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Confirm';
+  }
+}
 
-  const finish = document.getElementById('finish-select').value;
-
+async function correctCard(i) {
+  const block = document.getElementById(`card-block-${i}`);
+  const candidate = block._selectedCandidate;
+  if (!candidate) return;
+  const btn = block.querySelector('.correct-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  const finish = block.querySelector('.finish-select').value;
   const resp = await fetch('/api/ingest2/correct', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      image_id: _imageId,
-      card_idx: _cardIdx,
-      scryfall_id: _selectedCandidate.scryfall_id,
-      finish,
-    }),
+    body: JSON.stringify({ image_id: _imageId, card_idx: i, scryfall_id: candidate.scryfall_id, finish }),
   });
   const data = await resp.json();
-
   if (data.ok) {
-    document.getElementById('content').style.display = 'none';
-    const success = document.getElementById('success');
-    success.style.display = '';
-    success.innerHTML = `Corrected to <strong>${escapeHtml(data.name)}</strong> (${escapeHtml(data.set_code.toUpperCase())}). <a href="/recent">Back to Recent</a>`;
+    await refreshCards();
   } else {
     btn.disabled = false;
-    btn.textContent = 'Confirm Correction';
-    alert(data.error || 'Correction failed');
+    btn.textContent = 'Correct';
   }
+}
+
+async function deleteCard(i, sid) {
+  const isConfirmed = sid !== null && sid !== 'skipped' && sid !== 'already_ingested';
+  const msg = isConfirmed
+    ? 'Remove this card from the image and your collection?'
+    : 'Remove this card slot from the image?';
+  if (!confirm(msg)) return;
+  const block = document.getElementById(`card-block-${i}`);
+  const btn = block.querySelector('.delete-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  const resp = await fetch('/api/ingest2/remove-card', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ image_id: _imageId, card_idx: i }),
+  });
+  const result = await resp.json();
+  if (result.ok) {
+    await refreshCards();
+  } else {
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+  }
+}
+
+async function searchCard(i) {
+  const block = document.getElementById(`card-block-${i}`);
+  const input = block.querySelector('.search-input');
+  const query = input.value.trim();
+  if (!query) return;
+  const btn = block.querySelector('.search-btn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  const resp = await fetch('/api/ingest2/search-card', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ image_id: _imageId, card_idx: i, query }),
+  });
+  const data = await resp.json();
+  btn.disabled = false;
+  btn.textContent = 'Search';
+  block._selectedCandidate = null;
+  const confirmBtn = block.querySelector('.confirm-btn');
+  const correctBtn = block.querySelector('.correct-btn');
+  if (confirmBtn) confirmBtn.disabled = true;
+  if (correctBtn) correctBtn.disabled = true;
+  renderCandidates(`candidates-${i}`, data.candidates || [], null, (c) => {
+    block._selectedCandidate = c;
+    if (confirmBtn) confirmBtn.disabled = false;
+    if (correctBtn) correctBtn.disabled = false;
+    const finishSel = block.querySelector('.finish-select');
+    if (finishSel) {
+      finishSel.value = (c.foil && !(c.finishes || []).includes('nonfoil')) ? 'foil' : 'nonfoil';
+    }
+  });
+}
+
+async function refreshCards() {
+  const img = await fetchImage();
+  renderStatusBar(img);
+  renderAgentTrace(img);
+  renderCards(img);
+}
+
+function setupAddCard() {
+  const addSearchBtn = document.getElementById('add-card-search-btn');
+  const addSearchInput = document.getElementById('add-card-search');
+  const addResults = document.getElementById('add-card-results');
+  const addBtn = document.getElementById('add-card-btn');
+
+  async function doAddSearch() {
+    const query = addSearchInput.value.trim();
+    if (!query) return;
+    addSearchBtn.disabled = true;
+    addSearchBtn.textContent = '...';
+    const resp = await fetch('/api/ingest2/search-card', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ query }),
+    });
+    const data = await resp.json();
+    addSearchBtn.disabled = false;
+    addSearchBtn.textContent = 'Search';
+    _addSelectedCandidate = null;
+    addBtn.disabled = true;
+    addResults.innerHTML = '';
+    for (const c of (data.candidates || [])) {
+      const row = document.createElement('div');
+      row.className = 'add-result-row';
+      const imgTag = c.image_uri
+        ? `<img src="${c.image_uri}" loading="lazy">`
+        : `<div style="width:40px;height:56px;background:#0d1117;border-radius:3px;flex-shrink:0;"></div>`;
+      row.innerHTML = `${imgTag}<span class="result-name">${escapeHtml(c.name)}</span><span class="result-set">${escapeHtml(c.set_code ? c.set_code.toUpperCase() : '')}</span>`;
+      row.addEventListener('click', () => {
+        addResults.querySelectorAll('.add-result-row').forEach(r => r.classList.remove('selected'));
+        row.classList.add('selected');
+        _addSelectedCandidate = c;
+        addBtn.disabled = false;
+        document.getElementById('add-card-finish').value =
+          (c.foil && !(c.finishes || []).includes('nonfoil')) ? 'foil' : 'nonfoil';
+      });
+      addResults.appendChild(row);
+    }
+  }
+
+  addSearchBtn.addEventListener('click', doAddSearch);
+  addSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAddSearch(); });
+
+  addBtn.addEventListener('click', async () => {
+    if (!_addSelectedCandidate) return;
+    addBtn.disabled = true;
+    addBtn.textContent = '...';
+    const finish = document.getElementById('add-card-finish').value;
+    const resp = await fetch('/api/ingest2/add-card', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image_id: _imageId, scryfall_id: _addSelectedCandidate.scryfall_id, finish }),
+    });
+    const result = await resp.json();
+    addBtn.textContent = 'Add';
+    addBtn.disabled = false;
+    if (result.ok) {
+      _addSelectedCandidate = null;
+      addResults.innerHTML = '';
+      addSearchInput.value = '';
+      document.getElementById('add-card-finish').value = 'nonfoil';
+      await refreshCards();
+    }
+  });
+}
+
+function startPolling() {
+  if (_pollTimer) return;
+  _pollTimer = setInterval(async () => {
+    const resp = await fetch(`/api/ingest2/recent?hours=24&id=${_imageId}`);
+    const images = await resp.json();
+    if (!images.length) return;
+    const img = images[0];
+    if (img.border_status !== 'processing') {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+      document.getElementById('processing-state').style.display = 'none';
+      const fullImg = await fetchImage();
+      renderStatusBar(fullImg);
+      renderAgentTrace(fullImg);
+      renderCards(fullImg);
+      setupAddCard();
+    }
+  }, 3000);
+}
+
+async function init() {
+  const params = new URLSearchParams(window.location.search);
+  _imageId = parseInt(params.get('image_id'));
+
+  const img = await fetchImage();
+  document.getElementById('loading').style.display = 'none';
+
+  renderStatusBar(img);
+
+  const status = img.status || 'DONE';
+  if (status === 'READY_FOR_OCR' || status === 'PROCESSING') {
+    document.getElementById('processing-state').style.display = '';
+    startPolling();
+    return;
+  }
+
+  renderAgentTrace(img);
+  renderCards(img);
+  setupAddCard();
 }
 
 init();

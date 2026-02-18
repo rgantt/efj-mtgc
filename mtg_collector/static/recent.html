@@ -188,265 +188,9 @@ header a:hover { color: #e94560; }
   word-break: break-word;
 }
 .img-card.error:hover .error-tooltip { display: block; }
-.img-card.done, .img-card.needs_disambiguation { cursor: pointer; }
+.img-card { cursor: pointer; }
 .img-card.done:hover { border-color: #66bb6a; }
 .img-card.needs_disambiguation:hover { border-color: #f06080; }
-
-/* Detail modal */
-.detail-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
-  background: rgba(0,0,0,0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-.detail-modal .modal-content {
-  background: #16213e;
-  border: 2px solid #0f3460;
-  border-radius: 10px;
-  max-width: 520px;
-  width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
-}
-.detail-modal .modal-header {
-  padding: 12px 16px;
-  border-bottom: 1px solid #0f3460;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.detail-modal .modal-header h2 {
-  font-size: 1rem;
-  color: #e94560;
-}
-.detail-modal .modal-close {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-.detail-modal .modal-close:hover { color: #e94560; }
-.detail-modal .modal-time {
-  padding: 6px 16px;
-  font-size: 0.75rem;
-  color: #888;
-  border-bottom: 1px solid #0f3460;
-}
-.detail-modal .card-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  border-bottom: 1px solid #0a0e1a;
-}
-.detail-modal .card-row:last-child { border-bottom: none; }
-.detail-modal .card-row .crop-thumb {
-  width: 60px;
-  height: 84px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  overflow: hidden;
-  position: relative;
-  background: #0d1117;
-}
-.detail-modal .card-row .crop-thumb img {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
-}
-.detail-modal .card-row .scryfall-thumb {
-  width: 60px;
-  height: 84px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.detail-modal .card-row .card-details {
-  flex: 1;
-  min-width: 0;
-}
-.detail-modal .card-row .card-details .card-name {
-  font-weight: 600;
-  font-size: 0.9rem;
-  color: #e0e0e0;
-}
-.detail-modal .card-row .card-details .card-set {
-  font-size: 0.8rem;
-  color: #888;
-  margin-top: 2px;
-}
-.detail-modal .card-row .card-details .card-meta {
-  font-size: 0.7rem;
-  color: #666;
-  margin-top: 2px;
-}
-.detail-modal .card-row .card-details .claude-meta {
-  font-size: 0.65rem;
-  color: #555;
-  margin-top: 3px;
-  line-height: 1.4;
-}
-.detail-modal .card-row .card-details .claude-meta .label {
-  color: #666;
-}
-.detail-modal .modal-filename {
-  padding: 4px 16px 6px;
-  font-size: 0.75rem;
-  color: #666;
-  border-bottom: 1px solid #0f3460;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.detail-modal .card-row .card-price {
-  font-size: 0.8rem;
-  color: #4caf50;
-  background: rgba(76, 175, 80, 0.12);
-  padding: 2px 8px;
-  border-radius: 4px;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.detail-modal .card-row.skipped {
-  opacity: 0.5;
-}
-.detail-modal .card-row.skipped .card-name::after {
-  content: ' (skipped)';
-  color: #888;
-  font-weight: 400;
-  font-size: 0.8rem;
-}
-.detail-modal .card-row.pending {
-  opacity: 0.6;
-}
-.detail-modal .card-row.pending .card-name::after {
-  content: ' (pending)';
-  color: #e94560;
-  font-weight: 400;
-  font-size: 0.8rem;
-}
-.detail-modal .remove-card-btn {
-  background: none;
-  border: none;
-  color: #555;
-  font-size: 1.1rem;
-  cursor: pointer;
-  padding: 4px 6px;
-  flex-shrink: 0;
-  line-height: 1;
-}
-.detail-modal .remove-card-btn:hover { color: #e94560; }
-.detail-modal .loading {
-  padding: 40px;
-  text-align: center;
-  color: #888;
-}
-.detail-modal .add-card-section {
-  padding: 10px 16px;
-  border-top: 1px solid #0f3460;
-}
-.detail-modal .add-card-section h3 {
-  font-size: 0.85rem;
-  color: #888;
-  margin-bottom: 8px;
-}
-.detail-modal .add-search-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.detail-modal .add-search-row input {
-  flex: 1;
-  padding: 5px 8px;
-  border-radius: 4px;
-  border: 1px solid #0f3460;
-  background: #0d1117;
-  color: #e0e0e0;
-  font-size: 0.85rem;
-}
-.detail-modal .add-search-row button {
-  padding: 5px 12px;
-  border: 1px solid #555;
-  border-radius: 6px;
-  background: #333;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-.detail-modal .add-search-row button:hover { background: #444; }
-.detail-modal .add-results {
-  max-height: 240px;
-  overflow-y: auto;
-  margin-bottom: 8px;
-}
-.detail-modal .add-result-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 6px;
-  border: 2px solid transparent;
-  border-radius: 5px;
-  cursor: pointer;
-  margin-bottom: 2px;
-}
-.detail-modal .add-result-row:hover { background: #1a1a3e; border-color: #0f3460; }
-.detail-modal .add-result-row.selected { border-color: #e94560; background: #1a1a3e; }
-.detail-modal .add-result-row img {
-  width: 40px;
-  height: 56px;
-  object-fit: cover;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-.detail-modal .add-result-row .result-name {
-  font-weight: 600;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-  min-width: 0;
-}
-.detail-modal .add-result-row .result-set {
-  font-size: 0.7rem;
-  color: #888;
-  flex-shrink: 0;
-}
-.detail-modal .add-confirm-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.detail-modal .add-confirm-row select {
-  padding: 4px 8px;
-  border: 1px solid #0f3460;
-  border-radius: 4px;
-  background: #1a1a2e;
-  color: #e0e0e0;
-  font-size: 0.8rem;
-}
-.detail-modal .add-confirm-row button {
-  padding: 6px 14px;
-  border: 1px solid #e94560;
-  border-radius: 6px;
-  background: #e94560;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 0.85rem;
-}
-.detail-modal .add-confirm-row button:hover { background: #c73651; }
-.detail-modal .add-confirm-row button:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -479,7 +223,8 @@ header a:hover { color: #e94560; }
 
 <script>
 let currentHours = 2;
-let pollTimer = null;
+const activePolls = new Map(); // image_id (number) → intervalId
+let discoveryTimer = null;
 
 document.querySelectorAll('#time-pills .pill').forEach(pill => {
   pill.addEventListener('click', () => {
@@ -490,474 +235,228 @@ document.querySelectorAll('#time-pills .pill').forEach(pill => {
   });
 });
 
-async function loadRecent() {
-  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}`);
-  const images = await resp.json();
+// ── Rendering helpers ────────────────────────────────────────────────────────
 
-  const grid = document.getElementById('grid');
-  const empty = document.getElementById('empty');
+function buildCardBadge(img) {
+  if (img.border_status === 'processing') return '<span class="spinner-icon"></span>';
+  if (img.border_status === 'done') return `${img.total_cards}`;
+  if (img.border_status === 'needs_disambiguation') return `${img.pending_count}/${img.total_cards}`;
+  if (img.border_status === 'error') return '!';
+  return '';
+}
+
+function buildCardsHtml(img) {
+  return (img.cards || []).length > 0
+    ? `<div class="card-list">${img.cards.map(c => {
+        const ocrName = c.ocr_name || '';
+        const claudeName = c.claude_name || '';
+        const resolvedName = c.name || '';
+        const details = [];
+        if (ocrName) details.push(`OCR: ${escapeHtml(ocrName)}`);
+        if (claudeName) details.push(`Claude: ${escapeHtml(claudeName)}`);
+        const detailHtml = details.length > 0 ? `<div class="card-sub">${details.join(' · ')}</div>` : '';
+        return `<div class="card-entry"><div class="card-name-line">${escapeHtml(resolvedName)}${c.set_code ? `<span class="set-tag">${escapeHtml(c.set_code)}</span>` : ''}</div>${detailHtml}</div>`;
+      }).join('')}</div>`
+    : '';
+}
+
+function createCardEl(img) {
+  const card = document.createElement('div');
+  card.className = `img-card ${img.border_status}`;
+  card.dataset.id = String(img.id);
+  const errorIcon = img.border_status === 'error' ? '<div class="error-icon">&times;</div>' : '';
+  const errorTooltip = img.border_status === 'error' && img.error_message
+    ? `<div class="error-tooltip">${escapeHtml(img.error_message.substring(0, 200))}</div>` : '';
+  card.innerHTML = `
+    <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy">
+    <div class="badge">${buildCardBadge(img)}</div>
+    ${errorIcon}
+    <div class="info">${escapeHtml(img.filename)}</div>
+    ${buildCardsHtml(img)}
+    ${errorTooltip}
+  `;
+  card.onclick = () => window.location.href = '/correct?image_id=' + img.id;
+  return card;
+}
+
+function updateCardEl(card, img) {
+  card.className = `img-card ${img.border_status}`;
+  card.onclick = () => window.location.href = '/correct?image_id=' + img.id;
+  card.querySelector('.badge').innerHTML = buildCardBadge(img);
+  card.querySelector('.info').textContent = img.filename;
+
+  let errorIcon = card.querySelector('.error-icon');
+  if (img.border_status === 'error') {
+    if (!errorIcon) {
+      errorIcon = document.createElement('div');
+      errorIcon.className = 'error-icon';
+      errorIcon.innerHTML = '&times;';
+      card.appendChild(errorIcon);
+    }
+  } else if (errorIcon) {
+    errorIcon.remove();
+  }
+
+  let tooltip = card.querySelector('.error-tooltip');
+  if (img.border_status === 'error' && img.error_message) {
+    if (!tooltip) {
+      tooltip = document.createElement('div');
+      tooltip.className = 'error-tooltip';
+      card.appendChild(tooltip);
+    }
+    tooltip.textContent = img.error_message.substring(0, 200);
+  } else if (tooltip) {
+    tooltip.remove();
+  }
+
+  const cardsHtml = buildCardsHtml(img);
+  const cardList = card.querySelector('.card-list');
+  if (cardsHtml) {
+    if (cardList) cardList.outerHTML = cardsHtml;
+    else card.insertAdjacentHTML('beforeend', cardsHtml);
+  } else if (cardList) {
+    cardList.remove();
+  }
+}
+
+function updateSummary(images) {
   const summary = document.getElementById('summary');
   const disambigBtn = document.getElementById('disambig-btn');
-
   if (images.length === 0) {
-    grid.innerHTML = '';
-    empty.style.display = 'block';
     summary.textContent = '';
     disambigBtn.style.display = 'none';
     return;
   }
-  empty.style.display = 'none';
-
-  // Summary counts
   const counts = { processing: 0, done: 0, needs_disambiguation: 0, error: 0 };
   let totalPending = 0;
   for (const img of images) {
     counts[img.border_status] = (counts[img.border_status] || 0) + 1;
     totalPending += img.pending_count;
   }
-
   const parts = [];
   if (counts.processing > 0) parts.push(`${counts.processing} processing`);
   if (counts.done > 0) parts.push(`${counts.done} done`);
   if (counts.needs_disambiguation > 0) parts.push(`${counts.needs_disambiguation} need disambiguation`);
   if (counts.error > 0) parts.push(`${counts.error} error`);
   summary.textContent = `${images.length} image(s): ${parts.join(', ')}`;
-
   if (totalPending > 0) {
     disambigBtn.style.display = '';
     disambigBtn.textContent = `Disambiguate ${totalPending} card(s)`;
   } else {
     disambigBtn.style.display = 'none';
   }
+}
 
-  // Build a map of existing cards by image ID for in-place updates
+// ── Full render (initial load + time-pill changes) ───────────────────────────
+
+async function loadRecent() {
+  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}`);
+  const images = await resp.json();
+
+  const grid = document.getElementById('grid');
+  const empty = document.getElementById('empty');
+
+  updateSummary(images);
+
+  if (images.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    syncPolls([]);
+    return;
+  }
+  empty.style.display = 'none';
+
   const existingCards = {};
   grid.querySelectorAll('.img-card[data-id]').forEach(el => {
     existingCards[el.dataset.id] = el;
   });
 
   const newIds = new Set(images.map(img => String(img.id)));
-
-  // Remove cards no longer in the response
   for (const [id, el] of Object.entries(existingCards)) {
     if (!newIds.has(id)) el.remove();
   }
 
-  // Update or create cards in order
   let prevEl = null;
   for (const img of images) {
     const id = String(img.id);
     let card = existingCards[id];
-
-    let badgeText = '';
-    if (img.border_status === 'processing') {
-      badgeText = '<span class="spinner-icon"></span>';
-    } else if (img.border_status === 'done') {
-      badgeText = `${img.total_cards}`;
-    } else if (img.border_status === 'needs_disambiguation') {
-      badgeText = `${img.pending_count}/${img.total_cards}`;
-    } else if (img.border_status === 'error') {
-      badgeText = '!';
-    }
-
-    const cardsHtml = (img.cards || []).length > 0
-      ? `<div class="card-list">${img.cards.map(c => {
-          const ocrName = c.ocr_name || '';
-          const claudeName = c.claude_name || '';
-          const resolvedName = c.name || '';
-          const details = [];
-          if (ocrName) details.push(`OCR: ${escapeHtml(ocrName)}`);
-          if (claudeName) details.push(`Claude: ${escapeHtml(claudeName)}`);
-          const detailHtml = details.length > 0 ? `<div class="card-sub">${details.join(' · ')}</div>` : '';
-          return `<div class="card-entry"><div class="card-name-line">${escapeHtml(resolvedName)}${c.set_code ? `<span class="set-tag">${escapeHtml(c.set_code)}</span>` : ''}</div>${detailHtml}</div>`;
-        }).join('')}</div>`
-      : '';
-
     if (card) {
-      // Update existing card in-place (preserve the <img> element)
-      card.className = `img-card ${img.border_status}`;
-      card.onclick = (img.border_status === 'done' || img.border_status === 'needs_disambiguation')
-        ? () => showImageDetail(img.id) : null;
-      card.querySelector('.badge').innerHTML = badgeText;
-      card.querySelector('.info').textContent = img.filename;
-
-      // Update error icon
-      let errorIcon = card.querySelector('.error-icon');
-      if (img.border_status === 'error') {
-        if (!errorIcon) {
-          errorIcon = document.createElement('div');
-          errorIcon.className = 'error-icon';
-          errorIcon.innerHTML = '&times;';
-          card.appendChild(errorIcon);
-        }
-      } else if (errorIcon) {
-        errorIcon.remove();
-      }
-
-      // Update error tooltip
-      let tooltip = card.querySelector('.error-tooltip');
-      if (img.border_status === 'error' && img.error_message) {
-        if (!tooltip) {
-          tooltip = document.createElement('div');
-          tooltip.className = 'error-tooltip';
-          card.appendChild(tooltip);
-        }
-        tooltip.textContent = img.error_message.substring(0, 200);
-      } else if (tooltip) {
-        tooltip.remove();
-      }
-
-      // Update card list
-      let cardList = card.querySelector('.card-list');
-      if (cardsHtml) {
-        if (cardList) {
-          cardList.outerHTML = cardsHtml;
-        } else {
-          card.insertAdjacentHTML('beforeend', cardsHtml);
-        }
-      } else if (cardList) {
-        cardList.remove();
-      }
+      updateCardEl(card, img);
     } else {
-      // Create new card
-      const errorTooltip = img.border_status === 'error' && img.error_message
-        ? `<div class="error-tooltip">${escapeHtml(img.error_message.substring(0, 200))}</div>`
-        : '';
-      const errorIcon = img.border_status === 'error' ? '<div class="error-icon">&times;</div>' : '';
-      const clickable = (img.border_status === 'done' || img.border_status === 'needs_disambiguation') ? `onclick="showImageDetail(${img.id})"` : '';
-
-      card = document.createElement('div');
-      card.className = `img-card ${img.border_status}`;
-      card.dataset.id = id;
-      card.innerHTML = `
-        <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy">
-        <div class="badge">${badgeText}</div>
-        ${errorIcon}
-        <div class="info">${escapeHtml(img.filename)}</div>
-        ${cardsHtml}
-        ${errorTooltip}
-      `;
-      if (img.border_status === 'done' || img.border_status === 'needs_disambiguation') {
-        card.onclick = () => showImageDetail(img.id);
-      }
-
-      if (prevEl) {
-        prevEl.after(card);
-      } else {
-        grid.prepend(card);
-      }
+      card = createCardEl(img);
+      if (prevEl) prevEl.after(card);
+      else grid.prepend(card);
     }
-
-    // Ensure correct order
-    if (prevEl && card.previousElementSibling !== prevEl) {
-      prevEl.after(card);
-    }
-
+    if (prevEl && card.previousElementSibling !== prevEl) prevEl.after(card);
     prevEl = card;
   }
+
+  syncPolls(images);
+}
+
+// ── Per-image polling ────────────────────────────────────────────────────────
+
+function syncPolls(images) {
+  const processingIds = new Set();
+  for (const img of images) {
+    if (img.border_status === 'processing') {
+      processingIds.add(img.id);
+      if (!activePolls.has(img.id)) {
+        activePolls.set(img.id, setInterval(() => pollOneImage(img.id), 3000));
+      }
+    }
+  }
+  for (const [id, timer] of activePolls) {
+    if (!processingIds.has(id)) {
+      clearInterval(timer);
+      activePolls.delete(id);
+    }
+  }
+}
+
+async function pollOneImage(id) {
+  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}&id=${id}`);
+  const images = await resp.json();
+  if (images.length === 0) {
+    clearInterval(activePolls.get(id));
+    activePolls.delete(id);
+    return;
+  }
+  const img = images[0];
+  const card = document.querySelector(`#grid .img-card[data-id="${id}"]`);
+  if (card) updateCardEl(card, img);
+  if (img.border_status !== 'processing') {
+    clearInterval(activePolls.get(id));
+    activePolls.delete(id);
+  }
+}
+
+// ── Discovery poll (slow — finds new images uploaded while page is open) ─────
+
+async function discoverNewImages() {
+  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}`);
+  const images = await resp.json();
+  const grid = document.getElementById('grid');
+  let foundNew = false;
+  for (const img of images) {
+    if (!grid.querySelector(`.img-card[data-id="${img.id}"]`)) {
+      grid.prepend(createCardEl(img));
+      foundNew = true;
+      if (img.border_status === 'processing' && !activePolls.has(img.id)) {
+        activePolls.set(img.id, setInterval(() => pollOneImage(img.id), 3000));
+      }
+    }
+  }
+  if (foundNew) updateSummary(images);
 }
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-async function showImageDetail(imageId) {
-  // Create modal with loading state
-  const modal = document.createElement('div');
-  modal.className = 'detail-modal';
-  modal.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2>Ingested Cards</h2>
-        <button class="modal-close">&times;</button>
-      </div>
-      <div class="loading">Loading...</div>
-    </div>
-  `;
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  modal.querySelector('.modal-close').addEventListener('click', () => modal.remove());
-  document.body.appendChild(modal);
-
-  const resp = await fetch(`/api/ingest2/images/${imageId}`);
-  const img = await resp.json();
-
-  const disambiguated = img.disambiguated || [];
-  const matches = img.scryfall_matches || [];
-  const claude = img.claude_result || [];
-  const crops = img.crops || [];
-  const cardNames = img.card_names || [];
-  const imgSrc = `/api/ingest/image/${encodeURIComponent(img.stored_name)}`;
-  const content = modal.querySelector('.modal-content');
-
-  // Build time info
-  const created = new Date(img.created_at);
-  const updated = new Date(img.updated_at);
-  const fmt = d => d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-
-  // Helper: build Claude metadata HTML
-  function buildClaudeMeta(c, ocrName) {
-    const parts = [];
-    if (ocrName) parts.push(`<span class="label">OCR:</span> ${escapeHtml(ocrName)}`);
-    if (c.name) parts.push(`<span class="label">Claude:</span> ${escapeHtml(c.name)}`);
-    if (c.type) parts.push(`<span class="label">Type:</span> ${escapeHtml(c.type)}${c.subtype ? ' — ' + escapeHtml(c.subtype) : ''}`);
-    if (c.mana_cost) parts.push(`<span class="label">Mana:</span> ${escapeHtml(c.mana_cost)}`);
-    if (c.collector_number) parts.push(`<span class="label">CN:</span> ${escapeHtml(c.collector_number)}`);
-    if (c.set_code) parts.push(`<span class="label">Set:</span> ${escapeHtml(c.set_code.toUpperCase())}`);
-    if (c.power != null || c.toughness != null) parts.push(`<span class="label">P/T:</span> ${c.power ?? '?'}/${c.toughness ?? '?'}`);
-    if (c.artist) parts.push(`<span class="label">Artist:</span> ${escapeHtml(c.artist)}`);
-    if (c.rules_text) parts.push(`<span class="label">Rules:</span> ${escapeHtml(c.rules_text.length > 80 ? c.rules_text.slice(0, 80) + '…' : c.rules_text)}`);
-    return parts.length > 0 ? `<div class="claude-meta">${parts.join('<br>')}</div>` : '';
-  }
-
-  let html = `
-    <div class="modal-header">
-      <h2>Ingested Cards</h2>
-      <button class="modal-close">&times;</button>
-    </div>
-    <div class="modal-filename">${escapeHtml(img.filename || '')}</div>
-    <div class="modal-time">
-      Uploaded ${fmt(created)} &middot; Completed ${fmt(updated)}
-    </div>
-  `;
-
-  // Track crop containers to set up after HTML is inserted
-  const cropSetups = [];
-
-  for (let i = 0; i < disambiguated.length; i++) {
-    const sid = disambiguated[i];
-    const claudeCard = claude[i] || {};
-    const crop = crops[i] || null;
-    const ocrName = (cardNames[i] || {}).ocr_name || '';
-    const cropId = `modal-crop-${i}`;
-    const claudeMetaHtml = buildClaudeMeta(claudeCard, ocrName);
-
-    if (sid === 'skipped') {
-      html += `
-        <div class="card-row skipped">
-          <div class="crop-thumb" id="${cropId}"></div>
-          <div class="card-details">
-            <div class="card-name">${escapeHtml(claudeCard.name || 'Unknown')}</div>
-            <div class="card-set">${escapeHtml(claudeCard.set_code ? claudeCard.set_code.toUpperCase() : '')}</div>
-            ${claudeMetaHtml}
-          </div>
-        </div>
-      `;
-      cropSetups.push({ id: cropId, crop });
-      continue;
-    }
-    if (sid === null) {
-      html += `
-        <div class="card-row pending">
-          <div class="crop-thumb" id="${cropId}"></div>
-          <div class="card-details">
-            <div class="card-name">${escapeHtml(claudeCard.name || 'Unknown')}</div>
-            <div class="card-set">${escapeHtml(claudeCard.set_code ? claudeCard.set_code.toUpperCase() : '')}</div>
-            ${claudeMetaHtml}
-          </div>
-          <a href="/disambiguate" style="color:#e94560;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;">Disambiguate</a>
-          <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
-        </div>
-      `;
-      cropSetups.push({ id: cropId, crop });
-      continue;
-    }
-
-    // Find the confirmed candidate in scryfall_matches
-    const candidates = matches[i] || [];
-    const card = candidates.find(c => c.scryfall_id === sid) || {};
-
-    const priceHtml = card.price ? `<span class="card-price">$${card.price}</span>` : '';
-    const rarity = card.rarity ? card.rarity.charAt(0).toUpperCase() + card.rarity.slice(1) : '';
-    const cn = card.collector_number ? `#${card.collector_number}` : '';
-    const metaParts = [rarity, cn].filter(Boolean).join(' \u00b7 ');
-
-    html += `
-      <div class="card-row">
-        <div class="crop-thumb" id="${cropId}"></div>
-        <div class="card-details">
-          <div class="card-name">${escapeHtml(card.name || claudeCard.name || 'Unknown')}</div>
-          <div class="card-set">${escapeHtml(card.set_name || '')}${card.set_code ? ` (${card.set_code.toUpperCase()})` : ''}</div>
-          ${metaParts ? `<div class="card-meta">${escapeHtml(metaParts)}</div>` : ''}
-          ${claudeMetaHtml}
-        </div>
-        ${priceHtml}
-        <a href="/correct?image_id=${imageId}&card_idx=${i}" style="color:#888;font-size:0.7rem;text-decoration:none;flex-shrink:0;padding:4px 6px;" onmouseover="this.style.color='#e94560'" onmouseout="this.style.color='#888'">Correct</a>
-        <button class="remove-card-btn" data-image-id="${imageId}" data-card-idx="${i}">&times;</button>
-      </div>
-    `;
-    cropSetups.push({ id: cropId, crop });
-  }
-
-  // Add card section
-  html += `
-    <div class="add-card-section">
-      <h3>Add a card</h3>
-      <div class="add-search-row">
-        <input type="text" id="add-card-search" placeholder="Search by card name...">
-        <button id="add-card-search-btn">Search</button>
-      </div>
-      <div class="add-results" id="add-card-results"></div>
-      <div class="add-confirm-row">
-        <select id="add-card-finish">
-          <option value="nonfoil">Nonfoil</option>
-          <option value="foil">Foil</option>
-          <option value="etched">Etched</option>
-        </select>
-        <button id="add-card-btn" disabled>Add</button>
-      </div>
-    </div>
-  `;
-
-  content.innerHTML = html;
-  content.querySelector('.modal-close').addEventListener('click', () => modal.remove());
-
-  // Set up crop thumbnails
-  for (const { id, crop } of cropSetups) {
-    const container = content.querySelector(`#${id}`);
-    if (!container) continue;
-    const cropImg = document.createElement('img');
-    cropImg.src = imgSrc;
-    container.appendChild(cropImg);
-    cropImg.onload = () => {
-      const cw = 60, ch = 84;
-      if (crop && crop.w > 0 && crop.h > 0) {
-        const scale = Math.min(cw / crop.w, ch / crop.h);
-        const tx = (cw / 2) - (crop.x + crop.w / 2) * scale;
-        const ty = (ch / 2) - (crop.y + crop.h / 2) * scale;
-        cropImg.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-      } else {
-        const scale = Math.min(cw / cropImg.naturalWidth, ch / cropImg.naturalHeight);
-        cropImg.style.transform = `scale(${scale})`;
-      }
-    };
-  }
-
-  // Remove card buttons
-  content.querySelectorAll('.remove-card-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const imgId = parseInt(btn.dataset.imageId);
-      const cardIdx = parseInt(btn.dataset.cardIdx);
-      const row = btn.closest('.card-row');
-      const isConfirmed = !row.classList.contains('pending') && !row.classList.contains('skipped');
-      const msg = isConfirmed
-        ? 'Remove this card from the image and your collection?'
-        : 'Remove this card slot from the image?';
-      if (!confirm(msg)) return;
-      btn.disabled = true;
-      btn.textContent = '...';
-      const resp = await fetch('/api/ingest2/remove-card', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ image_id: imgId, card_idx: cardIdx }),
-      });
-      const result = await resp.json();
-      if (result.ok) {
-        row.remove();
-      } else {
-        btn.disabled = false;
-        btn.textContent = '\u00d7';
-      }
-    });
-  });
-
-  // Add card search + confirm wiring
-  let _addSelectedCandidate = null;
-
-  const addSearchBtn = content.querySelector('#add-card-search-btn');
-  const addSearchInput = content.querySelector('#add-card-search');
-  const addResults = content.querySelector('#add-card-results');
-  const addBtn = content.querySelector('#add-card-btn');
-
-  async function doAddSearch() {
-    const query = addSearchInput.value.trim();
-    if (!query) return;
-    addSearchBtn.disabled = true;
-    addSearchBtn.textContent = '...';
-    const resp = await fetch('/api/ingest2/search-card', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ query }),
-    });
-    const data = await resp.json();
-    addSearchBtn.disabled = false;
-    addSearchBtn.textContent = 'Search';
-    _addSelectedCandidate = null;
-    addBtn.disabled = true;
-    addResults.innerHTML = '';
-    for (const c of (data.candidates || [])) {
-      const row = document.createElement('div');
-      row.className = 'add-result-row';
-      const imgTag = c.image_uri ? `<img src="${c.image_uri}" loading="lazy">` : `<div style="width:40px;height:56px;background:#0d1117;border-radius:3px;flex-shrink:0;"></div>`;
-      row.innerHTML = `${imgTag}<span class="result-name">${escapeHtml(c.name)}</span><span class="result-set">${escapeHtml(c.set_code ? c.set_code.toUpperCase() : '')}</span>`;
-      row.addEventListener('click', () => {
-        addResults.querySelectorAll('.add-result-row').forEach(r => r.classList.remove('selected'));
-        row.classList.add('selected');
-        _addSelectedCandidate = c;
-        addBtn.disabled = false;
-        // Auto-set finish
-        if (c.foil && !(c.finishes || []).includes('nonfoil')) {
-          content.querySelector('#add-card-finish').value = 'foil';
-        } else {
-          content.querySelector('#add-card-finish').value = 'nonfoil';
-        }
-      });
-      addResults.appendChild(row);
-    }
-  }
-
-  addSearchBtn.addEventListener('click', doAddSearch);
-  addSearchInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAddSearch(); });
-
-  addBtn.addEventListener('click', async () => {
-    if (!_addSelectedCandidate) return;
-    addBtn.disabled = true;
-    addBtn.textContent = '...';
-    const finish = content.querySelector('#add-card-finish').value;
-    const resp = await fetch('/api/ingest2/add-card', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        image_id: imageId,
-        scryfall_id: _addSelectedCandidate.scryfall_id,
-        finish,
-      }),
-    });
-    const result = await resp.json();
-    addBtn.textContent = 'Add';
-    addBtn.disabled = false;
-    if (result.ok) {
-      // Append new card row to modal
-      const imgUri = (_addSelectedCandidate.image_uri || '').replace('/small/', '/normal/');
-      const priceHtml = _addSelectedCandidate.price ? `<span class="card-price">$${_addSelectedCandidate.price}</span>` : '';
-      const newRow = document.createElement('div');
-      newRow.className = 'card-row';
-      newRow.innerHTML = `
-        ${imgUri ? `<img class="scryfall-thumb" src="${imgUri}" loading="lazy">` : `<div style="width:60px;height:84px;background:#0d1117;border-radius:4px;flex-shrink:0;"></div>`}
-        <div class="card-details">
-          <div class="card-name">${escapeHtml(result.name)}</div>
-          <div class="card-set">${escapeHtml(_addSelectedCandidate.set_name || '')}${result.set_code ? ` (${result.set_code.toUpperCase()})` : ''}</div>
-        </div>
-        ${priceHtml}
-      `;
-      // Insert before the add-card-section
-      content.querySelector('.add-card-section').insertAdjacentElement('beforebegin', newRow);
-      // Clear search
-      _addSelectedCandidate = null;
-      addResults.innerHTML = '';
-      addSearchInput.value = '';
-      addBtn.disabled = true;
-    }
-  });
-}
-
-// Auto-poll
-function startPolling() {
-  if (pollTimer) clearInterval(pollTimer);
-  pollTimer = setInterval(loadRecent, 3000);
-}
 
 loadRecent();
-startPolling();
+discoveryTimer = setInterval(discoverNewImages, 20000);
 </script>
 </body>
 </html>
