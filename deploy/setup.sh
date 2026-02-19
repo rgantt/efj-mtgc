@@ -44,21 +44,17 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 if [ $# -ge 2 ]; then
     PORT="$2"
 else
-    # Auto-assign: find highest port in existing Quadlets, add 1 (start at 8081)
-    MAX_PORT=8080
-    for unit in "$QUADLET_DIR"/mtgc-*.container; do
-        [ -f "$unit" ] || continue
-        P=$(grep -oP 'PublishPort=\K[0-9]+' "$unit" 2>/dev/null || true)
-        if [ -n "$P" ] && [ "$P" -gt "$MAX_PORT" ]; then
-            MAX_PORT="$P"
-        fi
-    done
-    PORT=$((MAX_PORT + 1))
+    # Let the OS assign an available port at container start
+    PORT=0
 fi
 
 echo "==> MTGC deployment setup"
 echo "    Instance: $INSTANCE"
-echo "    Port:     $PORT"
+if [ "$PORT" = "0" ]; then
+    echo "    Port:     (auto-assign)"
+else
+    echo "    Port:     $PORT"
+fi
 echo "    Service:  $SERVICE_NAME"
 echo "    Repo:     $REPO_DIR"
 
@@ -107,9 +103,17 @@ QUADLET_FILE="${QUADLET_DIR}/${SERVICE_NAME}.container"
 echo "==> Installing Quadlet: $QUADLET_FILE"
 mkdir -p "$QUADLET_DIR"
 
+# When PORT=0 (auto-assign), use ":8081" so Podman picks an available host port.
+# Otherwise use "PORT:8081" to bind a specific host port.
+if [ "$PORT" = "0" ]; then
+    PORT_MAPPING=":8081"
+else
+    PORT_MAPPING="${PORT}:8081"
+fi
+
 sed \
     -e "s|{{INSTANCE}}|${INSTANCE}|g" \
-    -e "s|{{PORT}}|${PORT}|g" \
+    -e "s|{{PORT}}:8081|${PORT_MAPPING}|g" \
     "$REPO_DIR/deploy/mtgc.container" > "$QUADLET_FILE"
 
 systemctl --user daemon-reload
@@ -118,6 +122,7 @@ echo ""
 echo "==> Setup complete!"
 echo ""
 echo "  Start:      systemctl --user start $SERVICE_NAME"
+echo "  Port:       podman port systemd-${SERVICE_NAME}"
 echo "  Init data:  podman exec -it systemd-${SERVICE_NAME} mtg setup"
 echo "  Logs:       journalctl --user -u $SERVICE_NAME -f"
 echo "  Teardown:   bash deploy/teardown.sh $INSTANCE"

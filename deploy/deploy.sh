@@ -47,10 +47,18 @@ else
     echo "==> Restarting $SERVICE_NAME..."
     systemctl --user restart "$SERVICE_NAME"
 fi
-PORT=$(grep -oP 'PublishPort=\K[0-9]+' "$QUADLET_FILE")
+# Wait briefly for the container to start, then discover the assigned port
+sleep 2
+PORT_LINE=$(podman port "systemd-${SERVICE_NAME}" 8081/tcp 2>/dev/null || true)
+PORT=$(echo "$PORT_LINE" | grep -oP ':\K[0-9]+' | head -1)
+if [ -z "$PORT" ]; then
+    echo "==> Could not determine port. Check: podman port systemd-${SERVICE_NAME}"
+    exit 1
+fi
+echo "==> Listening on port $PORT"
 echo "==> Health check: $SERVICE_NAME (port $PORT)..."
 for i in 1 2 3 4 5; do
-    if curl -sf "http://localhost:${PORT}/" > /dev/null 2>&1; then
+    if curl -skf "https://localhost:${PORT}/" > /dev/null 2>&1; then
         echo "==> Health check passed"
         exit 0
     fi

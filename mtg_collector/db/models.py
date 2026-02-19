@@ -211,6 +211,47 @@ class CardRepository:
 
         return None
 
+    def search_cards_by_name(self, name: str, limit: int = 20) -> List[Card]:
+        """Search for cards by name, returning multiple results.
+
+        Case-insensitive exact match first, then DFC front-face match,
+        then partial LIKE match.
+        """
+        results = []
+        seen = set()
+
+        # Exact case-insensitive match
+        for row in self.conn.execute(
+            "SELECT * FROM cards WHERE name COLLATE NOCASE = ?", (name,)
+        ):
+            results.append(self._row_to_card(row))
+            seen.add(row["oracle_id"])
+
+        # DFC front-face match
+        if seen:
+            placeholders = ",".join("?" * len(seen))
+            query = f"SELECT * FROM cards WHERE name LIKE ? COLLATE NOCASE AND oracle_id NOT IN ({placeholders})"
+            params = (name + " // %", *seen)
+        else:
+            query = "SELECT * FROM cards WHERE name LIKE ? COLLATE NOCASE"
+            params = (name + " // %",)
+        for row in self.conn.execute(query, params):
+            results.append(self._row_to_card(row))
+            seen.add(row["oracle_id"])
+
+        if len(results) >= limit:
+            return results[:limit]
+
+        # Partial match (substring)
+        exclude = f"AND oracle_id NOT IN ({','.join('?' * len(seen))})" if seen else ""
+        for row in self.conn.execute(
+            f"SELECT * FROM cards WHERE name LIKE ? COLLATE NOCASE {exclude} LIMIT ?",
+            (f"%{name}%", *seen, limit - len(results)),
+        ):
+            results.append(self._row_to_card(row))
+
+        return results
+
     def _row_to_card(self, row) -> Card:
         return Card(
             oracle_id=row["oracle_id"],

@@ -58,6 +58,9 @@ podman exec -it systemd-mtgc-my-feature mtg setup  # Init data inside container
 
 ## Architecture
 
+See `architecture/CARD_DATA_ACCESS.md` for the card data access policy -- all runtime
+card lookups MUST use the local database, never the Scryfall API.
+
 ```
 mtg_collector/
 ├── cli/           # Subcommands, each with register(subparsers) and run(args)

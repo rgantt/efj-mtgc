@@ -430,6 +430,25 @@ def _format_candidates(raw_cards):
     return formatted
 
 
+def _local_name_search(conn, name, set_code=None, limit=20):
+    """Search local DB for cards by name, return Scryfall-format dicts for _format_candidates."""
+    from mtg_collector.db.models import CardRepository, PrintingRepository
+
+    card_repo = CardRepository(conn)
+    printing_repo = PrintingRepository(conn)
+
+    cards = card_repo.search_cards_by_name(name, limit=limit)
+    results = []
+    for card in cards:
+        printings = printing_repo.get_by_oracle_id(card.oracle_id)
+        for p in printings:
+            if set_code and p.set_code != set_code.lower():
+                continue
+            data = p.get_scryfall_data()
+            if data:
+                results.append(data)
+    return results
+
 
 def _log_ingest(msg):
     sys.stderr.write(f"[INGEST] {msg}\n")
@@ -454,9 +473,9 @@ def _process_image_core(conn, image_id, img, log_fn):
     log_fn(event_type, data_dict) is called for progress events.
     """
     from mtg_collector.cli.ingest_ocr import _build_scryfall_query
+    from mtg_collector.db.models import PrintingRepository
     from mtg_collector.services.agent import run_agent
     from mtg_collector.services.ocr import run_ocr_with_boxes
-    from mtg_collector.services.scryfall import ScryfallAPI
     from mtg_collector.utils import now_iso
 
     image_path = str(_get_ingest_images_dir() / img["stored_name"])
@@ -556,9 +575,9 @@ def _process_image_core(conn, image_id, img, log_fn):
     )
     conn.commit()
 
-    # Step 3: Scryfall resolution
-    log_fn("status", {"message": "Querying Scryfall..."})
-    scryfall = ScryfallAPI()
+    # Step 3: Local DB resolution
+    log_fn("status", {"message": "Resolving cards..."})
+    printing_repo = PrintingRepository(conn)
 
     all_matches = []
     all_crops = []
@@ -568,31 +587,32 @@ def _process_image_core(conn, image_id, img, log_fn):
         set_code, cn_or_query = _build_scryfall_query(card_info, {})
         candidates = []
         if set_code and cn_or_query:
-            _scryfall_rate_limit()
             cn_raw = cn_or_query
             cn_stripped = cn_raw.lstrip("0") or "0"
-            card_data = scryfall.get_card_by_set_cn(set_code, cn_stripped)
-            if not card_data:
-                _scryfall_rate_limit()
-                card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
-            if card_data:
-                candidates = [card_data]
-                extracted_name = card_info.get("name", "")
-                returned_name = card_data.get("name", "")
-                if extracted_name and extracted_name.lower() != returned_name.lower():
-                    _log_ingest(f"Name mismatch: Claude='{extracted_name}' vs Scryfall='{returned_name}', adding name search")
-                    _scryfall_rate_limit()
-                    name_results = scryfall.search_card(extracted_name)
-                    seen_ids = {c.get("id") for c in candidates}
-                    for r in name_results:
-                        if r.get("id") not in seen_ids:
-                            candidates.append(r)
+            printing = printing_repo.get_by_set_cn(set_code, cn_stripped)
+            if not printing:
+                printing = printing_repo.get_by_set_cn(set_code, cn_raw)
+            if printing:
+                card_data = printing.get_scryfall_data()
+                if card_data:
+                    candidates = [card_data]
+                    # If the set+CN lookup returned a different card name than
+                    # Claude extracted, also do a name search so the correct card
+                    # appears in disambiguation.
+                    extracted_name = card_info.get("name", "")
+                    returned_name = card_data.get("name", "")
+                    if extracted_name and extracted_name.lower() != returned_name.lower():
+                        _log_ingest(f"Name mismatch: Claude='{extracted_name}' vs DB='{returned_name}', adding name search")
+                        name_results = _local_name_search(conn, extracted_name)
+                        seen_ids = {c.get("id") for c in candidates}
+                        for r in name_results:
+                            if r.get("id") not in seen_ids:
+                                candidates.append(r)
         if not candidates:
             name = card_info.get("name")
             search_set = card_info.get("set_code")
             if name:
-                _scryfall_rate_limit()
-                candidates = scryfall.search_card(name, set_code=search_set)
+                candidates = _local_name_search(conn, name, set_code=search_set)
         return candidates
 
     for ci, card_info in enumerate(claude_cards):
@@ -600,7 +620,7 @@ def _process_image_core(conn, image_id, img, log_fn):
         if not card_info.get("name") and not card_info.get("fragment_indices"):
             all_matches.append([])
             all_crops.append(None)
-            _log_ingest(f"Scryfall card {ci}: skipped (no identifying info)")
+            _log_ingest(f"Resolve card {ci}: skipped (no identifying info)")
             continue
 
         candidates = _resolve_candidate(card_info)
@@ -608,17 +628,7 @@ def _process_image_core(conn, image_id, img, log_fn):
         if not candidates:
             set_code, cn_or_query = _build_scryfall_query(card_info, {})
             if cn_or_query and not set_code:
-                try:
-                    _scryfall_rate_limit()
-                    url = f"{scryfall.BASE_URL}/cards/search"
-                    params = {"q": cn_or_query, "unique": "prints"}
-                    response = scryfall._request_with_retry("GET", url, params=params)
-                    response.raise_for_status()
-                    data = response.json()
-                    if data.get("object") == "list" and data.get("data"):
-                        candidates = data["data"]
-                except requests.exceptions.RequestException:
-                    _log_ingest(f"Scryfall last-resort search failed for query: {cn_or_query}")
+                candidates = _local_name_search(conn, cn_or_query)
 
         # Resolve extra candidates (same physical card, different printing guesses)
         # and merge into this slot's results, deduplicating by Scryfall ID.
@@ -631,7 +641,7 @@ def _process_image_core(conn, image_id, img, log_fn):
 
         formatted = _format_candidates(candidates)
         all_matches.append(formatted)
-        _log_ingest(f"Scryfall card {ci}: {len(formatted)} candidates for '{card_info.get('name', '???')}'")
+        _log_ingest(f"Resolve card {ci}: {len(formatted)} candidates for '{card_info.get('name', '???')}'")
 
         frag_indices = card_info.get("fragment_indices", [])
         crop = _compute_card_crop(ocr_fragments, frag_indices)
@@ -657,16 +667,16 @@ def _process_image_core(conn, image_id, img, log_fn):
 def _auto_ingest_single_candidates(conn, img, disambiguated, scryfall_matches):
     """Auto-ingest cards with exactly one candidate. Returns count of auto-ingested cards."""
     from mtg_collector.db.models import (
-        CardRepository,
         CollectionEntry,
         CollectionRepository,
         PrintingRepository,
-        SetRepository,
     )
     from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
     from mtg_collector.utils import now_iso
 
     auto_count = 0
+    printing_repo = PrintingRepository(conn)
+    collection_repo = CollectionRepository(conn)
 
     for card_idx, status in enumerate(disambiguated):
         if status is not None:
@@ -678,18 +688,10 @@ def _auto_ingest_single_candidates(conn, img, disambiguated, scryfall_matches):
         c = candidates[0]
         scryfall_id = c["scryfall_id"]
 
-        _scryfall_rate_limit()
-        scryfall = ScryfallAPI()
-        card_repo = CardRepository(conn)
-        set_repo = SetRepository(conn)
-        printing_repo = PrintingRepository(conn)
-        collection_repo = CollectionRepository(conn)
-
-        card_data = scryfall.get_card_by_id(scryfall_id)
-        if not card_data:
+        printing = printing_repo.get(scryfall_id)
+        if not printing:
             continue
 
-        cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
         entry = CollectionEntry(
             id=None,
             scryfall_id=scryfall_id,
@@ -709,8 +711,7 @@ def _auto_ingest_single_candidates(conn, img, disambiguated, scryfall_matches):
         disambiguated[card_idx] = scryfall_id
         conn.commit()
 
-        name = card_data.get("name", "???")
-        _log_ingest(f"Auto-confirmed: {name} ({c.get('set_code', '???').upper()} #{c.get('collector_number', '???')})")
+        _log_ingest(f"Auto-confirmed: {printing.scryfall_id} ({c.get('set_code', '???').upper()} #{c.get('collector_number', '???')})")
         auto_count += 1
 
     return auto_count
@@ -1989,6 +1990,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         # Stale processing recovery
         if img["status"] == "PROCESSING":
             from datetime import datetime, timezone
+
+            from mtg_collector.utils import now_iso
             updated = datetime.fromisoformat(img["updated_at"].replace("Z", "+00:00"))
             if (datetime.now(timezone.utc) - updated).total_seconds() > 600:
                 self._ingest2_update_image(conn, image_id, status="READY_FOR_OCR")
@@ -2068,11 +2071,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_ingest2_next_card(self, image_id):
         """Find the next undisambiguated card for an image. Auto-confirms single-candidate cards."""
         from mtg_collector.db.models import (
-            CardRepository,
             CollectionEntry,
             CollectionRepository,
             PrintingRepository,
-            SetRepository,
         )
         from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.utils import now_iso
@@ -2102,15 +2103,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 c = candidates[0]
                 scryfall_id = c["scryfall_id"]
 
-                scryfall = ScryfallAPI()
-                card_repo = CardRepository(conn)
-                set_repo = SetRepository(conn)
                 printing_repo = PrintingRepository(conn)
                 collection_repo = CollectionRepository(conn)
 
-                card_data = scryfall.get_card_by_id(scryfall_id)
-                if card_data:
-                    cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+                printing = printing_repo.get(scryfall_id)
+                if printing:
                     entry = CollectionEntry(
                         id=None,
                         scryfall_id=scryfall_id,
@@ -2131,8 +2128,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                     self._ingest2_update_image(conn, image_id, disambiguated=json.dumps(disambiguated))
                     conn.commit()
 
-                    name = card_data.get("name", "???")
-                    _log_ingest(f"Auto-confirmed: {name} ({c.get('set_code', '???').upper()} #{c.get('collector_number', '???')})")
+                    _log_ingest(f"Auto-confirmed: {scryfall_id} ({c.get('set_code', '???').upper()} #{c.get('collector_number', '???')})")
                     auto_confirmed += 1
                     continue
 
@@ -2172,11 +2168,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_ingest2_confirm(self):
         """Confirm a card: add to collection + ingest_lineage."""
         from mtg_collector.db.models import (
-            CardRepository,
             CollectionEntry,
             CollectionRepository,
             PrintingRepository,
-            SetRepository,
         )
         from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.utils import now_iso
@@ -2197,19 +2191,14 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Image not found"}, 404)
             return
 
-        scryfall = ScryfallAPI()
-        card_repo = CardRepository(conn)
-        set_repo = SetRepository(conn)
         printing_repo = PrintingRepository(conn)
         collection_repo = CollectionRepository(conn)
 
-        card_data = scryfall.get_card_by_id(scryfall_id)
-        if not card_data:
+        printing = printing_repo.get(scryfall_id)
+        if not printing:
             conn.close()
-            self._send_json({"error": "Card not found on Scryfall"}, 404)
+            self._send_json({"error": f"Printing {scryfall_id} not in local cache"}, 404)
             return
-
-        cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
 
         entry = CollectionEntry(
             id=None,
@@ -2240,9 +2229,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        name = card_data.get("name", "???")
-        set_code = card_data.get("set", "???")
-        cn = card_data.get("collector_number", "???")
+        name = printing.raw_json and json.loads(printing.raw_json).get("name", "???") or "???"
+        set_code = printing.set_code
+        cn = printing.collector_number
         _log_ingest(f"Confirmed2: {name} ({set_code.upper()} #{cn}) -> collection ID {entry_id}")
 
         self._send_json({"ok": True, "entry_id": entry_id, "name": name, "set_code": set_code, "collector_number": cn})
@@ -2250,11 +2239,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_ingest2_add_card(self):
         """Add a new card slot to an existing image and confirm it."""
         from mtg_collector.db.models import (
-            CardRepository,
             CollectionEntry,
             CollectionRepository,
             PrintingRepository,
-            SetRepository,
         )
         from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
         from mtg_collector.utils import now_iso
@@ -2287,20 +2274,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         card_idx = len(disambiguated) - 1
 
-        # Fetch from Scryfall and cache
-        scryfall = ScryfallAPI()
-        card_repo = CardRepository(conn)
-        set_repo = SetRepository(conn)
+        # Look up in local DB
         printing_repo = PrintingRepository(conn)
         collection_repo = CollectionRepository(conn)
 
-        card_data = scryfall.get_card_by_id(scryfall_id)
-        if not card_data:
+        printing = printing_repo.get(scryfall_id)
+        if not printing:
             conn.close()
-            self._send_json({"error": "Card not found on Scryfall"}, 404)
+            self._send_json({"error": f"Printing {scryfall_id} not in local cache"}, 404)
             return
 
-        cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+        card_data = printing.get_scryfall_data()
 
         # Create collection entry
         entry = CollectionEntry(
@@ -2322,7 +2306,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         # Update disambiguated and prepend to scryfall_matches
         disambiguated[card_idx] = scryfall_id
-        scryfall_matches[card_idx] = _format_candidates([card_data])
+        scryfall_matches[card_idx] = _format_candidates([card_data]) if card_data else []
 
         # Check if all done
         status_update = {}
@@ -2341,8 +2325,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        name = card_data.get("name", "???")
-        set_code = card_data.get("set", "???")
+        name = card_data.get("name", "???") if card_data else "???"
+        set_code = printing.set_code
         _log_ingest(f"AddCard: {name} ({set_code.upper()}) -> collection ID {entry_id}, image {image_id} slot {card_idx}")
 
         self._send_json({"ok": True, "entry_id": entry_id, "name": name, "set_code": set_code, "card_idx": card_idx})
@@ -2455,13 +2439,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def _api_ingest2_correct(self):
         """Correct a mis-identified card: swap collection entry."""
         from mtg_collector.db.models import (
-            CardRepository,
             CollectionEntry,
             CollectionRepository,
             PrintingRepository,
-            SetRepository,
         )
-        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
 
         data = self._read_json_body()
         if data is None:
@@ -2493,20 +2474,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         old_collection_id = lineage["collection_id"]
 
-        # Fetch new card from Scryfall + cache it
-        scryfall = ScryfallAPI()
-        card_repo = CardRepository(conn)
-        set_repo = SetRepository(conn)
+        # Look up in local DB
         printing_repo = PrintingRepository(conn)
         collection_repo = CollectionRepository(conn)
 
-        card_data = scryfall.get_card_by_id(scryfall_id)
-        if not card_data:
+        printing = printing_repo.get(scryfall_id)
+        if not printing:
             conn.close()
-            self._send_json({"error": "Card not found on Scryfall"}, 404)
+            self._send_json({"error": f"Printing {scryfall_id} not in local cache"}, 404)
             return
 
-        cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+        card_data = printing.get_scryfall_data()
 
         # Create new collection entry
         entry = CollectionEntry(
@@ -2537,7 +2515,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if card_idx < len(scryfall_matches):
             existing_ids = {c["scryfall_id"] for c in scryfall_matches[card_idx]}
             if scryfall_id not in existing_ids:
-                scryfall_matches[card_idx] = _format_candidates([card_data]) + scryfall_matches[card_idx]
+                formatted = _format_candidates([card_data]) if card_data else []
+                scryfall_matches[card_idx] = formatted + scryfall_matches[card_idx]
 
         self._ingest2_update_image(
             conn, image_id,
@@ -2548,16 +2527,14 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
 
-        name = card_data.get("name", "???")
-        set_code = card_data.get("set", "???")
+        name = card_data.get("name", "???") if card_data else "???"
+        set_code = printing.set_code
         _log_ingest(f"Corrected: {name} ({set_code.upper()}) -> collection ID {entry_id} (replaced {old_collection_id})")
 
         self._send_json({"ok": True, "entry_id": entry_id, "name": name, "set_code": set_code})
 
     def _api_ingest2_search_card(self):
         """Manual card search during disambiguation."""
-        from mtg_collector.services.scryfall import ScryfallAPI
-
         data = self._read_json_body()
         if data is None:
             return
@@ -2570,27 +2547,24 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._send_json({"error": "Empty query"}, 400)
             return
 
-        scryfall = ScryfallAPI()
-        candidates = scryfall.search_card(query)
-        formatted = _format_candidates(candidates)
+        conn = self._ingest2_db()
+        results = _local_name_search(conn, query)
+        formatted = _format_candidates(results)
 
         # Update scryfall_matches in DB if image_id provided
         if image_id is not None and card_idx is not None:
-            conn = self._ingest2_db()
             img = self._ingest2_load_image(conn, image_id)
             if img and img.get("scryfall_matches"):
                 matches = json.loads(img["scryfall_matches"])
                 if card_idx < len(matches):
                     matches[card_idx] = formatted
                     self._ingest2_update_image(conn, image_id, scryfall_matches=json.dumps(matches))
-            conn.close()
+        conn.close()
 
         self._send_json({"candidates": formatted})
 
     def _api_ingest2_update_cards(self):
         """Stage 3.1: save corrected card list after count mismatch resolution."""
-        from mtg_collector.services.scryfall import ScryfallAPI
-
         data = self._read_json_body()
         if data is None:
             return
@@ -2607,9 +2581,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         ocr_fragments = json.loads(img["ocr_result"]) if img.get("ocr_result") else []
 
-        # Full card mode: re-run Scryfall for corrected card list
+        # Resolve corrected card list against local DB
         from mtg_collector.cli.ingest_ocr import _build_scryfall_query
-        scryfall = ScryfallAPI()
+        from mtg_collector.db.models import PrintingRepository
+        printing_repo = PrintingRepository(conn)
 
         all_matches = []
         all_crops = []
@@ -2620,16 +2595,18 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             if set_code and cn_or_query:
                 cn_raw = cn_or_query
                 cn_stripped = cn_raw.lstrip("0") or "0"
-                card_data = scryfall.get_card_by_set_cn(set_code, cn_stripped)
-                if not card_data:
-                    card_data = scryfall.get_card_by_set_cn(set_code, cn_raw)
-                if card_data:
-                    candidates = [card_data]
+                printing = printing_repo.get_by_set_cn(set_code, cn_stripped)
+                if not printing:
+                    printing = printing_repo.get_by_set_cn(set_code, cn_raw)
+                if printing:
+                    card_data = printing.get_scryfall_data()
+                    if card_data:
+                        candidates = [card_data]
 
             if not candidates:
                 name = card_info.get("name")
                 if name:
-                    candidates = scryfall.search_card(name, set_code=card_info.get("set_code"))
+                    candidates = _local_name_search(conn, name, set_code=card_info.get("set_code"))
 
             formatted = _format_candidates(candidates)
             all_matches.append(formatted)
