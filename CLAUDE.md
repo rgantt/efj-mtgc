@@ -49,11 +49,11 @@ mtg crack-pack-server                                  # Start web UI on port 80
 
 # Deployment — rootless Podman, per-instance isolation
 bash deploy/setup.sh my-feature          # Create instance (auto-port, inherits API key)
+bash deploy/setup.sh my-feature --init   # Create instance + initialize data with demo dataset
 bash deploy/deploy.sh my-feature         # Rebuild image + restart
 bash deploy/teardown.sh my-feature       # Stop + remove (add --purge to delete data)
 systemctl --user start mtgc-my-feature   # Start instance
 systemctl --user status mtgc-my-feature  # Check status
-podman exec -it systemd-mtgc-my-feature mtg setup  # Init data inside container
 ```
 
 ## Architecture
@@ -165,6 +165,63 @@ Key files: `Containerfile` (multi-stage build), `deploy/setup.sh`, `deploy/deplo
 - Server checks `ANTHROPIC_API_KEY` at startup and fails fast if missing
 - CI: push to main → auto-deploys `prod` at `/opt/mtgc-prod/`. Workflow dispatch for other instances.
 - Deploy repo (private CI config): `rgantt/efj-mtgc-deploy`
+
+## Container Validation
+
+**Always validate new features in isolated containers before creating PRs.** This uses the standard deployment scripts with demo data pre-loaded. Do not run the application locally or use `mtg` commands directly on the host.
+
+### Setup
+
+From the repo clone with your feature branch checked out:
+
+```bash
+bash deploy/setup.sh <instance> --init     # Build image + initialize data volume (~15-30 min first time)
+systemctl --user start mtgc-<instance>     # Start the service
+sleep 5                                     # Wait for server startup
+```
+
+Discover the assigned port:
+
+```bash
+podman port systemd-mtgc-<instance> 8081/tcp
+```
+
+### Validate
+
+The server uses HTTPS with a self-signed cert. Use `curl -ks` for all requests.
+
+```bash
+PORT=$(podman port systemd-mtgc-<instance> 8081/tcp | grep -oP ':\K[0-9]+' | head -1)
+
+# 1. Verify new page loads (HTTP 200 + non-empty body)
+curl -ks -o /dev/null -w "%{http_code} %{size_download}" "https://localhost:${PORT}/<your-page>"
+
+# 2. Verify nav link exists on homepage
+curl -ks "https://localhost:${PORT}/" | grep -o 'href="/<your-page>"'
+
+# 3. Test API endpoints with edge-case inputs (empty body, missing fields)
+curl -ks -X POST "https://localhost:${PORT}/api/<your-endpoint>" \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+Check logs if anything fails:
+
+```bash
+journalctl --user -u mtgc-<instance> -f
+```
+
+### Teardown
+
+```bash
+bash deploy/teardown.sh <instance> --purge   # Stop + remove container, volume, env, and image
+```
+
+### Notes
+
+- Instance name should match your branch/feature (e.g., `issue44`, `my-feature`)
+- `--init` runs `mtg setup --demo` inside the volume: initializes the DB, caches Scryfall data, downloads MTGJSON data files (AllPrintings.json + AllPricesToday.json), and loads ~50 demo cards
+- Data persists on the volume across container restarts. Only `--purge` removes it.
+- If the Scryfall bulk cache step fails (FK constraint at ~75k cards), the remaining steps still complete and the server will start. Demo data may be partial.
 
 ## Web UI Shared Conventions (crack_pack.html)
 

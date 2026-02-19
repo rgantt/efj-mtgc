@@ -55,7 +55,7 @@ echo "    Service stopped and Quadlet removed."
 
 if [ "$PURGE" = "--purge" ]; then
     # Remove data volume
-    podman volume rm "systemd-${SERVICE_NAME}-data" 2>/dev/null || true
+    podman volume rm "${SERVICE_NAME}-data" 2>/dev/null || true
     echo "    Data volume removed."
 
     # Remove env file

@@ -9,11 +9,12 @@
 #   loginctl enable-linger $USER
 #
 # Usage:
-#   bash deploy/setup.sh <instance> [port]
+#   bash deploy/setup.sh <instance> [port] [--init]
 #
 # Examples:
 #   bash deploy/setup.sh prod 8081        # explicit port
 #   bash deploy/setup.sh feature-xyz      # auto-assigns next free port
+#   bash deploy/setup.sh test --init      # build + initialize data volume with demo data
 #
 # Env file:
 #   Copies from ~/.config/mtgc/default.env if it exists (set this up once
@@ -25,13 +26,25 @@ set -euo pipefail
 # CI runners and non-interactive sessions often lack this.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-if [ $# -lt 1 ]; then
-    echo "Usage: bash deploy/setup.sh <instance> [port]"
+# --- Parse arguments ---
+
+INIT=false
+POSITIONAL=()
+for arg in "$@"; do
+    case $arg in
+        --init) INIT=true ;;
+        *) POSITIONAL+=("$arg") ;;
+    esac
+done
+
+if [ ${#POSITIONAL[@]} -lt 1 ]; then
+    echo "Usage: bash deploy/setup.sh <instance> [port] [--init]"
     echo "Example: bash deploy/setup.sh prod 8081"
+    echo "         bash deploy/setup.sh test --init    # build + init data with demo dataset"
     exit 1
 fi
 
-INSTANCE="$1"
+INSTANCE="${POSITIONAL[0]}"
 SERVICE_NAME="mtgc-${INSTANCE}"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 MTGC_CONFIG="$HOME/.config/mtgc"
@@ -41,8 +54,8 @@ REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # --- Port assignment ---
 
-if [ $# -ge 2 ]; then
-    PORT="$2"
+if [ ${#POSITIONAL[@]} -ge 2 ]; then
+    PORT="${POSITIONAL[1]}"
 else
     # Let the OS assign an available port at container start
     PORT=0
@@ -131,12 +144,29 @@ sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
 
 systemctl --user daemon-reload
 
+# --- Optional: initialize data volume ---
+
+if [ "$INIT" = "true" ]; then
+    VOLUME_NAME="${SERVICE_NAME}-data"
+    echo "==> Initializing data volume ($VOLUME_NAME) with demo dataset..."
+    echo "    This downloads ~600 MB of MTGJSON data and caches Scryfall cards."
+    echo "    May take 15-30 minutes on first run."
+    podman run --rm \
+        -v "${VOLUME_NAME}:/data:Z" \
+        -e MTGC_HOME=/data \
+        --entrypoint mtg \
+        "localhost/mtgc:${INSTANCE}" \
+        setup --demo
+fi
+
 echo ""
 echo "==> Setup complete!"
 echo ""
 echo "  Start:      systemctl --user start $SERVICE_NAME"
 echo "  Port:       podman port systemd-${SERVICE_NAME}"
+if [ "$INIT" = "false" ]; then
 echo "  Init data:  podman exec -it systemd-${SERVICE_NAME} mtg setup"
+fi
 echo "  Logs:       journalctl --user -u $SERVICE_NAME -f"
 echo "  Prices:     systemctl --user enable --now mtgc-prices-${INSTANCE}.timer"
 echo "  Teardown:   bash deploy/teardown.sh $INSTANCE"
