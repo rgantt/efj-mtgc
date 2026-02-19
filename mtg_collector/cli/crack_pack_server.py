@@ -874,6 +874,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._serve_static("ingest_ids.html")
         elif path == "/ingestor-order":
             self._serve_static("ingest_order.html")
+        elif path == "/import-csv":
+            self._serve_static("import_csv.html")
         elif path == "/api/orders":
             self._api_orders_list()
         elif path.startswith("/api/orders/") and path.endswith("/cards"):
@@ -994,6 +996,12 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/wishlist/") and path.endswith("/fulfill"):
             wid = path[len("/api/wishlist/"):-len("/fulfill")]
             self._api_wishlist_fulfill(int(wid))
+        elif path == "/api/import/parse":
+            self._api_import_parse()
+        elif path == "/api/import/resolve":
+            self._api_import_resolve()
+        elif path == "/api/import/commit":
+            self._api_import_commit()
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -2949,7 +2957,6 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.close()
         self._send_json({"received": count})
 
-
     # ── Corner Ingest API endpoints ──
 
     def _api_corners_detect(self):
@@ -3327,6 +3334,185 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
         self._send_json({"added": added, "failed": len(cards) - added})
+
+    # ── CSV Import API endpoints ──
+
+    def _api_import_parse(self):
+        """Parse CSV text into structured rows."""
+        import tempfile
+
+        from mtg_collector.importers import detect_format, get_importer
+
+        data = self._read_json_body()
+        if data is None:
+            return
+        text = data.get("text", "").strip()
+        fmt = data.get("format", "auto")
+
+        if not text:
+            self._send_json({"error": "No CSV text provided"}, 400)
+            return
+
+        # Write to temp file for existing importer to parse
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".csv", delete=False, encoding="utf-8"
+        ) as tmp:
+            tmp.write(text)
+            tmp_path = tmp.name
+
+        try:
+            # Detect format
+            if fmt == "auto":
+                try:
+                    fmt = detect_format(tmp_path)
+                except ValueError as e:
+                    self._send_json({"error": str(e)}, 400)
+                    return
+
+            importer = get_importer(fmt)
+            rows = importer.parse_file(tmp_path)
+
+            # Extract lookup fields for each row
+            parsed_rows = []
+            for row in rows:
+                name, set_code, cn, qty = importer.row_to_lookup(row)
+                parsed_rows.append({
+                    "name": name,
+                    "set_code": set_code,
+                    "collector_number": cn,
+                    "quantity": qty,
+                    "raw": row,
+                })
+
+            self._send_json({"format": fmt, "rows": parsed_rows, "total_rows": len(parsed_rows)})
+        except Exception as e:
+            self._send_json({"error": f"Failed to parse CSV: {e}"}, 400)
+        finally:
+            os.unlink(tmp_path)
+
+    def _api_import_resolve(self):
+        """Resolve parsed CSV rows via Scryfall."""
+        from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.importers import get_importer
+        from mtg_collector.services.scryfall import ScryfallAPI, cache_scryfall_data
+
+        data = self._read_json_body()
+        if data is None:
+            return
+        fmt = data.get("format")
+        rows = data.get("rows", [])
+
+        if not fmt or not rows:
+            self._send_json({"error": "Missing format or rows"}, 400)
+            return
+
+        importer = get_importer(fmt)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        scryfall = ScryfallAPI()
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        resolved = []
+        total = 0
+        resolved_count = 0
+        failed_count = 0
+
+        for idx, row in enumerate(rows):
+            name = row.get("name")
+            set_code = row.get("set_code")
+            cn = row.get("collector_number")
+            qty = row.get("quantity", 1)
+            total += 1
+
+            scryfall_data = importer._resolve_card(scryfall, name, set_code, cn)
+            if scryfall_data:
+                cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, scryfall_data)
+                image_uris = scryfall_data.get("image_uris") or {}
+                if not image_uris and scryfall_data.get("card_faces"):
+                    image_uris = scryfall_data["card_faces"][0].get("image_uris", {})
+                image_uri = image_uris.get("small", image_uris.get("normal", ""))
+
+                resolved.append({
+                    "index": idx,
+                    "name": scryfall_data.get("name", name),
+                    "set_code": scryfall_data.get("set", set_code),
+                    "set_name": scryfall_data.get("set_name", ""),
+                    "collector_number": scryfall_data.get("collector_number", cn),
+                    "quantity": qty,
+                    "scryfall_id": scryfall_data["id"],
+                    "image_uri": image_uri,
+                    "resolved": True,
+                    "error": None,
+                    "raw": row.get("raw", {}),
+                })
+                resolved_count += 1
+            else:
+                resolved.append({
+                    "index": idx,
+                    "name": name,
+                    "set_code": set_code,
+                    "collector_number": cn,
+                    "quantity": qty,
+                    "scryfall_id": None,
+                    "image_uri": "",
+                    "resolved": False,
+                    "error": f"Could not find: {name} ({set_code or 'any set'})",
+                    "raw": row.get("raw", {}),
+                })
+                failed_count += 1
+
+        conn.close()
+        self._send_json({
+            "resolved": resolved,
+            "summary": {"total": total, "resolved": resolved_count, "failed": failed_count},
+        })
+
+    def _api_import_commit(self):
+        """Commit resolved CSV import cards to the collection."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.importers import get_importer
+
+        data = self._read_json_body()
+        if data is None:
+            return
+        fmt = data.get("format")
+        cards = data.get("cards", [])
+
+        if not fmt or not cards:
+            self._send_json({"error": "Missing format or cards"}, 400)
+            return
+
+        importer = get_importer(fmt)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        collection_repo = CollectionRepository(conn)
+
+        added = 0
+        errors = []
+        for card in cards:
+            scryfall_id = card.get("scryfall_id")
+            raw = card.get("raw", {})
+            qty = card.get("quantity", 1)
+            if not scryfall_id:
+                continue
+            try:
+                entry = importer.row_to_entry(raw, scryfall_id)
+                for _ in range(qty):
+                    collection_repo.add(entry)
+                    added += 1
+            except Exception as e:
+                errors.append(f"Error adding {card.get('name', '?')}: {e}")
+
+        conn.commit()
+        conn.close()
+        self._send_json({"cards_added": added, "cards_skipped": len(cards) - added, "errors": errors})
+
     def _read_json_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length == 0:

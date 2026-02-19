@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CSV Import - MTG Collection</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+}
+header a { color: #e94560; text-decoration: none; font-weight: 600; }
+header h1 { font-size: 1.2rem; color: #e0e0e0; }
+.container {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+.input-panel {
+  width: 400px;
+  min-width: 350px;
+  padding: 24px;
+  background: #16213e;
+  border-right: 1px solid #0f3460;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.input-panel label {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 600;
+}
+.input-panel textarea {
+  flex: 1;
+  min-height: 200px;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  color: #e0e0e0;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  resize: vertical;
+}
+.input-panel textarea:focus { outline: none; border-color: #e94560; }
+.file-upload {
+  border: 2px dashed #0f3460;
+  border-radius: 6px;
+  padding: 16px;
+  text-align: center;
+  color: #888;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.file-upload:hover { border-color: #e94560; }
+.file-upload.has-files { border-color: #4caf50; color: #4caf50; }
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.controls select, .controls button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.controls select {
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+}
+.btn-primary {
+  background: #e94560;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #d63851; }
+.btn-primary:disabled { background: #555; cursor: not-allowed; }
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { border-color: #e94560; }
+.result-panel {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.status-msg.info { background: rgba(15, 52, 96, 0.5); color: #88c0d0; }
+.status-msg.error { background: rgba(233, 69, 96, 0.15); color: #e94560; }
+.status-msg.success { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+.summary-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.summary-bar .stat {
+  font-size: 0.9rem;
+  color: #888;
+}
+.summary-bar .stat b { color: #e0e0e0; }
+.action-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.item-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.item-table th {
+  text-align: left;
+  padding: 6px 12px;
+  background: #0f1a30;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.item-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #0f3460;
+  vertical-align: middle;
+}
+.item-table tr.unresolved td {
+  background: rgba(233, 69, 96, 0.08);
+  color: #888;
+}
+.item-table .card-thumb {
+  width: 32px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.foil-tag {
+  background: rgba(200, 170, 80, 0.2);
+  color: #d4af37;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.error-tag {
+  color: #e94560;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+.card-group {
+  margin-bottom: 24px;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.card-group-header {
+  padding: 12px 16px;
+  background: #16213e;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.card-group-header .title {
+  font-weight: 700;
+  font-size: 1rem;
+  color: #e0e0e0;
+}
+.card-group-header .meta {
+  font-size: 0.8rem;
+  color: #888;
+}
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">&larr; Home</a>
+  <h1>CSV Import</h1>
+</header>
+
+<div class="container">
+  <div class="input-panel">
+    <label>Paste CSV export</label>
+    <textarea id="csv-text" placeholder="Paste CSV here (e.g. Moxfield deck export)..."></textarea>
+
+    <div class="file-upload" id="file-drop">
+      <input type="file" id="file-input" accept=".csv" style="display:none">
+      Or drop/click to upload a .csv file
+    </div>
+
+    <label>Format</label>
+    <div class="controls">
+      <select id="format-select">
+        <option value="auto">Auto-detect</option>
+        <option value="moxfield">Moxfield</option>
+        <option value="archidekt">Archidekt</option>
+        <option value="deckbox">Deckbox</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" id="parse-btn">Parse &amp; Resolve</button>
+  </div>
+
+  <div class="result-panel" id="results">
+    <div class="status-msg info">Paste a CSV export or upload a file, then click Parse &amp; Resolve.</div>
+  </div>
+</div>
+
+<script>
+const csvText = document.getElementById('csv-text');
+const fileInput = document.getElementById('file-input');
+const fileDrop = document.getElementById('file-drop');
+const formatSelect = document.getElementById('format-select');
+const parseBtn = document.getElementById('parse-btn');
+const results = document.getElementById('results');
+
+let parsedData = null;
+let resolvedData = null;
+let detectedFormat = null;
+
+// File upload
+fileDrop.addEventListener('click', () => fileInput.click());
+fileDrop.addEventListener('dragover', e => { e.preventDefault(); fileDrop.style.borderColor = '#e94560'; });
+fileDrop.addEventListener('dragleave', () => { fileDrop.style.borderColor = ''; });
+fileDrop.addEventListener('drop', e => {
+  e.preventDefault();
+  fileDrop.style.borderColor = '';
+  handleFile(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', () => handleFile(fileInput.files));
+
+function handleFile(files) {
+  if (!files.length) return;
+  const file = files[0];
+  fileDrop.textContent = file.name;
+  fileDrop.classList.add('has-files');
+
+  const reader = new FileReader();
+  reader.onload = () => { csvText.value = reader.result; };
+  reader.readAsText(file);
+}
+
+// Parse & Resolve
+parseBtn.addEventListener('click', async () => {
+  const text = csvText.value.trim();
+  if (!text) {
+    results.innerHTML = '<div class="status-msg error">No CSV text provided.</div>';
+    return;
+  }
+
+  results.innerHTML = '<div class="status-msg info"><span class="spinner"></span>Parsing CSV...</div>';
+  parseBtn.disabled = true;
+
+  try {
+    // Step 1: Parse
+    const parseRes = await fetch('/api/import/parse', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ text, format: formatSelect.value }),
+    });
+    parsedData = await parseRes.json();
+
+    if (parsedData.error) {
+      results.innerHTML = `<div class="status-msg error">${parsedData.error}</div>`;
+      parseBtn.disabled = false;
+      return;
+    }
+
+    detectedFormat = parsedData.format;
+    const totalRows = parsedData.total_rows;
+
+    results.innerHTML = `<div class="status-msg info"><span class="spinner"></span>Parsed ${totalRows} rows. Resolving via Scryfall...</div>`;
+
+    // Step 2: Resolve
+    const resolveRes = await fetch('/api/import/resolve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ format: detectedFormat, rows: parsedData.rows }),
+    });
+    resolvedData = await resolveRes.json();
+
+    if (resolvedData.error) {
+      results.innerHTML = `<div class="status-msg error">${resolvedData.error}</div>`;
+      parseBtn.disabled = false;
+      return;
+    }
+
+    renderResolved();
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Error: ${err.message}</div>`;
+  }
+  parseBtn.disabled = false;
+});
+
+function renderResolved() {
+  if (!resolvedData) return;
+
+  const summary = resolvedData.summary;
+  const cards = resolvedData.resolved;
+  const resolvedCards = cards.filter(c => c.resolved);
+  const failedCards = cards.filter(c => !c.resolved);
+
+  const formatLabel = detectedFormat ? detectedFormat.charAt(0).toUpperCase() + detectedFormat.slice(1) : 'Unknown';
+
+  let html = `<div class="summary-bar">
+    <span class="stat">Total: <b>${summary.total}</b></span>
+    <span class="stat">Resolved: <b>${summary.resolved}</b></span>
+    ${summary.failed ? `<span class="stat" style="color:#e94560">Failed: <b>${summary.failed}</b></span>` : ''}
+    <span class="stat">Format: <b>${formatLabel}</b></span>
+  </div>
+  <div class="action-bar">
+    <button class="btn-primary" id="commit-btn">Add to Collection</button>
+    <button class="btn-secondary" id="cancel-btn">Cancel</button>
+  </div>`;
+
+  // Resolved cards table
+  if (resolvedCards.length > 0) {
+    html += `<div class="card-group">
+      <div class="card-group-header">
+        <span class="title">Resolved Cards</span>
+        <span class="meta">${resolvedCards.length} card(s)</span>
+      </div>
+      <table class="item-table">
+        <thead><tr>
+          <th>Card</th><th>Set / CN</th><th>Condition</th><th>Qty</th>
+        </tr></thead>
+        <tbody>`;
+
+    for (const card of resolvedCards) {
+      const thumb = card.image_uri ? `<img class="card-thumb" src="${card.image_uri}" loading="lazy">` : '';
+      const foilTag = (card.raw && card.raw.Foil && card.raw.Foil.toLowerCase() !== '') ? '<span class="foil-tag">Foil</span>' : '';
+      const setInfo = `${(card.set_code || '').toUpperCase()} #${card.collector_number || ''}`;
+      const condition = (card.raw && (card.raw.Condition || '')) || '';
+
+      html += `<tr>
+        <td>${thumb}${card.name}${foilTag}</td>
+        <td>${setInfo}</td>
+        <td>${condition}</td>
+        <td>${card.quantity}</td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+  }
+
+  // Failed cards
+  if (failedCards.length > 0) {
+    html += `<div class="card-group">
+      <div class="card-group-header">
+        <span class="title" style="color:#e94560">Failed Cards</span>
+        <span class="meta">${failedCards.length} card(s)</span>
+      </div>
+      <table class="item-table">
+        <thead><tr>
+          <th>Card</th><th>Set / CN</th><th>Qty</th><th>Error</th>
+        </tr></thead>
+        <tbody>`;
+
+    for (const card of failedCards) {
+      html += `<tr class="unresolved">
+        <td>${card.name || '?'}</td>
+        <td>${(card.set_code || '').toUpperCase()} ${card.collector_number ? '#' + card.collector_number : ''}</td>
+        <td>${card.quantity}</td>
+        <td><span class="error-tag">${card.error || 'Unknown error'}</span></td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+  }
+
+  results.innerHTML = html;
+
+  // Wire up buttons
+  document.getElementById('commit-btn').addEventListener('click', commitCards);
+  document.getElementById('cancel-btn').addEventListener('click', () => {
+    resolvedData = null;
+    parsedData = null;
+    results.innerHTML = '<div class="status-msg info">Cancelled. Paste new data to start over.</div>';
+  });
+}
+
+async function commitCards() {
+  const btn = document.getElementById('commit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Adding...';
+
+  // Only commit resolved cards
+  const cardsToCommit = resolvedData.resolved.filter(c => c.resolved);
+
+  try {
+    const res = await fetch('/api/import/commit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        format: detectedFormat,
+        cards: cardsToCommit,
+      }),
+    });
+    const summary = await res.json();
+
+    if (summary.error) {
+      results.innerHTML = `<div class="status-msg error">${summary.error}</div>`;
+      btn.disabled = false;
+      btn.textContent = 'Add to Collection';
+      return;
+    }
+
+    let msg = `Successfully added ${summary.cards_added} card(s) to collection.`;
+    if (summary.cards_skipped > 0) msg += ` ${summary.cards_skipped} skipped.`;
+    if (summary.errors && summary.errors.length > 0) {
+      msg += ` ${summary.errors.length} error(s): ${summary.errors.join('; ')}`;
+    }
+
+    results.innerHTML = `<div class="status-msg success">${msg}</div>`;
+    resolvedData = null;
+    parsedData = null;
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Commit failed: ${err.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Add to Collection';
+  }
+}
+</script>
+</body>
+</html>
