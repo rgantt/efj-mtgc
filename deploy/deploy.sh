@@ -56,15 +56,16 @@ if [ -z "$PORT" ]; then
     exit 1
 fi
 echo "==> Listening on port $PORT"
+MAX_ATTEMPTS=15
 echo "==> Health check: $SERVICE_NAME (port $PORT)..."
-for i in 1 2 3 4 5; do
-    if curl -skf "https://localhost:${PORT}/" > /dev/null 2>&1; then
-        echo "==> Health check passed"
+for i in $(seq 1 $MAX_ATTEMPTS); do
+    if curl -skf --connect-timeout 3 "https://localhost:${PORT}/" > /dev/null 2>&1; then
+        echo "==> Health check passed (attempt $i/$MAX_ATTEMPTS)"
         exit 0
     fi
-    echo "    Attempt $i/5 failed, waiting 2s..."
+    echo "    Attempt $i/$MAX_ATTEMPTS failed, waiting 2s..."
     sleep 2
 done
 
-echo "==> Health check FAILED after 5 attempts"
+echo "==> Health check FAILED after $MAX_ATTEMPTS attempts"
 exit 1
