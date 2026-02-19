@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingest Corners - MTG Collection</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+}
+header {
+  background: #16213e;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 2px solid #0f3460;
+}
+header h1 { font-size: 1.1rem; color: #e94560; }
+header a { color: #888; text-decoration: none; font-size: 0.8rem; }
+header a:hover { color: #e94560; }
+
+button {
+  padding: 8px 16px;
+  border: 1px solid #0f3460;
+  border-radius: 6px;
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+button:hover { background: #c73651; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.secondary { background: #333; border-color: #555; }
+button.secondary:hover { background: #444; }
+button.danger { background: #c62828; border-color: #c62828; }
+button.danger:hover { background: #b71c1c; }
+
+#camera-view {
+  margin: 8px;
+  background: #0d1117;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+}
+#camera-view video {
+  width: 100%;
+  max-height: 55vh;
+  object-fit: cover;
+  display: block;
+}
+#camera-view .camera-controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  padding: 8px;
+  background: rgba(0,0,0,0.5);
+}
+#camera-view .camera-controls button {
+  padding: 15px 30px;
+  font-size: 1.4rem;
+}
+#camera-view canvas { display: none; }
+#camera-view .photo-count {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.6);
+  color: #4caf50;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: none;
+}
+
+#camera-placeholder {
+  text-align: center;
+  padding: 40px 24px;
+}
+#camera-placeholder button {
+  padding: 14px 32px;
+  font-size: 1.1rem;
+}
+
+#drop-zone {
+  border: 2px dashed #0f3460;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  margin: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  font-size: 0.85rem;
+}
+#drop-zone.dragover {
+  border-color: #e94560;
+  background: rgba(233, 69, 96, 0.05);
+}
+#drop-zone span { color: #666; }
+
+#processing {
+  display: none;
+  text-align: center;
+  padding: 24px;
+}
+.spinner {
+  display: inline-block;
+  width: 20px; height: 20px;
+  border: 3px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+#results-section {
+  display: none;
+  margin: 8px;
+}
+#results-section h2 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  color: #e94560;
+}
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #16213e;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.results-table th, .results-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid #0f3460;
+  font-size: 0.85rem;
+}
+.results-table th {
+  background: #0f3460;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.results-table .thumb {
+  width: 40px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 3px;
+}
+.results-table select, .results-table input[type="checkbox"] {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+}
+.results-table .remove-btn {
+  background: none;
+  border: none;
+  color: #e94560;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.results-table .remove-btn:hover { color: #ff6b8a; }
+
+.actions {
+  margin: 12px 8px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.skipped-info {
+  margin: 8px;
+  padding: 8px 12px;
+  background: #5e1b1b;
+  border: 1px solid #e94560;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  color: #e94560;
+}
+
+.success-msg {
+  margin: 8px;
+  padding: 12px 16px;
+  background: #1b3e1b;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #4caf50;
+}
+
+.error-msg {
+  margin: 8px;
+  padding: 12px 16px;
+  background: #5e1b1b;
+  border: 1px solid #e94560;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: #e94560;
+}
+
+@media (max-width: 768px) {
+  .results-table { font-size: 0.75rem; }
+  .results-table th, .results-table td { padding: 6px 8px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1><a href="/ingest-corners" style="color:inherit;text-decoration:none">Ingest Corners</a></h1>
+  <a href="/">Home</a>
+  <a href="/upload">Upload OCR</a>
+  <a href="/collection">Collection</a>
+</header>
+
+<div id="camera-placeholder">
+  <button id="camera-btn">Open Camera</button>
+</div>
+
+<div id="camera-view" style="display:none">
+  <video id="camera-video" autoplay playsinline></video>
+  <canvas id="camera-canvas"></canvas>
+  <span class="photo-count" id="photo-count"></span>
+  <div class="camera-controls">
+    <button onclick="captureAndDetect()">Capture</button>
+    <button class="secondary" onclick="stopCamera()">Close Camera</button>
+  </div>
+</div>
+
+<div id="drop-zone">
+  <span>Drop or select a photo of card corners</span>
+  <input type="file" id="file-input" accept="image/jpeg,image/png,image/webp" style="display:none">
+</div>
+
+<div id="processing">
+  <div class="spinner"></div>
+  <span>Analyzing card corners with Claude Vision...</span>
+</div>
+
+<div id="messages"></div>
+
+<div id="results-section">
+  <h2>Detected Cards</h2>
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th></th>
+        <th>Card Name</th>
+        <th>Set / CN</th>
+        <th>Rarity</th>
+        <th>Foil</th>
+        <th>Condition</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <div class="actions" id="results-actions">
+    <button id="commit-btn" onclick="commitCards()">Add to Collection</button>
+    <button class="danger" onclick="discardResults()">Discard</button>
+    <span id="results-count" style="color:#888;font-size:0.85rem;"></span>
+  </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const processing = document.getElementById('processing');
+const resultsSection = document.getElementById('results-section');
+const resultsBody = document.getElementById('results-body');
+const messagesDiv = document.getElementById('messages');
+
+let cameraStream = null;
+let photoCounter = 0;
+let currentCards = [];
+let currentImageKey = null;
+
+// ── Drop zone ──
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length > 0) detectFromFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length > 0) detectFromFile(fileInput.files[0]);
+  fileInput.value = '';
+});
+
+// ── Camera ──
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } }
+  });
+  cameraStream = stream;
+  const video = document.getElementById('camera-video');
+  video.srcObject = stream;
+  document.getElementById('camera-view').style.display = 'block';
+  document.getElementById('camera-placeholder').style.display = 'none';
+}
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  const captureInput = document.createElement('input');
+  captureInput.type = 'file';
+  captureInput.accept = 'image/jpeg,image/png,image/webp';
+  captureInput.capture = 'environment';
+  captureInput.style.display = 'none';
+  document.body.appendChild(captureInput);
+  captureInput.addEventListener('change', () => {
+    if (captureInput.files.length > 0) detectFromFile(captureInput.files[0]);
+    captureInput.value = '';
+  });
+  document.getElementById('camera-btn').addEventListener('click', () => captureInput.click());
+} else {
+  document.getElementById('camera-btn').addEventListener('click', () => {
+    startCamera().catch(e => alert('Camera error: ' + e.message));
+  });
+}
+
+function captureAndDetect() {
+  const video = document.getElementById('camera-video');
+  const canvas = document.getElementById('camera-canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+
+  canvas.toBlob(blob => {
+    if (blob) {
+      photoCounter++;
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `corners_${ts}_${photoCounter}.jpg`;
+      const file = new File([blob], filename, { type: 'image/jpeg' });
+      detectFromFile(file);
+
+      const badge = document.getElementById('photo-count');
+      badge.textContent = `${photoCounter} captured`;
+      badge.style.display = 'block';
+    }
+  }, 'image/jpeg', 0.92);
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  document.getElementById('camera-video').srcObject = null;
+  document.getElementById('camera-view').style.display = 'none';
+  document.getElementById('camera-placeholder').style.display = 'block';
+  document.getElementById('photo-count').style.display = 'none';
+}
+
+// ── Detection ──
+async function detectFromFile(file) {
+  processing.style.display = 'block';
+  resultsSection.style.display = 'none';
+  clearMessages();
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const resp = await fetch('/api/corners/detect', { method: 'POST', body: formData });
+    const data = await resp.json();
+
+    processing.style.display = 'none';
+
+    if (!resp.ok) {
+      showError(data.error || 'Detection failed');
+      return;
+    }
+
+    if (data.skipped && data.skipped.length > 0) {
+      showSkipped(data.skipped);
+    }
+
+    if (data.errors && data.errors.length > 0) {
+      for (const err of data.errors) {
+        showError(err);
+      }
+    }
+
+    if (!data.cards || data.cards.length === 0) {
+      showError('No cards detected in image. Make sure the bottom-left corners are visible.');
+      return;
+    }
+
+    currentCards = data.cards;
+    currentImageKey = data.image_key;
+    renderResults();
+  } catch (e) {
+    processing.style.display = 'none';
+    showError('Network error: ' + e.message);
+  }
+}
+
+// ── Render results table ──
+function renderResults() {
+  resultsBody.innerHTML = '';
+  for (let i = 0; i < currentCards.length; i++) {
+    const c = currentCards[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><img class="thumb" src="${c.image_uri || '/static/card_back.jpeg'}" alt="${c.name}"></td>
+      <td>${c.name}</td>
+      <td>${(c.set_code || '???').toUpperCase()} #${c.collector_number || '???'}</td>
+      <td>${c.rarity || '?'}</td>
+      <td>
+        <label style="cursor:pointer;">
+          <input type="checkbox" data-idx="${i}" class="foil-toggle" ${c.foil ? 'checked' : ''}>
+          Foil
+        </label>
+      </td>
+      <td>
+        <select data-idx="${i}" class="condition-select">
+          <option value="Near Mint" ${c.condition === 'Near Mint' ? 'selected' : ''}>Near Mint</option>
+          <option value="Lightly Played" ${c.condition === 'Lightly Played' ? 'selected' : ''}>Lightly Played</option>
+          <option value="Moderately Played" ${c.condition === 'Moderately Played' ? 'selected' : ''}>Moderately Played</option>
+          <option value="Heavily Played" ${c.condition === 'Heavily Played' ? 'selected' : ''}>Heavily Played</option>
+          <option value="Damaged" ${c.condition === 'Damaged' ? 'selected' : ''}>Damaged</option>
+        </select>
+      </td>
+      <td><button class="remove-btn" onclick="removeCard(${i})" title="Remove">&times;</button></td>
+    `;
+    resultsBody.appendChild(tr);
+  }
+
+  // Wire up foil toggles
+  document.querySelectorAll('.foil-toggle').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const idx = parseInt(cb.dataset.idx);
+      currentCards[idx].foil = cb.checked;
+    });
+  });
+
+  // Wire up condition selects
+  document.querySelectorAll('.condition-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const idx = parseInt(sel.dataset.idx);
+      currentCards[idx].condition = sel.value;
+    });
+  });
+
+  document.getElementById('results-count').textContent = `${currentCards.length} card(s)`;
+  resultsSection.style.display = 'block';
+}
+
+function removeCard(idx) {
+  currentCards.splice(idx, 1);
+  if (currentCards.length === 0) {
+    resultsSection.style.display = 'none';
+    return;
+  }
+  renderResults();
+}
+
+function discardResults() {
+  currentCards = [];
+  currentImageKey = null;
+  resultsSection.style.display = 'none';
+}
+
+// ── Commit ──
+async function commitCards() {
+  if (currentCards.length === 0) return;
+
+  const commitBtn = document.getElementById('commit-btn');
+  commitBtn.disabled = true;
+  commitBtn.textContent = 'Adding...';
+
+  const payload = {
+    image_key: currentImageKey,
+    cards: currentCards.map(c => ({
+      scryfall_id: c.scryfall_id,
+      foil: c.foil,
+      condition: c.condition || 'Near Mint',
+    })),
+  };
+
+  try {
+    const resp = await fetch('/api/corners/commit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      showError(data.error || 'Commit failed');
+      commitBtn.disabled = false;
+      commitBtn.textContent = 'Add to Collection';
+      return;
+    }
+
+    const names = data.added.map(a => a.name).join(', ');
+    showSuccess(`Added ${data.added.length} card(s) to collection: ${names}`);
+    currentCards = [];
+    currentImageKey = null;
+    resultsSection.style.display = 'none';
+  } catch (e) {
+    showError('Network error: ' + e.message);
+  }
+
+  commitBtn.disabled = false;
+  commitBtn.textContent = 'Add to Collection';
+}
+
+// ── Messages ──
+function clearMessages() {
+  messagesDiv.innerHTML = '';
+}
+
+function showError(msg) {
+  const div = document.createElement('div');
+  div.className = 'error-msg';
+  div.textContent = msg;
+  messagesDiv.appendChild(div);
+  setTimeout(() => div.remove(), 10000);
+}
+
+function showSuccess(msg) {
+  const div = document.createElement('div');
+  div.className = 'success-msg';
+  div.textContent = msg;
+  messagesDiv.appendChild(div);
+  setTimeout(() => div.remove(), 10000);
+}
+
+function showSkipped(skipped) {
+  const div = document.createElement('div');
+  div.className = 'skipped-info';
+  div.textContent = `${skipped.length} card(s) skipped (missing set code or collector number)`;
+  messagesDiv.appendChild(div);
+  setTimeout(() => div.remove(), 10000);
+}
+</script>
+</body>
+</html>

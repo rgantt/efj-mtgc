@@ -920,6 +920,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/set-browse/"):
             set_code = path[len("/api/set-browse/"):]
             self._api_set_browse(set_code, params)
+        elif path == "/ingest-corners":
+            self._serve_static("ingest_corners.html")
         elif path == "/ingestor-order":
             self._serve_static("ingest_order.html")
         elif path == "/api/orders":
@@ -1016,6 +1018,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 self._send_json({"error": "Invalid JSON"}, 400)
                 return
             self._api_wishlist_bulk_add(data)
+        elif path == "/api/corners/detect":
+            self._api_corners_detect()
+        elif path == "/api/corners/commit":
+            self._api_corners_commit()
         elif path == "/api/order/parse":
             self._api_order_parse()
         elif path == "/api/order/resolve":
@@ -2948,6 +2954,249 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.commit()
         conn.close()
         self._send_json({"received": count})
+
+    # ── Corner Ingest API endpoints ──
+
+    def _api_corners_detect(self):
+        """Upload a photo, run Claude Vision corner detection, resolve cards."""
+        from mtg_collector.cli.ingest_ids import RARITY_MAP, lookup_card
+        from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.claude import ClaudeVision
+        from mtg_collector.services.scryfall import (
+            ScryfallAPI,
+            cache_scryfall_data,
+            ensure_set_cached,
+        )
+
+        content_type = self.headers.get("Content-Type", "")
+        if "multipart/form-data" not in content_type:
+            self._send_json({"error": "Expected multipart/form-data"}, 400)
+            return
+
+        boundary = content_type.split("boundary=")[1].strip()
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
+
+        # Extract the file from multipart
+        file_content = None
+        original_name = None
+        parts = body.split(f"--{boundary}".encode())
+        for part in parts:
+            if not part or part.strip() == b"--" or part.strip() == b"":
+                continue
+            header_end = part.find(b"\r\n\r\n")
+            if header_end == -1:
+                continue
+            header_bytes = part[:header_end]
+            data = part[header_end + 4:]
+            if data.endswith(b"\r\n"):
+                data = data[:-2]
+            header_str = header_bytes.decode("utf-8", errors="replace")
+            filename_match = re.search(r'filename="([^"]+)"', header_str)
+            if not filename_match:
+                continue
+            original_name = filename_match.group(1)
+            ext = Path(original_name).suffix.lower()
+            if ext not in (".jpg", ".jpeg", ".png", ".webp"):
+                continue
+            file_content = data
+            break
+
+        if file_content is None:
+            self._send_json({"error": "No image file found in upload"}, 400)
+            return
+
+        # Save to ingest images dir with timestamped name
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ext = Path(original_name).suffix.lower()
+        stored_name = f"corners_{ts}{ext}"
+        dest = _get_ingest_images_dir() / stored_name
+        dest.write_bytes(file_content)
+        image_key = stored_name
+
+        _log_ingest(f"Corner detect: saved {original_name} as {stored_name}")
+
+        # Run Claude Vision corner detection
+        try:
+            claude = ClaudeVision()
+            detections, skipped = claude.read_card_corners(str(dest))
+        except Exception as e:
+            self._send_json({"error": f"Claude Vision error: {e}"}, 500)
+            return
+
+        if not detections and not skipped:
+            self._send_json({"cards": [], "skipped": [], "errors": ["No card corners detected"], "image_key": image_key})
+            return
+
+        # Resolve each detection to a Scryfall card
+        scryfall = ScryfallAPI()
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        # Normalize set codes
+        unique_sets = {}
+        errors = []
+        for d in detections:
+            raw = d["set"]
+            if raw.lower() not in unique_sets:
+                normalized = scryfall.normalize_set_code(raw)
+                if not normalized:
+                    errors.append(f"Unknown set code: {raw}")
+                    continue
+                unique_sets[raw.lower()] = normalized
+
+        # Cache each unique set
+        for set_code in set(unique_sets.values()):
+            ensure_set_cached(scryfall, set_code, card_repo, set_repo, printing_repo, conn)
+
+        # Resolve cards
+        resolved_cards = []
+        for d in detections:
+            raw_set = d["set"]
+            if raw_set.lower() not in unique_sets:
+                continue
+            set_code = unique_sets[raw_set.lower()]
+
+            cn_raw = d["collector_number"]
+            cn_stripped = cn_raw.lstrip("0") or "0"
+
+            rarity_code = d.get("rarity", "C")
+            if rarity_code not in RARITY_MAP:
+                rarity_code = "C"
+            rarity_expected = RARITY_MAP[rarity_code]
+
+            card_data = lookup_card(set_code, cn_raw, cn_stripped, rarity_expected, printing_repo, scryfall)
+            if not card_data:
+                errors.append(f"Card not found: {rarity_code} {cn_raw} {set_code.upper()}")
+                continue
+
+            cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+
+            # Extract image URI
+            image_uri = None
+            if "image_uris" in card_data:
+                image_uri = card_data["image_uris"].get("small") or card_data["image_uris"].get("normal")
+            elif "card_faces" in card_data and card_data["card_faces"]:
+                face = card_data["card_faces"][0]
+                if "image_uris" in face:
+                    image_uri = face["image_uris"].get("small") or face["image_uris"].get("normal")
+
+            resolved_cards.append({
+                "scryfall_id": card_data["id"],
+                "name": card_data.get("name", "Unknown"),
+                "image_uri": image_uri,
+                "set_code": set_code,
+                "collector_number": card_data.get("collector_number", cn_raw),
+                "rarity": card_data.get("rarity", rarity_expected),
+                "foil": d.get("foil", False),
+                "condition": "Near Mint",
+            })
+
+        conn.close()
+
+        _log_ingest(f"Corner detect: {len(resolved_cards)} resolved, {len(skipped)} skipped, {len(errors)} errors")
+
+        self._send_json({
+            "cards": resolved_cards,
+            "skipped": skipped,
+            "errors": errors,
+            "image_key": image_key,
+        })
+
+    def _api_corners_commit(self):
+        """Commit reviewed corner-detected cards to collection."""
+        from mtg_collector.db.models import (
+            CollectionEntry,
+            CollectionRepository,
+            PrintingRepository,
+        )
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.utils import (
+            normalize_condition,
+            normalize_finish,
+            now_iso,
+            store_source_image,
+        )
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        image_key = data.get("image_key")
+        cards = data.get("cards", [])
+
+        if not cards:
+            self._send_json({"error": "No cards to commit"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        collection_repo = CollectionRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        # Store source image permanently if image_key provided
+        source_image = None
+        if image_key:
+            src_path = _get_ingest_images_dir() / image_key
+            if src_path.exists():
+                source_image = store_source_image(str(src_path))
+
+        added = []
+        for i, card in enumerate(cards):
+            scryfall_id = card.get("scryfall_id")
+            if not scryfall_id:
+                continue
+
+            printing = printing_repo.get(scryfall_id)
+            if not printing:
+                continue
+
+            foil = card.get("foil", False)
+            finish = normalize_finish("foil" if foil else "nonfoil")
+            condition = normalize_condition(card.get("condition", "Near Mint"))
+
+            entry = CollectionEntry(
+                id=None,
+                scryfall_id=scryfall_id,
+                finish=finish,
+                condition=condition,
+                source="corner_ingest",
+                source_image=source_image,
+            )
+            entry_id = collection_repo.add(entry)
+
+            # Insert lineage record
+            md5 = _md5_file(str(_get_ingest_images_dir() / image_key)) if image_key else ""
+            conn.execute(
+                """INSERT INTO ingest_lineage (collection_id, image_md5, image_path, card_index, created_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (entry_id, md5, image_key or "", i, now_iso()),
+            )
+
+            name = "???"
+            if printing.raw_json:
+                name = json.loads(printing.raw_json).get("name", "???")
+
+            added.append({
+                "entry_id": entry_id,
+                "name": name,
+                "scryfall_id": scryfall_id,
+            })
+
+            _log_ingest(f"Corner commit: {name} ({printing.set_code.upper()} #{printing.collector_number}) -> collection ID {entry_id}")
+
+        conn.commit()
+        conn.close()
+
+        self._send_json({"added": added})
 
     def _read_json_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
