@@ -870,6 +870,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_set_browse(set_code, params)
         elif path == "/ingest-corners":
             self._serve_static("ingest_corners.html")
+        elif path == "/ingestor-ids":
+            self._serve_static("ingest_ids.html")
         elif path == "/ingestor-order":
             self._serve_static("ingest_order.html")
         elif path == "/api/orders":
@@ -976,6 +978,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_corners_detect()
         elif path == "/api/corners/commit":
             self._api_corners_commit()
+        elif path == "/api/ingest-ids/resolve":
+            self._api_ingest_ids_resolve()
+        elif path == "/api/ingest-ids/commit":
+            self._api_ingest_ids_commit()
         elif path == "/api/order/parse":
             self._api_order_parse()
         elif path == "/api/order/resolve":
@@ -2943,6 +2949,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.close()
         self._send_json({"received": count})
 
+
     # ── Corner Ingest API endpoints ──
 
     def _api_corners_detect(self):
@@ -3186,6 +3193,140 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         self._send_json({"added": added})
 
+    # ── Manual ID Ingest API endpoints ──
+
+    def _api_ingest_ids_resolve(self):
+        from mtg_collector.cli.ingest_ids import RARITY_MAP, lookup_card
+        from mtg_collector.db.models import CardRepository, PrintingRepository, SetRepository
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.services.scryfall import (
+            ScryfallAPI,
+            cache_scryfall_data,
+            ensure_set_cached,
+        )
+
+        data = self._read_json_body()
+        if data is None:
+            return
+        entries = data.get("entries", [])
+        if not entries:
+            self._send_json({"error": "No entries provided"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        scryfall = ScryfallAPI()
+        card_repo = CardRepository(conn)
+        set_repo = SetRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        # Normalize set codes
+        set_map = {}
+        set_errors = []
+        for e in entries:
+            raw = e.get("set_code", "").strip()
+            if raw.lower() not in set_map:
+                normalized = scryfall.normalize_set_code(raw)
+                if normalized:
+                    set_map[raw.lower()] = normalized
+                else:
+                    set_errors.append({"set_code": raw, "error": f"Unknown set code '{raw}'"})
+                    set_map[raw.lower()] = None
+
+        # Pre-cache valid sets
+        for sc in set(v for v in set_map.values() if v):
+            ensure_set_cached(scryfall, sc, card_repo, set_repo, printing_repo, conn)
+
+        resolved = []
+        failed = []
+        for idx, e in enumerate(entries):
+            rarity_code = e.get("rarity", "").upper()
+            if rarity_code not in RARITY_MAP:
+                failed.append({"index": idx, **e, "error": f"Invalid rarity code '{rarity_code}'"})
+                continue
+
+            raw_set = e.get("set_code", "").strip()
+            set_code = set_map.get(raw_set.lower())
+            if not set_code:
+                failed.append({"index": idx, **e, "error": f"Unknown set code '{raw_set}'"})
+                continue
+
+            cn_raw = e.get("collector_number", "").strip()
+            cn_stripped = cn_raw.lstrip("0") or "0"
+            rarity = RARITY_MAP[rarity_code]
+
+            card_data = lookup_card(set_code, cn_raw, cn_stripped, rarity, printing_repo, scryfall)
+            if not card_data:
+                failed.append({"index": idx, "rarity_code": rarity_code, "collector_number": cn_raw,
+                              "set_code": raw_set, "foil": e.get("foil", False), "error": "Card not found"})
+                continue
+
+            cache_scryfall_data(scryfall, card_repo, set_repo, printing_repo, card_data)
+
+            actual_rarity = card_data.get("rarity", "")
+            image_uris = card_data.get("image_uris") or {}
+            if not image_uris and card_data.get("card_faces"):
+                image_uris = card_data["card_faces"][0].get("image_uris", {})
+            image_uri = image_uris.get("small", image_uris.get("normal", ""))
+
+            resolved.append({
+                "index": idx,
+                "rarity_code": rarity_code,
+                "rarity": rarity,
+                "collector_number": card_data.get("collector_number", cn_raw),
+                "set_code": set_code,
+                "set_name": card_data.get("set_name", ""),
+                "foil": e.get("foil", False),
+                "scryfall_id": card_data["id"],
+                "card_name": card_data.get("name", "Unknown"),
+                "image_uri": image_uri,
+                "actual_rarity": actual_rarity,
+                "rarity_mismatch": rarity != "promo" and rarity != "token" and actual_rarity != rarity,
+            })
+
+        conn.close()
+        self._send_json({"resolved": resolved, "failed": failed, "set_errors": set_errors})
+
+    def _api_ingest_ids_commit(self):
+        from mtg_collector.db.models import (
+            CollectionEntry,
+            CollectionRepository,
+            PrintingRepository,
+        )
+        from mtg_collector.db.schema import init_db
+        from mtg_collector.utils import normalize_condition, normalize_finish
+
+        data = self._read_json_body()
+        if data is None:
+            return
+        cards = data.get("cards", [])
+        condition = normalize_condition(data.get("condition", "Near Mint"))
+        source = data.get("source", "manual_id")
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        collection_repo = CollectionRepository(conn)
+        printing_repo = PrintingRepository(conn)
+
+        added = 0
+        for card in cards:
+            scryfall_id = card.get("scryfall_id")
+            if not scryfall_id:
+                continue
+            printing = printing_repo.get(scryfall_id)
+            if not printing:
+                continue
+            finish = normalize_finish("foil" if card.get("foil") else "nonfoil")
+            entry = CollectionEntry(id=None, scryfall_id=scryfall_id, finish=finish,
+                                   condition=condition, source=source)
+            collection_repo.add(entry)
+            added += 1
+
+        conn.commit()
+        conn.close()
+        self._send_json({"added": added, "failed": len(cards) - added})
     def _read_json_body(self):
         content_length = int(self.headers.get("Content-Length", 0))
         if content_length == 0:
@@ -3602,6 +3743,7 @@ def run(args):
     print(f"Upload: {scheme}://localhost:{args.port}/upload")
     print(f"Recent: {scheme}://localhost:{args.port}/recent")
     print(f"Disambiguate: {scheme}://localhost:{args.port}/disambiguate")
+    print(f"Ingestor (Manual ID): {scheme}://localhost:{args.port}/ingestor-ids")
     print(f"Ingestor (Orders): {scheme}://localhost:{args.port}/ingestor-order")
     print("Press Ctrl+C to stop.")
 
