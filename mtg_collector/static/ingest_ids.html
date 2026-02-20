@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual ID Ingestion - MTG Collection</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 24px;
+  background: #16213e;
+  border-bottom: 1px solid #0f3460;
+}
+header a { color: #e94560; text-decoration: none; font-weight: 600; }
+header h1 { font-size: 1.2rem; color: #e0e0e0; }
+.container {
+  display: flex;
+  flex: 1;
+  gap: 0;
+}
+.input-panel {
+  width: 450px;
+  min-width: 400px;
+  padding: 24px;
+  background: #16213e;
+  border-right: 1px solid #0f3460;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.input-panel label {
+  font-size: 0.85rem;
+  color: #888;
+  font-weight: 600;
+}
+.quick-add {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.quick-add .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.quick-add .field label {
+  font-size: 0.75rem;
+  color: #888;
+  font-weight: 600;
+}
+.quick-add select, .quick-add input[type="text"] {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+}
+.quick-add select:focus, .quick-add input[type="text"]:focus {
+  outline: none;
+  border-color: #e94560;
+}
+.quick-add input[type="text"].cn-input { width: 80px; }
+.quick-add input[type="text"].set-input { width: 70px; }
+.foil-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+.foil-check input[type="checkbox"] {
+  accent-color: #e94560;
+  width: 16px;
+  height: 16px;
+}
+.foil-check label {
+  font-size: 0.85rem;
+  color: #d4af37;
+  font-weight: 600;
+}
+.btn-primary {
+  background: #e94560;
+  border: none;
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primary:hover { background: #d63851; }
+.btn-primary:disabled { background: #555; cursor: not-allowed; }
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-secondary:hover { border-color: #e94560; }
+.entry-list {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 100px;
+}
+.entry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.entry-table th {
+  text-align: left;
+  padding: 6px 10px;
+  background: #0f1a30;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+}
+.entry-table td {
+  padding: 6px 10px;
+  border-top: 1px solid #0f3460;
+}
+.entry-table .remove-btn {
+  background: none;
+  border: none;
+  color: #e94560;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0 4px;
+}
+.entry-table .remove-btn:hover { color: #ff6b84; }
+.foil-tag {
+  background: rgba(200, 170, 80, 0.2);
+  color: #d4af37;
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.card-count {
+  font-size: 0.85rem;
+  color: #888;
+}
+.card-count b { color: #e0e0e0; }
+.controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.controls select {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+}
+.result-panel {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+.status-msg {
+  padding: 12px 16px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+.status-msg.info { background: rgba(15, 52, 96, 0.5); color: #88c0d0; }
+.status-msg.error { background: rgba(233, 69, 96, 0.15); color: #e94560; }
+.status-msg.success { background: rgba(76, 175, 80, 0.15); color: #4caf50; }
+.summary-bar {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.summary-bar .stat {
+  font-size: 0.9rem;
+  color: #888;
+}
+.summary-bar .stat b { color: #e0e0e0; }
+.action-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.resolved-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 16px;
+}
+.resolved-table th {
+  text-align: left;
+  padding: 6px 12px;
+  background: #0f1a30;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.resolved-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #0f3460;
+  vertical-align: middle;
+}
+.resolved-table .card-thumb {
+  width: 32px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 8px;
+}
+.resolved-table .remove-btn {
+  background: none;
+  border: none;
+  color: #e94560;
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0 4px;
+}
+.resolved-table .remove-btn:hover { color: #ff6b84; }
+.rarity-warning {
+  color: #f0ad4e;
+  font-size: 0.75rem;
+  font-style: italic;
+}
+.failed-section {
+  margin-top: 16px;
+  border: 1px solid rgba(233, 69, 96, 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.failed-section h3 {
+  padding: 10px 16px;
+  background: rgba(233, 69, 96, 0.1);
+  color: #e94560;
+  font-size: 0.9rem;
+}
+.failed-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.failed-table th {
+  text-align: left;
+  padding: 6px 12px;
+  background: #0f1a30;
+  color: #888;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+.failed-table td {
+  padding: 6px 12px;
+  border-top: 1px solid #0f3460;
+}
+.failed-table .error-msg {
+  color: #e94560;
+  font-size: 0.8rem;
+}
+.btn-small {
+  background: transparent;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-small:hover { border-color: #e94560; }
+.foil-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.foil-toggle.active {
+  background: rgba(200, 170, 80, 0.2);
+  color: #d4af37;
+  padding: 1px 5px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.7rem;
+}
+.foil-toggle.inactive {
+  color: #555;
+  font-size: 0.75rem;
+}
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid #555;
+  border-top-color: #e94560;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <a href="/">&larr; Home</a>
+  <h1>Manual ID Ingestion</h1>
+</header>
+
+<div class="container">
+  <div class="input-panel">
+    <label>Quick Add</label>
+    <div class="quick-add">
+      <div class="field">
+        <label>Rarity</label>
+        <select id="rarity-select">
+          <option value="C">C</option>
+          <option value="U">U</option>
+          <option value="R">R</option>
+          <option value="M">M</option>
+          <option value="P">P</option>
+          <option value="L">L</option>
+          <option value="T">T</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>CN</label>
+        <input type="text" id="cn-input" class="cn-input" placeholder="0001">
+      </div>
+      <div class="field">
+        <label>Set</label>
+        <input type="text" id="set-input" class="set-input" placeholder="NEO">
+      </div>
+      <div class="foil-check">
+        <input type="checkbox" id="foil-check">
+        <label for="foil-check">Foil</label>
+      </div>
+      <button class="btn-primary" id="add-btn">Add</button>
+    </div>
+
+    <div class="entry-list" id="entry-list-wrap">
+      <table class="entry-table" id="entry-table">
+        <thead>
+          <tr><th>Rarity</th><th>CN</th><th>Set</th><th>Foil</th><th></th></tr>
+        </thead>
+        <tbody id="entry-tbody"></tbody>
+      </table>
+    </div>
+
+    <div class="card-count" id="card-count">Cards: <b>0</b></div>
+
+    <label>Condition</label>
+    <div class="controls">
+      <select id="condition-select">
+        <option value="Near Mint" selected>Near Mint</option>
+        <option value="Lightly Played">Lightly Played</option>
+        <option value="Moderately Played">Moderately Played</option>
+        <option value="Heavily Played">Heavily Played</option>
+        <option value="Damaged">Damaged</option>
+      </select>
+    </div>
+
+    <button class="btn-primary" id="resolve-btn" disabled>Resolve</button>
+  </div>
+
+  <div class="result-panel" id="results">
+    <div class="status-msg info">Add cards using rarity, collector number, and set code, then click Resolve.</div>
+  </div>
+</div>
+
+<script>
+const raritySelect = document.getElementById('rarity-select');
+const cnInput = document.getElementById('cn-input');
+const setInput = document.getElementById('set-input');
+const foilCheck = document.getElementById('foil-check');
+const addBtn = document.getElementById('add-btn');
+const entryTbody = document.getElementById('entry-tbody');
+const cardCount = document.getElementById('card-count');
+const conditionSelect = document.getElementById('condition-select');
+const resolveBtn = document.getElementById('resolve-btn');
+const results = document.getElementById('results');
+
+let entries = [];
+let resolvedCards = null;
+let failedCards = null;
+
+function addEntry() {
+  const rarity = raritySelect.value;
+  const cn = cnInput.value.trim();
+  const set = setInput.value.trim();
+  const foil = foilCheck.checked;
+
+  if (!cn || !set) return;
+
+  entries.push({ rarity, collector_number: cn, set_code: set, foil });
+  renderEntries();
+
+  cnInput.value = '';
+  cnInput.focus();
+}
+
+addBtn.addEventListener('click', addEntry);
+
+setInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    addEntry();
+  }
+});
+
+cnInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    setInput.focus();
+  }
+});
+
+function removeEntry(idx) {
+  entries.splice(idx, 1);
+  renderEntries();
+}
+
+function renderEntries() {
+  entryTbody.innerHTML = '';
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${e.rarity}</td>
+      <td>${e.collector_number}</td>
+      <td>${e.set_code.toUpperCase()}</td>
+      <td>${e.foil ? '<span class="foil-tag">Foil</span>' : ''}</td>
+      <td><button class="remove-btn" data-idx="${i}">&times;</button></td>
+    `;
+    entryTbody.appendChild(tr);
+  }
+  cardCount.innerHTML = `Cards: <b>${entries.length}</b>`;
+  resolveBtn.disabled = entries.length === 0;
+}
+
+entryTbody.addEventListener('click', (e) => {
+  if (e.target.classList.contains('remove-btn')) {
+    removeEntry(parseInt(e.target.dataset.idx));
+  }
+});
+
+// Resolve
+resolveBtn.addEventListener('click', async () => {
+  if (entries.length === 0) return;
+
+  results.innerHTML = '<div class="status-msg info"><span class="spinner"></span>Resolving cards...</div>';
+  resolveBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/ingest-ids/resolve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ entries }),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      results.innerHTML = `<div class="status-msg error">${data.error}</div>`;
+      resolveBtn.disabled = false;
+      return;
+    }
+
+    resolvedCards = data.resolved || [];
+    failedCards = data.failed || [];
+    renderResults();
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Error: ${err.message}</div>`;
+  }
+  resolveBtn.disabled = entries.length === 0;
+});
+
+function removeResolved(idx) {
+  resolvedCards = resolvedCards.filter(c => c.index !== idx);
+  renderResults();
+}
+
+function toggleFoil(idx) {
+  const card = resolvedCards.find(c => c.index === idx);
+  if (card) {
+    card.foil = !card.foil;
+    renderResults();
+  }
+}
+
+function editAndRetry(failedCard) {
+  // Put the failed card back into the entry list for editing
+  entries.push({
+    rarity: failedCard.rarity_code || failedCard.rarity || 'C',
+    collector_number: failedCard.collector_number || '',
+    set_code: failedCard.set_code || '',
+    foil: failedCard.foil || false,
+  });
+  renderEntries();
+
+  // Remove from failed list
+  failedCards = failedCards.filter(c => c !== failedCard);
+  renderResults();
+}
+
+function renderResults() {
+  if (!resolvedCards && !failedCards) return;
+
+  const resolvedCount = resolvedCards.length;
+  const failedCount = failedCards.length;
+
+  let html = `<div class="summary-bar">
+    <span class="stat">Resolved: <b>${resolvedCount}</b></span>
+    ${failedCount ? `<span class="stat" style="color:#e94560">Failed: <b>${failedCount}</b></span>` : ''}
+  </div>`;
+
+  if (resolvedCount > 0) {
+    html += `<div class="action-bar">
+      <button class="btn-primary" id="commit-btn">Add to Collection</button>
+      <button class="btn-secondary" id="cancel-btn">Cancel</button>
+    </div>`;
+
+    html += `<table class="resolved-table">
+      <thead><tr>
+        <th>Card</th><th>Set</th><th>CN</th><th>Rarity</th><th>Foil</th><th></th>
+      </tr></thead>
+      <tbody>`;
+
+    for (const card of resolvedCards) {
+      const thumb = card.image_uri ? `<img class="card-thumb" src="${card.image_uri}" loading="lazy">` : '';
+      const mismatchWarn = card.rarity_mismatch
+        ? `<div class="rarity-warning">Expected ${card.rarity}, got ${card.actual_rarity}</div>`
+        : '';
+      const foilHtml = card.foil
+        ? `<span class="foil-toggle active" data-idx="${card.index}">Foil</span>`
+        : `<span class="foil-toggle inactive" data-idx="${card.index}">--</span>`;
+
+      html += `<tr>
+        <td>${thumb}${card.card_name}${mismatchWarn}</td>
+        <td>${card.set_code.toUpperCase()} (${card.set_name})</td>
+        <td>${card.collector_number}</td>
+        <td>${card.actual_rarity || card.rarity}</td>
+        <td>${foilHtml}</td>
+        <td><button class="remove-btn" data-resolved-idx="${card.index}">&times;</button></td>
+      </tr>`;
+    }
+
+    html += '</tbody></table>';
+  }
+
+  if (failedCount > 0) {
+    html += `<div class="failed-section">
+      <h3>Failed (${failedCount})</h3>
+      <table class="failed-table">
+        <thead><tr>
+          <th>Rarity</th><th>CN</th><th>Set</th><th>Error</th><th></th>
+        </tr></thead>
+        <tbody>`;
+
+    for (const f of failedCards) {
+      html += `<tr>
+        <td>${f.rarity_code || ''}</td>
+        <td>${f.collector_number || ''}</td>
+        <td>${(f.set_code || '').toUpperCase()}</td>
+        <td><span class="error-msg">${f.error}</span></td>
+        <td><button class="btn-small retry-btn" data-fail-idx="${f.index}">Edit &amp; Retry</button></td>
+      </tr>`;
+    }
+
+    html += '</tbody></table></div>';
+  }
+
+  results.innerHTML = html;
+
+  // Wire up event handlers
+  if (resolvedCount > 0) {
+    document.getElementById('commit-btn').addEventListener('click', commitCards);
+    document.getElementById('cancel-btn').addEventListener('click', () => {
+      resolvedCards = null;
+      failedCards = null;
+      results.innerHTML = '<div class="status-msg info">Cancelled. Add more cards to start over.</div>';
+    });
+  }
+
+  // Foil toggles
+  results.querySelectorAll('.foil-toggle').forEach(el => {
+    el.addEventListener('click', () => toggleFoil(parseInt(el.dataset.idx)));
+  });
+
+  // Remove buttons on resolved
+  results.querySelectorAll('.remove-btn[data-resolved-idx]').forEach(el => {
+    el.addEventListener('click', () => removeResolved(parseInt(el.dataset.resolvedIdx)));
+  });
+
+  // Edit & Retry buttons
+  results.querySelectorAll('.retry-btn').forEach(el => {
+    el.addEventListener('click', () => {
+      const idx = parseInt(el.dataset.failIdx);
+      const failedCard = failedCards.find(c => c.index === idx);
+      if (failedCard) editAndRetry(failedCard);
+    });
+  });
+}
+
+async function commitCards() {
+  if (!resolvedCards || resolvedCards.length === 0) return;
+
+  const btn = document.getElementById('commit-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Adding...';
+
+  try {
+    const res = await fetch('/api/ingest-ids/commit', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        cards: resolvedCards,
+        condition: conditionSelect.value,
+        source: 'manual_id',
+      }),
+    });
+    const data = await res.json();
+
+    let msg = `Added ${data.added} card(s) to collection.`;
+    if (data.failed > 0) msg += ` ${data.failed} failed.`;
+
+    results.innerHTML = `<div class="status-msg success">${msg}</div>`;
+    resolvedCards = null;
+    failedCards = null;
+    entries = [];
+    renderEntries();
+  } catch (err) {
+    results.innerHTML = `<div class="status-msg error">Commit failed: ${err.message}</div>`;
+    btn.disabled = false;
+    btn.textContent = 'Add to Collection';
+  }
+}
+</script>
+</body>
+</html>
