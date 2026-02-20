@@ -116,6 +116,19 @@ sed \
     -e "s|{{PORT}}:8081|${PORT_MAPPING}|g" \
     "$REPO_DIR/deploy/mtgc.container" > "$QUADLET_FILE"
 
+## --- Generate and install price timer units ---
+
+TIMER_SERVICE="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.service"
+TIMER_UNIT="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.timer"
+
+echo "==> Installing price timer: $TIMER_UNIT"
+
+sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
+    "$REPO_DIR/deploy/mtgc-prices.service" > "$TIMER_SERVICE"
+
+sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
+    "$REPO_DIR/deploy/mtgc-prices.timer" > "$TIMER_UNIT"
+
 systemctl --user daemon-reload
 
 echo ""
@@ -125,4 +138,5 @@ echo "  Start:      systemctl --user start $SERVICE_NAME"
 echo "  Port:       podman port systemd-${SERVICE_NAME}"
 echo "  Init data:  podman exec -it systemd-${SERVICE_NAME} mtg setup"
 echo "  Logs:       journalctl --user -u $SERVICE_NAME -f"
+echo "  Prices:     systemctl --user enable --now mtgc-prices-${INSTANCE}.timer"
 echo "  Teardown:   bash deploy/teardown.sh $INSTANCE"

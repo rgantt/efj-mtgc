@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -175,6 +175,46 @@ CREATE TABLE IF NOT EXISTS schema_version (
     applied_at TEXT NOT NULL
 );
 
+-- MTGJSON UUID → (set_code, collector_number) mapping
+CREATE TABLE IF NOT EXISTS mtgjson_uuid_map (
+    uuid TEXT PRIMARY KEY,
+    set_code TEXT NOT NULL,
+    collector_number TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_uuid_map_card ON mtgjson_uuid_map(set_code, collector_number);
+
+-- Price time series (append-only)
+CREATE TABLE IF NOT EXISTS prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    set_code TEXT NOT NULL,
+    collector_number TEXT NOT NULL,
+    source TEXT NOT NULL,        -- 'cardkingdom', 'tcgplayer'
+    price_type TEXT NOT NULL,    -- 'normal', 'foil'
+    price REAL NOT NULL,
+    observed_at TEXT NOT NULL,   -- date string YYYY-MM-DD
+    UNIQUE(set_code, collector_number, source, price_type, observed_at)
+);
+CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(observed_at);
+CREATE INDEX IF NOT EXISTS idx_prices_card ON prices(set_code, collector_number, source, price_type);
+
+-- Price fetch audit log
+CREATE TABLE IF NOT EXISTS price_fetch_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fetched_at TEXT NOT NULL,
+    source_file TEXT,
+    dates_imported TEXT,         -- JSON array of date strings
+    uuid_total INTEGER,
+    uuid_mapped INTEGER,
+    uuid_unmapped INTEGER,
+    rows_inserted INTEGER
+);
+
+-- Latest prices view (global max — correct because imports are atomic)
+CREATE VIEW IF NOT EXISTS latest_prices AS
+SELECT set_code, collector_number, source, price_type, price, observed_at
+FROM prices
+WHERE observed_at = (SELECT MAX(observed_at) FROM prices);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_collection_scryfall ON collection(scryfall_id);
 CREATE INDEX IF NOT EXISTS idx_collection_source ON collection(source);
@@ -285,6 +325,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v12_to_v13(conn)
         if current < 14:
             _migrate_v13_to_v14(conn)
+        if current < 15:
+            _migrate_v14_to_v15(conn)
 
     # Record schema version
     conn.execute(
@@ -768,10 +810,58 @@ def _migrate_v13_to_v14(conn: sqlite3.Connection):
             conn.execute(f"ALTER TABLE {table} ADD COLUMN api_usage TEXT")
 
 
+def _migrate_v14_to_v15(conn: sqlite3.Connection):
+    """Add price tables, UUID map, and latest_prices view."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS mtgjson_uuid_map (
+            uuid TEXT PRIMARY KEY,
+            set_code TEXT NOT NULL,
+            collector_number TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_uuid_map_card ON mtgjson_uuid_map(set_code, collector_number);
+
+        CREATE TABLE IF NOT EXISTS prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            set_code TEXT NOT NULL,
+            collector_number TEXT NOT NULL,
+            source TEXT NOT NULL,
+            price_type TEXT NOT NULL,
+            price REAL NOT NULL,
+            observed_at TEXT NOT NULL,
+            UNIQUE(set_code, collector_number, source, price_type, observed_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_prices_date ON prices(observed_at);
+        CREATE INDEX IF NOT EXISTS idx_prices_card ON prices(set_code, collector_number, source, price_type);
+
+        CREATE TABLE IF NOT EXISTS price_fetch_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fetched_at TEXT NOT NULL,
+            source_file TEXT,
+            dates_imported TEXT,
+            uuid_total INTEGER,
+            uuid_mapped INTEGER,
+            uuid_unmapped INTEGER,
+            rows_inserted INTEGER
+        );
+    """)
+
+    conn.execute("DROP VIEW IF EXISTS latest_prices")
+    conn.execute("""
+        CREATE VIEW latest_prices AS
+        SELECT set_code, collector_number, source, price_type, price, observed_at
+        FROM prices
+        WHERE observed_at = (SELECT MAX(observed_at) FROM prices)
+    """)
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
         DROP VIEW IF EXISTS collection_view;
+        DROP VIEW IF EXISTS latest_prices;
+        DROP TABLE IF EXISTS price_fetch_log;
+        DROP TABLE IF EXISTS prices;
+        DROP TABLE IF EXISTS mtgjson_uuid_map;
         DROP TABLE IF EXISTS status_log;
         DROP TABLE IF EXISTS wishlist;
         DROP TABLE IF EXISTS settings;

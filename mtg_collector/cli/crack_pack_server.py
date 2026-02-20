@@ -1,11 +1,9 @@
 """Crack-a-pack web server: mtg crack-pack-server --port 8080"""
 
-import gzip
 import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import sys
 import threading
@@ -21,57 +19,12 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
-from mtg_collector.cli.data_cmd import MTGJSON_PRICES_URL, _download, get_allpricestoday_path
 from mtg_collector.db.connection import get_db_path
 from mtg_collector.services.pack_generator import PackGenerator
 
 # In-memory price cache: scryfall_id -> (timestamp, prices_dict)
 _price_cache: dict[str, tuple[float, dict]] = {}
 _PRICE_TTL = 86400  # 24 hours
-
-# CK prices from AllPricesToday.json
-_prices_data: dict | None = None
-_prices_lock = threading.Lock()
-
-
-def _load_prices():
-    """Load AllPricesToday.json into memory."""
-    global _prices_data
-    path = get_allpricestoday_path()
-    print(f"[startup] Loading prices from {path} ...", flush=True)
-    with open(path) as f:
-        raw = json.load(f)
-    with _prices_lock:
-        _prices_data = raw.get("data", {})
-    print(f"[startup] Prices loaded ({len(_prices_data)} cards)", flush=True)
-
-
-def _get_local_price(uuid: str, foil: bool, provider: str) -> str | None:
-    """Look up a retail price for a card UUID from AllPricesToday.json."""
-    with _prices_lock:
-        data = _prices_data
-    if data is None:
-        return None
-    card_prices = data.get(uuid)
-    if not card_prices:
-        return None
-    paper = card_prices.get("paper", {})
-    prov = paper.get(provider, {})
-    retail = prov.get("retail", {})
-    price_type = "foil" if foil else "normal"
-    prices_by_date = retail.get(price_type, {})
-    if not prices_by_date:
-        return None
-    latest_date = max(prices_by_date.keys())
-    return str(prices_by_date[latest_date])
-
-
-def _get_ck_price(uuid: str, foil: bool) -> str | None:
-    return _get_local_price(uuid, foil, "cardkingdom")
-
-
-def _get_tcg_price(uuid: str, foil: bool) -> str | None:
-    return _get_local_price(uuid, foil, "tcgplayer")
 
 
 def _fetch_prices(scryfall_ids: list[str]) -> dict[str, dict]:
@@ -108,20 +61,15 @@ def _fetch_prices(scryfall_ids: list[str]) -> dict[str, dict]:
     return result
 
 
-def _download_prices():
-    """Download AllPricesToday.json.gz and decompress it."""
-    dest = get_allpricestoday_path()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    gz_path = dest.parent / "AllPricesToday.json.gz"
-
-    _download(MTGJSON_PRICES_URL, gz_path)
-
-    with gzip.open(gz_path, "rb") as f_in:
-        with open(dest, "wb") as f_out:
-            shutil.copyfileobj(f_in, f_out)
-
-    gz_path.unlink()
-    _load_prices()
+def _get_sqlite_price(db_path: str, set_code: str, collector_number: str, source: str, price_type: str) -> str | None:
+    """Look up a single price from the latest_prices view."""
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        "SELECT price FROM latest_prices WHERE set_code = ? AND collector_number = ? AND source = ? AND price_type = ?",
+        (set_code.lower(), collector_number, source, price_type),
+    ).fetchone()
+    conn.close()
+    return str(row[0]) if row else None
 
 
 _INGEST_IMAGES_DIR = None  # Set in _get_ingest_images_dir()
@@ -933,6 +881,12 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_get_settings()
         elif path == "/api/prices-status":
             self._api_prices_status()
+        elif path.startswith("/api/price-history/"):
+            parts = path[len("/api/price-history/"):].split("/", 1)
+            if len(parts) == 2:
+                self._api_price_history(parts[0], parts[1])
+            else:
+                self._send_json({"error": "Expected /api/price-history/{set_code}/{collector_number}"}, 400)
         elif path == "/api/shorten":
             self._api_shorten(params)
         # Ingest2 API routes
@@ -1112,13 +1066,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             return
         result = self.generator.get_sheet_data(set_code, product)
 
-        # Attach local prices
+        # Attach local prices from SQLite
         for sheet in result["sheets"].values():
             for card in sheet["cards"]:
-                uuid = card.get("uuid", "")
                 foil = card.get("foil", False)
-                card["ck_price"] = _get_ck_price(uuid, foil)
-                card["tcg_price"] = _get_tcg_price(uuid, foil)
+                price_type = "foil" if foil else "normal"
+                sc = card.get("set_code", "").lower()
+                cn = card.get("collector_number", "")
+                card["ck_price"] = _get_sqlite_price(self.db_path, sc, cn, "cardkingdom", price_type)
+                card["tcg_price"] = _get_sqlite_price(self.db_path, sc, cn, "tcgplayer", price_type)
 
         self._send_json(result)
 
@@ -1143,8 +1099,12 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             else:
                 card["tcg_price"] = card_prices.get("usd") or card_prices.get("usd_foil")
 
-            # Attach CK price from AllPricesToday
-            card["ck_price"] = _get_ck_price(card.get("uuid", ""), card.get("foil", False))
+            # Attach CK price from SQLite
+            foil = card.get("foil", False)
+            price_type = "foil" if foil else "normal"
+            sc = card.get("set_code", "").lower()
+            cn = card.get("collector_number", "")
+            card["ck_price"] = _get_sqlite_price(self.db_path, sc, cn, "cardkingdom", price_type)
 
         self._send_json(result)
 
@@ -1501,13 +1461,14 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             card["ck_url"] = ""
             results.append(card)
 
-        # Prices via local MTGJSON data (no network calls)
+        # Prices via SQLite latest_prices
         for card in results:
             foil = card["finish"] in ("foil", "etched")
-            uuid = self.generator.get_uuid_for_scryfall_id(card["scryfall_id"])
-            if uuid:
-                card["tcg_price"] = _get_tcg_price(uuid, foil)
-                card["ck_price"] = _get_ck_price(uuid, foil)
+            price_type = "foil" if foil else "normal"
+            sc = card["set_code"].lower()
+            cn = card["collector_number"]
+            card["ck_price"] = _get_sqlite_price(self.db_path, sc, cn, "cardkingdom", price_type)
+            card["tcg_price"] = _get_sqlite_price(self.db_path, sc, cn, "tcgplayer", price_type)
             card["ck_url"] = self.generator.get_ck_url(card["scryfall_id"], foil)
 
         conn.close()
@@ -1576,27 +1537,48 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             "layout": row["layout"] or "normal",
         }
 
-        # Prices
-        result["tcg_price"] = None
-        result["ck_price"] = None
-        result["ck_url"] = ""
-        uuid = self.generator.get_uuid_for_scryfall_id(scryfall_id)
-        if uuid:
-            result["tcg_price"] = _get_tcg_price(uuid, False)
-            result["ck_price"] = _get_ck_price(uuid, False)
+        # Prices from SQLite
+        sc = row["set_code"].lower()
+        cn = row["collector_number"]
+        result["ck_price"] = _get_sqlite_price(self.db_path, sc, cn, "cardkingdom", "normal")
+        result["tcg_price"] = _get_sqlite_price(self.db_path, sc, cn, "tcgplayer", "normal")
         result["ck_url"] = self.generator.get_ck_url(scryfall_id, False)
 
         conn.close()
         self._send_json(result)
 
     def _api_prices_status(self):
-        path = get_allpricestoday_path()
-        if path.exists():
-            mtime = path.stat().st_mtime
-            last_modified = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
-            self._send_json({"available": True, "last_modified": last_modified})
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        log = conn.execute(
+            "SELECT fetched_at FROM price_fetch_log ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        count = conn.execute("SELECT COUNT(*) FROM prices").fetchone()[0]
+        conn.close()
+        if log and count > 0:
+            self._send_json({"available": True, "last_modified": log["fetched_at"]})
         else:
             self._send_json({"available": False, "last_modified": None})
+
+    def _api_price_history(self, set_code: str, collector_number: str):
+        """Return full price time series for a card."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT source, price_type, price, observed_at FROM prices "
+            "WHERE set_code = ? AND collector_number = ? ORDER BY observed_at",
+            (set_code.lower(), collector_number),
+        ).fetchall()
+        conn.close()
+
+        result: dict[str, list] = {}
+        for row in rows:
+            key = f"{row['source']}_{row['price_type']}"
+            result.setdefault(key, []).append({
+                "date": row["observed_at"],
+                "price": row["price"],
+            })
+        self._send_json(result)
 
     def _api_get_settings(self):
         from mtg_collector.db.schema import init_db
@@ -1627,11 +1609,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_fetch_prices(self):
         try:
-            _download_prices()
-            path = get_allpricestoday_path()
-            mtime = path.stat().st_mtime
-            last_modified = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
-            self._send_json({"available": True, "last_modified": last_modified})
+            from mtg_collector.cli.data_cmd import _fetch_prices as fetch_prices_cmd
+            fetch_prices_cmd(force=True)
+            # Return updated status
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            log = conn.execute(
+                "SELECT fetched_at FROM price_fetch_log ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            conn.close()
+            last_modified = log["fetched_at"] if log else None
+            self._send_json({"available": bool(log), "last_modified": last_modified})
         except Exception as e:
             self._send_json({"error": str(e)}, 500)
 
@@ -3549,12 +3537,6 @@ def run(args):
         print("Run: mtg data fetch", file=sys.stderr)
         sys.exit(1)
 
-    prices_path = get_allpricestoday_path()
-    if not prices_path.exists():
-        print(f"Error: AllPricesToday.json not found: {prices_path}", file=sys.stderr)
-        print("Run: mtg data fetch-prices", file=sys.stderr)
-        sys.exit(1)
-
     # Pre-warm AllPrintings.json in background thread
     def _warm_allprintings():
         print(f"[startup] Loading AllPrintings.json ({allprintings}) ...", flush=True)
@@ -3563,10 +3545,6 @@ def run(args):
 
     warm_thread = threading.Thread(target=_warm_allprintings, daemon=True)
     warm_thread.start()
-
-    # Load CK prices in background thread
-    prices_thread = threading.Thread(target=_load_prices, daemon=True)
-    prices_thread.start()
 
     # Start background ingest worker pool
     global _ingest_executor, _background_db_path

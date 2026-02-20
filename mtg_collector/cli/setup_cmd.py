@@ -24,6 +24,11 @@ def register(subparsers):
         action="store_true",
         help="Skip MTGJSON AllPrintings.json download",
     )
+    parser.add_argument(
+        "--skip-prices",
+        action="store_true",
+        help="Skip MTGJSON price data download and import",
+    )
     parser.set_defaults(func=run)
 
 
@@ -56,6 +61,14 @@ def run(args):
         print("\n=== Step 3: MTGJSON data ===")
         from mtg_collector.cli.data_cmd import fetch_allprintings
         fetch_allprintings(force=False)
+
+    # Step 3b: Fetch + import MTGJSON prices
+    if args.skip_data or args.skip_prices:
+        print("\n=== Step 3b: MTGJSON prices (skipped) ===")
+    else:
+        print("\n=== Step 3b: MTGJSON prices ===")
+        from mtg_collector.cli.data_cmd import _fetch_prices
+        _fetch_prices(force=False)
 
     # Step 4: Load demo data
     if args.demo:

@@ -1,0 +1,7 @@
+[Unit]
+Description=MTGC daily price fetch ({{INSTANCE}})
+
+[Service]
+Type=oneshot
+ExecStart=podman exec systemd-mtgc-{{INSTANCE}} mtg data fetch-prices --force
+TimeoutStartSec=600
