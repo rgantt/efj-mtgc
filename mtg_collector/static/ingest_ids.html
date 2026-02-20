@@ -320,6 +320,26 @@ header h1 { font-size: 1.2rem; color: #e0e0e0; }
   margin-right: 6px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@media (max-width: 768px) {
+  .container { flex-direction: column; }
+  .input-panel {
+    width: 100%;
+    min-width: 0;
+    border-right: none;
+    border-bottom: 1px solid #0f3460;
+    padding: 16px;
+  }
+  .entry-list {
+    flex: none;
+    max-height: 150px;
+  }
+  .result-panel { padding: 16px; }
+  .resolved-table { font-size: 0.75rem; }
+  .resolved-table th, .resolved-table td { padding: 4px 6px; }
+  .resolved-table .card-thumb { width: 24px; height: 33px; }
+  .failed-table { font-size: 0.75rem; }
+  .failed-table th, .failed-table td { padding: 4px 6px; }
+}
 </style>
 </head>
 <body>
