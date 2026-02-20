@@ -75,4 +75,5 @@ python_files = ["test_*.py"]
 [dependency-groups]
 dev = [
     "ruff>=0.15.1",
+    "pytest>=7.0.0",
 ]
