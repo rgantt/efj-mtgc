@@ -69,6 +69,25 @@ button.secondary {
 button.secondary:hover { background: #e94560; border-color: #e94560; }
 button.secondary.active { background: #0f3460; border-color: #e94560; }
 
+/* View toggle group — segmented control */
+.view-toggle-group {
+  display: flex;
+}
+.view-toggle-group button.secondary {
+  border-radius: 0;
+}
+.view-toggle-group button.secondary:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.view-toggle-group button.secondary:last-child {
+  border-radius: 0 6px 6px 0;
+  margin-left: -1px; /* collapse double-border between the two buttons */
+}
+.view-toggle-group button.secondary.active {
+  z-index: 1; /* active button's border-color (#e94560) shows over the adjacent border */
+  position: relative;
+}
+
 #search-input { width: 220px; }
 
 #status {
@@ -973,8 +992,10 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   <h1><a href="/" style="color:inherit;text-decoration:none">Collection</a></h1>
   <div class="controls">
     <input type="text" id="search-input" placeholder="Search cards...">
-    <button class="secondary" id="view-table-btn" title="Table view">Table</button>
-    <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
+    <div class="view-toggle-group">
+      <button class="secondary" id="view-table-btn" title="Table view">Table</button>
+      <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
+    </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
     <div class="col-config-wrap">
       <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
