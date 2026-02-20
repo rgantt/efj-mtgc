@@ -54,13 +54,16 @@ def run(args):
         from mtg_collector.cli.cache_cmd import cache_all
         cache_all(force=False, db_path=db_path)
 
-    # Step 3: Fetch MTGJSON data
+    # Step 3: Fetch MTGJSON data + import into SQLite
     if args.skip_data:
         print("\n=== Step 3: MTGJSON data (skipped) ===")
     else:
         print("\n=== Step 3: MTGJSON data ===")
-        from mtg_collector.cli.data_cmd import fetch_allprintings
+        from mtg_collector.cli.data_cmd import fetch_allprintings, import_mtgjson
         fetch_allprintings(force=False)
+        # fetch_allprintings auto-runs import_mtgjson on fresh download;
+        # run it explicitly in case the file already existed
+        import_mtgjson(db_path)
 
     # Step 3b: Fetch + import MTGJSON prices
     if args.skip_data or args.skip_prices:

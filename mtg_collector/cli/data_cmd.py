@@ -62,6 +62,11 @@ def register(subparsers):
     )
 
     data_sub.add_parser(
+        "import",
+        help="Import AllPrintings.json into SQLite (cards, booster sheets, configs)",
+    )
+
+    data_sub.add_parser(
         "import-prices",
         help="Import AllPricesToday.json into SQLite prices table",
     )
@@ -86,6 +91,10 @@ def run(args):
         fetch_allprintings(force=args.force)
     elif args.data_command == "fetch-prices":
         _fetch_prices(force=args.force)
+    elif args.data_command == "import":
+        from mtg_collector.db.connection import get_db_path
+        db_path = get_db_path(getattr(args, "db_path", None))
+        import_mtgjson(db_path)
     elif args.data_command == "import-prices":
         from mtg_collector.db.connection import get_db_path
         db_path = get_db_path(getattr(args, "db_path", None))
@@ -95,7 +104,7 @@ def run(args):
         db_path = get_db_path(getattr(args, "db_path", None))
         check_prices(db_path, sample=args.sample)
     else:
-        print("Usage: mtg data {fetch|fetch-prices|import-prices|check-prices} [options]")
+        print("Usage: mtg data {fetch|fetch-prices|import|import-prices|check-prices} [options]")
         sys.exit(1)
 
 
@@ -124,6 +133,159 @@ def fetch_allprintings(force: bool = False):
 
     size_mb = dest.stat().st_size / (1024 * 1024)
     print(f"Done! AllPrintings.json ({size_mb:.0f} MB) saved to: {dest}")
+
+    # Auto-import into SQLite
+    try:
+        from mtg_collector.db.connection import get_db_path
+        db_path = get_db_path()
+        import_mtgjson(db_path)
+    except Exception as e:
+        print(f"Warning: auto-import failed: {e}", file=sys.stderr)
+
+
+def import_mtgjson(db_path: str):
+    """Import AllPrintings.json into SQLite (printings, booster sheets, configs)."""
+    from mtg_collector.db.schema import init_db
+
+    t0 = time.time()
+
+    path = get_allprintings_path()
+    if not path.exists():
+        print(f"AllPrintings.json not found at {path}")
+        print("Run: mtg data fetch")
+        return
+
+    print(f"Loading {path} ...")
+    with open(path) as f:
+        raw = json.load(f)
+
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA foreign_keys = OFF")  # defer FK checks for bulk import
+    init_db(conn)
+
+    # Clear existing data (idempotent re-import)
+    conn.execute("DELETE FROM mtgjson_booster_configs")
+    conn.execute("DELETE FROM mtgjson_booster_sheets")
+    conn.execute("DELETE FROM mtgjson_printings")
+    conn.execute("DELETE FROM mtgjson_uuid_map")
+
+    imported_at = now_iso()
+    printing_rows = []
+    uuid_map_rows = []
+    sheet_rows = []
+    config_rows = []
+    set_count = 0
+    sets_with_boosters = []
+
+    data = raw.get("data", {})
+    for set_code_raw, set_data in data.items():
+        set_code = set_code_raw.lower()
+        set_count += 1
+
+        # Cards → mtgjson_printings + mtgjson_uuid_map
+        for card in set_data.get("cards", []):
+            uuid = card.get("uuid")
+            if not uuid:
+                continue
+            number = card.get("number", "")
+            identifiers = card.get("identifiers", {})
+            purchase_urls = card.get("purchaseUrls", {})
+            frame_effects = card.get("frameEffects")
+
+            printing_rows.append((
+                uuid,
+                identifiers.get("scryfallId", ""),
+                card.get("name", "Unknown"),
+                set_code,
+                number,
+                card.get("rarity", ""),
+                card.get("borderColor", "black"),
+                1 if card.get("isFullArt", False) else 0,
+                json.dumps(frame_effects) if frame_effects else None,
+                purchase_urls.get("cardKingdom", ""),
+                purchase_urls.get("cardKingdomFoil", ""),
+                imported_at,
+            ))
+            uuid_map_rows.append((uuid, set_code, number))
+
+        # Booster data
+        booster = set_data.get("booster")
+        if not booster:
+            continue
+
+        set_name = set_data.get("name", set_code_raw)
+        sets_with_boosters.append((set_code, set_name))
+
+        for product, product_data in booster.items():
+            sheets = product_data.get("sheets", {})
+            variants = product_data.get("boosters", [])
+
+            # Sheets → mtgjson_booster_sheets
+            for sheet_name, sheet in sheets.items():
+                is_foil = 1 if sheet.get("foil", False) else 0
+                for card_uuid, weight in sheet.get("cards", {}).items():
+                    sheet_rows.append((
+                        set_code, product, sheet_name, is_foil,
+                        card_uuid, int(weight),
+                    ))
+
+            # Variants → mtgjson_booster_configs
+            for variant_index, variant in enumerate(variants):
+                variant_weight = variant.get("weight", 1)
+                for sheet_name, card_count in variant.get("contents", {}).items():
+                    config_rows.append((
+                        set_code, product, variant_index, int(variant_weight),
+                        sheet_name, int(card_count),
+                    ))
+
+    # Bulk insert
+    print(f"  Inserting {len(printing_rows)} printings ...")
+    conn.executemany(
+        "INSERT OR IGNORE INTO mtgjson_printings "
+        "(uuid, scryfall_id, name, set_code, number, rarity, border_color, "
+        "is_full_art, frame_effects, ck_url, ck_url_foil, imported_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        printing_rows,
+    )
+
+    conn.executemany(
+        "INSERT OR IGNORE INTO mtgjson_uuid_map (uuid, set_code, collector_number) VALUES (?, ?, ?)",
+        uuid_map_rows,
+    )
+
+    # Insert sets with booster data
+    for sc, sn in sets_with_boosters:
+        conn.execute(
+            "INSERT OR IGNORE INTO sets (set_code, set_name) VALUES (?, ?)",
+            (sc, sn),
+        )
+
+    print(f"  Inserting {len(sheet_rows)} booster sheet rows ...")
+    conn.executemany(
+        "INSERT INTO mtgjson_booster_sheets "
+        "(set_code, product, sheet_name, is_foil, uuid, weight) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        sheet_rows,
+    )
+
+    print(f"  Inserting {len(config_rows)} booster config rows ...")
+    conn.executemany(
+        "INSERT INTO mtgjson_booster_configs "
+        "(set_code, product, variant_index, variant_weight, sheet_name, card_count) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        config_rows,
+    )
+
+    conn.commit()
+    conn.close()
+
+    elapsed = time.time() - t0
+    print(f"  Sets: {set_count} total, {len(sets_with_boosters)} with boosters")
+    print(f"  Printings: {len(printing_rows)}")
+    print(f"  Booster sheet rows: {len(sheet_rows)}")
+    print(f"  Booster config rows: {len(config_rows)}")
+    print(f"  UUID map rows: {len(uuid_map_rows)}")
+    print(f"  Elapsed: {elapsed:.1f}s")
 
 
 def _fetch_prices(force: bool = False):

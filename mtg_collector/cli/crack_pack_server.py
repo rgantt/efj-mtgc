@@ -3832,11 +3832,6 @@ def register(subparsers):
         help="Port to serve on (default: 8080)",
     )
     parser.add_argument(
-        "--mtgjson",
-        default=None,
-        help="Path to AllPrintings.json (default: ~/.mtgc/AllPrintings.json)",
-    )
-    parser.add_argument(
         "--db",
         default=None,
         help="Path to collection SQLite database (default: ~/.mtgc/collection.sqlite)",
@@ -3856,26 +3851,9 @@ def run(args):
         print("Card ingestion (OCR + corner reading) requires an Anthropic API key.", file=sys.stderr)
         sys.exit(1)
 
-    mtgjson_path = Path(args.mtgjson) if args.mtgjson else None
     db_path = get_db_path(getattr(args, "db", None))
 
-    gen = PackGenerator(mtgjson_path)
-
-    # AllPrintings.json is only needed for crack-a-pack endpoints
-    allprintings = gen.mtgjson_path
-    if not allprintings.exists():
-        print(f"Warning: AllPrintings.json not found: {allprintings}", file=sys.stderr)
-        print("Crack-a-pack features will be unavailable. Run: mtg data fetch", file=sys.stderr)
-        gen = None
-    else:
-        # Pre-warm AllPrintings.json in background thread
-        def _warm_allprintings():
-            print(f"[startup] Loading AllPrintings.json ({allprintings}) ...", flush=True)
-            _ = gen.data
-            print(f"[startup] AllPrintings.json loaded ({len(gen.data.get('data', {}))} sets)", flush=True)
-
-        warm_thread = threading.Thread(target=_warm_allprintings, daemon=True)
-        warm_thread.start()
+    gen = PackGenerator(db_path)
 
     # Start background ingest worker pool
     global _ingest_executor, _background_db_path

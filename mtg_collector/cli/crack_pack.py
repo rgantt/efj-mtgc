@@ -1,8 +1,8 @@
 """Crack-a-pack command: mtg crack-pack --set EOE --product collector"""
 
 import sys
-from pathlib import Path
 
+from mtg_collector.db.connection import get_db_path
 from mtg_collector.services.pack_generator import PackGenerator
 
 
@@ -28,26 +28,20 @@ def register(subparsers):
         action="store_true",
         help="List available booster products for the set",
     )
-    parser.add_argument(
-        "--mtgjson",
-        default=None,
-        help="Path to AllPrintings.json (default: ~/.mtgc/AllPrintings.json)",
-    )
     parser.set_defaults(func=run)
 
 
 def run(args):
     """Run the crack-pack command."""
-    mtgjson_path = Path(args.mtgjson) if args.mtgjson else None
+    db_path = get_db_path(getattr(args, "db_path", None))
 
     try:
-        gen = PackGenerator(mtgjson_path)
-    except FileNotFoundError:
-        print("Error: AllPrintings.json not found.", file=sys.stderr)
-        print("Run 'mtg data fetch' to download it.", file=sys.stderr)
+        gen = PackGenerator(db_path)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    set_code = args.set.upper()
+    set_code = args.set.lower()
 
     if args.list:
         try:
@@ -56,8 +50,7 @@ def run(args):
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-        set_data = gen._get_set(set_code)
-        print(f"Available boosters for {set_code} ({set_data.get('name', '')}):")
+        print(f"Available boosters for {set_code.upper()}:")
         for p in products:
             print(f"  {p}")
         return
@@ -74,7 +67,7 @@ def run(args):
     tw = result["total_weight"]
 
     print(f"\n{'=' * 70}")
-    print(f"  {set_code} {args.product.title()} Booster — {len(pack)} cards")
+    print(f"  {set_code.upper()} {args.product.title()} Booster — {len(pack)} cards")
     print(f"  Variant {vi} (weight {vw}/{tw} = {vw/tw:.1%})")
     print(f"{'=' * 70}\n")
 

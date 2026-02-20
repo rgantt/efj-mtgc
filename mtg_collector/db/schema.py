@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -215,6 +215,49 @@ SELECT set_code, collector_number, source, price_type, price, observed_at
 FROM prices
 WHERE observed_at = (SELECT MAX(observed_at) FROM prices);
 
+-- MTGJSON card printings (imported from AllPrintings.json)
+CREATE TABLE IF NOT EXISTS mtgjson_printings (
+    uuid            TEXT PRIMARY KEY,
+    scryfall_id     TEXT,
+    name            TEXT NOT NULL,
+    set_code        TEXT NOT NULL,
+    number          TEXT NOT NULL,
+    rarity          TEXT,
+    border_color    TEXT,
+    is_full_art     INTEGER DEFAULT 0,
+    frame_effects   TEXT,
+    ck_url          TEXT,
+    ck_url_foil     TEXT,
+    imported_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_mtgjson_scryfall ON mtgjson_printings(scryfall_id);
+CREATE INDEX IF NOT EXISTS idx_mtgjson_set ON mtgjson_printings(set_code);
+
+-- MTGJSON booster sheet entries (uuid/weight per sheet)
+CREATE TABLE IF NOT EXISTS mtgjson_booster_sheets (
+    id          INTEGER PRIMARY KEY,
+    set_code    TEXT NOT NULL,
+    product     TEXT NOT NULL,
+    sheet_name  TEXT NOT NULL,
+    is_foil     INTEGER DEFAULT 0,
+    uuid        TEXT NOT NULL,
+    weight      INTEGER NOT NULL,
+    FOREIGN KEY (uuid) REFERENCES mtgjson_printings(uuid)
+);
+CREATE INDEX IF NOT EXISTS idx_booster_sheet_lookup ON mtgjson_booster_sheets(set_code, product, sheet_name);
+
+-- MTGJSON booster variant configurations
+CREATE TABLE IF NOT EXISTS mtgjson_booster_configs (
+    id              INTEGER PRIMARY KEY,
+    set_code        TEXT NOT NULL,
+    product         TEXT NOT NULL,
+    variant_index   INTEGER NOT NULL,
+    variant_weight  INTEGER NOT NULL,
+    sheet_name      TEXT NOT NULL,
+    card_count      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_config_set_product ON mtgjson_booster_configs(set_code, product);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_collection_scryfall ON collection(scryfall_id);
 CREATE INDEX IF NOT EXISTS idx_collection_source ON collection(source);
@@ -327,6 +370,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v13_to_v14(conn)
         if current < 15:
             _migrate_v14_to_v15(conn)
+        if current < 16:
+            _migrate_v15_to_v16(conn)
 
     # Record schema version
     conn.execute(
@@ -854,6 +899,51 @@ def _migrate_v14_to_v15(conn: sqlite3.Connection):
     """)
 
 
+def _migrate_v15_to_v16(conn: sqlite3.Connection):
+    """Add MTGJSON printings, booster sheets, and booster configs tables."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS mtgjson_printings (
+            uuid            TEXT PRIMARY KEY,
+            scryfall_id     TEXT,
+            name            TEXT NOT NULL,
+            set_code        TEXT NOT NULL,
+            number          TEXT NOT NULL,
+            rarity          TEXT,
+            border_color    TEXT,
+            is_full_art     INTEGER DEFAULT 0,
+            frame_effects   TEXT,
+            ck_url          TEXT,
+            ck_url_foil     TEXT,
+            imported_at     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_mtgjson_scryfall ON mtgjson_printings(scryfall_id);
+        CREATE INDEX IF NOT EXISTS idx_mtgjson_set ON mtgjson_printings(set_code);
+
+        CREATE TABLE IF NOT EXISTS mtgjson_booster_sheets (
+            id          INTEGER PRIMARY KEY,
+            set_code    TEXT NOT NULL,
+            product     TEXT NOT NULL,
+            sheet_name  TEXT NOT NULL,
+            is_foil     INTEGER DEFAULT 0,
+            uuid        TEXT NOT NULL,
+            weight      INTEGER NOT NULL,
+            FOREIGN KEY (uuid) REFERENCES mtgjson_printings(uuid)
+        );
+        CREATE INDEX IF NOT EXISTS idx_booster_sheet_lookup ON mtgjson_booster_sheets(set_code, product, sheet_name);
+
+        CREATE TABLE IF NOT EXISTS mtgjson_booster_configs (
+            id              INTEGER PRIMARY KEY,
+            set_code        TEXT NOT NULL,
+            product         TEXT NOT NULL,
+            variant_index   INTEGER NOT NULL,
+            variant_weight  INTEGER NOT NULL,
+            sheet_name      TEXT NOT NULL,
+            card_count      INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_config_set_product ON mtgjson_booster_configs(set_code, product);
+    """)
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
@@ -861,6 +951,9 @@ def drop_all_tables(conn: sqlite3.Connection):
         DROP VIEW IF EXISTS latest_prices;
         DROP TABLE IF EXISTS price_fetch_log;
         DROP TABLE IF EXISTS prices;
+        DROP TABLE IF EXISTS mtgjson_booster_configs;
+        DROP TABLE IF EXISTS mtgjson_booster_sheets;
+        DROP TABLE IF EXISTS mtgjson_printings;
         DROP TABLE IF EXISTS mtgjson_uuid_map;
         DROP TABLE IF EXISTS status_log;
         DROP TABLE IF EXISTS wishlist;

@@ -174,10 +174,9 @@ class TestSchemaV15:
         view_names = [r[0] for r in views]
         assert "latest_prices" in view_names
 
-    def test_schema_version_is_15(self, test_db):
+    def test_schema_version_is_current(self, test_db):
         _, conn = test_db
-        assert get_current_version(conn) == 15
-        assert SCHEMA_VERSION == 15
+        assert get_current_version(conn) == SCHEMA_VERSION
 
 
 class TestUuidMap:
@@ -489,7 +488,7 @@ class TestMigrationV14ToV15:
         conn2 = get_connection(db_path)
         init_db(conn2)
 
-        assert get_current_version(conn2) == 15
+        assert get_current_version(conn2) == SCHEMA_VERSION
 
         tables = conn2.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
