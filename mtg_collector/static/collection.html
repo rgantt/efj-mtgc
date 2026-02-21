@@ -128,6 +128,25 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 
 .sidebar.open { left: 0; }
 
+/* Columns drawer — slides in from the right */
+.col-drawer-backdrop {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 90;
+}
+.col-drawer-backdrop.active { display: block; }
+
+.col-drawer {
+  left: auto;
+  right: -320px;
+  border-right: none;
+  border-left: 2px solid #0f3460;
+  transition: right 0.25s ease;
+}
+.col-drawer.open { right: 0; left: auto; }
+
 .sidebar h3 {
   font-size: 0.85rem;
   color: #888;
@@ -674,17 +693,6 @@ a.lineage-link {
   box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 .col-config-dropdown.open { display: block; }
-.col-config-dropdown label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 14px;
-  font-size: 0.82rem;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.col-config-dropdown label:hover { background: #0f3460; }
-.col-config-dropdown input[type="checkbox"] { accent-color: #e94560; }
 
 /* Sort arrow */
 .sort-arrow { font-size: 0.7rem; margin-left: 2px; }
@@ -744,6 +752,45 @@ a.lineage-link {
   font-weight: 400;
 }
 .menu-item:hover { background: #0f3460; }
+
+/* Image display pill toggle in More menu */
+.more-menu-section {
+  padding: 8px 14px 6px;
+}
+.more-menu-section .more-menu-label {
+  display: block;
+  font-size: 0.75rem;
+  color: #888;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.pill-row {
+  display: flex;
+  gap: 0;
+}
+.pill-row .pill {
+  padding: 5px 14px;
+  border: 1px solid #0f3460;
+  background: #16213e;
+  color: #888;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  user-select: none;
+}
+.pill-row .pill:first-child { border-radius: 6px 0 0 6px; }
+.pill-row .pill:last-child  { border-radius: 0 6px 6px 0; }
+.pill-row .pill + .pill     { border-left: none; }
+.pill-row .pill.active {
+  background: #e94560;
+  border-color: #e94560;
+  color: #fff;
+}
+.pill-row .pill:hover:not(.active) {
+  border-color: #e94560;
+  color: #e0e0e0;
+}
 
 /* Selection bar */
 .selection-bar {
@@ -1073,6 +1120,80 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 }
 .buy-missing-dropdown.open { display: block; }
 
+/* Copy sections in modal */
+.copy-section {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+}
+.copy-section .copy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+.copy-section .copy-header .copy-id { color: #888; font-size: 0.75rem; }
+.disposition-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.disposition-badge.sold { background: #1a5c3a; color: #7ee8b0; }
+.disposition-badge.traded { background: #5c4a1a; color: #e8d07e; }
+.disposition-badge.gifted { background: #1a3a5c; color: #7eb8e8; }
+.disposition-badge.lost { background: #5c1a1a; color: #e87e7e; }
+.disposition-badge.listed { background: #3a1a5c; color: #b87ee8; }
+.dispose-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+.dispose-controls select, .dispose-controls input {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  background: #16213e;
+  border: 1px solid #0f3460;
+  color: #e0e0e0;
+  border-radius: 4px;
+}
+.dispose-controls input { width: 80px; }
+.dispose-btn {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #0f3460;
+  border: 1px solid #0f3460;
+  color: #7ec8e3;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.dispose-btn:hover { background: #1a4a7a; }
+.delete-copy-btn {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  background: #5c1a1a;
+  border: 1px solid #7a2a2a;
+  color: #e87e7e;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.delete-copy-btn:hover { background: #7a2a2a; color: #fff; }
+#sel-delete-btn {
+  background: #5c1a1a;
+  border-color: #7a2a2a;
+  color: #e87e7e;
+}
+#sel-delete-btn:hover { background: #7a2a2a; color: #fff; }
+
 @media (max-width: 768px) {
   #search-input { width: 140px; }
   .sidebar { width: 280px; left: -300px; }
@@ -1092,14 +1213,18 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
       <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
     </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
-    <div class="col-config-wrap">
-      <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
-      <div class="col-config-dropdown" id="col-config-dropdown"></div>
-    </div>
+    <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
     <div class="col-config-wrap">
       <button class="secondary" id="more-menu-btn">More</button>
       <div class="col-config-dropdown" id="more-menu-dropdown">
         <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
+        <div class="more-menu-section">
+          <span class="more-menu-label">Image Display</span>
+          <div class="pill-row" id="image-display-pills">
+            <div class="pill" data-value="crop">Crop</div>
+            <div class="pill" data-value="contain">Contain</div>
+          </div>
+        </div>
       </div>
     </div>
     <button class="secondary" id="include-unowned-btn" disabled title="Select a set first">+ Unowned</button>
@@ -1123,10 +1248,17 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
     <span id="sel-share-result"></span>
     <button id="sel-want-btn">Want</button>
     <button id="sel-share-btn">Share</button>
+    <button id="sel-delete-btn">Delete</button>
   </div>
 </div>
 
 <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+<div class="col-drawer-backdrop" id="col-drawer-backdrop"></div>
+
+<aside class="sidebar col-drawer" id="col-drawer">
+  <h3>Columns</h3>
+  <div class="pill-group" id="col-config-dropdown"></div>
+</aside>
 <div class="layout">
   <aside class="sidebar" id="sidebar">
     <h3>Color</h3>
@@ -1200,6 +1332,10 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
     <div class="pill-group" id="status-filters">
       <input type="checkbox" id="sf-ordered" value="ordered"><label for="sf-ordered">Ordered</label>
       <input type="checkbox" id="sf-wanted" value="wanted"><label for="sf-wanted">Wanted</label>
+      <input type="checkbox" id="sf-sold" value="sold"><label for="sf-sold">Sold</label>
+      <input type="checkbox" id="sf-traded" value="traded"><label for="sf-traded">Traded</label>
+      <input type="checkbox" id="sf-gifted" value="gifted"><label for="sf-gifted">Gifted</label>
+      <input type="checkbox" id="sf-lost" value="lost"><label for="sf-lost">Lost</label>
     </div>
 
     <h3>Treatment</h3>
@@ -1281,6 +1417,8 @@ const modalClose = document.getElementById('modal-close');
 const clearFiltersBtn = document.getElementById('clear-filters-btn');
 const colConfigBtn = document.getElementById('col-config-btn');
 const colConfigDropdown = document.getElementById('col-config-dropdown');
+const colDrawer = document.getElementById('col-drawer');
+const colDrawerBackdrop = document.getElementById('col-drawer-backdrop');
 const moreMenuBtn = document.getElementById('more-menu-btn');
 const moreMenuDropdown = document.getElementById('more-menu-dropdown');
 const selectionBar = document.getElementById('selection-bar');
@@ -1399,12 +1537,12 @@ const COL_SORT_MAP = Object.fromEntries(ALL_COLUMNS.map(c => [c.key, c.sort]));
 function renderColConfig() {
   colConfigDropdown.innerHTML = '';
   for (const col of ALL_COLUMNS) {
-    const label = document.createElement('label');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = enabledCols.includes(col.key);
-    cb.addEventListener('change', () => {
-      if (cb.checked) {
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.id = 'cc-' + col.key;
+    input.checked = enabledCols.includes(col.key);
+    input.addEventListener('change', () => {
+      if (input.checked) {
         if (!enabledCols.includes(col.key)) enabledCols.push(col.key);
       } else {
         enabledCols = enabledCols.filter(k => k !== col.key);
@@ -1412,27 +1550,31 @@ function renderColConfig() {
       saveColumns();
       render();
     });
-    label.appendChild(cb);
-    label.appendChild(document.createTextNode(col.label));
+    const label = document.createElement('label');
+    label.htmlFor = 'cc-' + col.key;
+    label.textContent = col.label;
+    colConfigDropdown.appendChild(input);
     colConfigDropdown.appendChild(label);
   }
 }
 renderColConfig();
 
-colConfigBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  colConfigDropdown.classList.toggle('open');
-  moreMenuDropdown.classList.remove('open');
-});
+function toggleColDrawer(open) {
+  if (open === undefined) open = !colDrawer.classList.contains('open');
+  colDrawer.classList.toggle('open', open);
+  colDrawerBackdrop.classList.toggle('active', open);
+  colConfigBtn.classList.toggle('active', open);
+}
+
+colConfigBtn.addEventListener('click', () => toggleColDrawer());
+colDrawerBackdrop.addEventListener('click', () => toggleColDrawer(false));
+
 moreMenuBtn.addEventListener('click', (e) => {
   e.stopPropagation();
   moreMenuDropdown.classList.toggle('open');
-  colConfigDropdown.classList.remove('open');
+  toggleColDrawer(false);
 });
 document.addEventListener('click', (e) => {
-  if (!colConfigDropdown.contains(e.target) && e.target !== colConfigBtn) {
-    colConfigDropdown.classList.remove('open');
-  }
   if (!moreMenuDropdown.contains(e.target) && e.target !== moreMenuBtn) {
     moreMenuDropdown.classList.remove('open');
   }
@@ -1448,6 +1590,18 @@ document.getElementById('toggle-multiselect-btn').addEventListener('click', () =
   lastSelectedIdx = null;
   updateSelectionBar();
   render();
+});
+
+document.querySelectorAll('#image-display-pills .pill').forEach(pill => {
+  pill.addEventListener('click', async () => {
+    _settings.image_display = pill.dataset.value;
+    applySettings();
+    await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_display: pill.dataset.value }),
+    });
+  });
 });
 
 document.getElementById('sel-all').addEventListener('click', () => {
@@ -1521,6 +1675,53 @@ document.getElementById('sel-want-btn').addEventListener('click', async () => {
   selShareResult.textContent = `${result.added.length} added to wishlist` + (errCount ? `, ${errCount} failed` : '');
   btn.disabled = false;
   btn.textContent = 'Want';
+});
+
+document.getElementById('sel-delete-btn').addEventListener('click', async () => {
+  if (selectedCards.size === 0) return;
+  // Calculate total card count from selected rows
+  let totalQty = 0;
+  const selectedCardData = [];
+  for (const i of selectedCards) {
+    const c = allCards[i];
+    totalQty += c.qty || 1;
+    selectedCardData.push(c);
+  }
+  if (!confirm(`Delete ${totalQty} card${totalQty !== 1 ? 's' : ''} from your collection? This cannot be undone.`)) return;
+  const delBtn = document.getElementById('sel-delete-btn');
+  delBtn.disabled = true;
+  delBtn.textContent = 'Deleting...';
+  // Fetch copies for each selected card to get individual IDs
+  const allIds = [];
+  for (const c of selectedCardData) {
+    try {
+      const res = await fetch(`/api/collection/copies?scryfall_id=${encodeURIComponent(c.scryfall_id)}`);
+      const copies = await res.json();
+      for (const copy of copies) {
+        if (copy.status === 'owned' || copy.status === 'ordered') {
+          allIds.push(copy.id);
+        }
+      }
+    } catch {}
+  }
+  if (allIds.length === 0) {
+    selShareResult.textContent = 'No deleteable copies found';
+    delBtn.disabled = false;
+    delBtn.textContent = 'Delete';
+    return;
+  }
+  const res = await fetch('/api/collection/bulk-delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids: allIds }),
+  });
+  const result = await res.json();
+  selShareResult.textContent = `${result.deleted} deleted` + (result.skipped ? `, ${result.skipped} skipped` : '');
+  selectedCards.clear();
+  updateSelectionBar();
+  delBtn.disabled = false;
+  delBtn.textContent = 'Delete';
+  fetchCollection();
 });
 
 function updateSelectionBar() {
@@ -1679,12 +1880,6 @@ function showCardModal(card) {
         <div id="modal-copies-container" class="modal-copies"></div>
       </div>
       ${tagsHtml ? `<div class="modal-section"><span class="modal-section-title">Treatments</span><div class="modal-tags">${tagsHtml}</div></div>` : ''}
-      ${card.order_id ? `<div class="modal-section"><span class="modal-section-title">Order</span>
-        <div class="modal-row"><span class="label">Seller</span><span class="value">${card.order_seller || ''}</span></div>
-        <div class="modal-row"><span class="label">Order #</span><span class="value">${card.order_number || ''}</span></div>
-        ${card.order_date ? `<div class="modal-row"><span class="label">Date</span><span class="value">${card.order_date}</span></div>` : ''}
-        ${card.purchase_price ? `<div class="modal-row"><span class="label">Price</span><span class="value">$${parseFloat(card.purchase_price).toFixed(2)}</span></div>` : ''}
-      </div>` : ''}
       ${(() => {
         const wl = getWishlistEntry(card);
         if (!wl) return '';
@@ -1702,10 +1897,10 @@ function showCardModal(card) {
         <a class="badge link" href="${ckUrl}" target="_blank" rel="noopener">CK${ckPrice !== '—' ? ' ' + ckPrice : ''}</a>
         <button class="want-btn${getWishlistEntry(card) ? ' wanted' : ''}" id="modal-want-btn">${getWishlistEntry(card) ? 'Wanted' : 'Want'}</button>
       </div>
-      ${card.ingest_lineage ? `<div class="modal-section"><span class="modal-section-title">Lineage</span>
-        ${card.ingest_lineage.map(l => `<div class="modal-row"><span class="label">${new Date(l.created_at).toLocaleDateString()}</span><span class="value"><a href="/correct?image_id=${l.image_id}&card_idx=${l.card_idx}">View image</a></span></div>`).join('')}
-      </div>` : ''}
+      <div id="copies-container"><div style="color:#888;font-size:0.85rem;padding:8px 0;">Loading copies...</div></div>
     `;
+    // Load per-copy data
+    loadModalCopies(card);
   }
 
   renderDetails(0);
@@ -1804,6 +1999,144 @@ function showCardModal(card) {
   };
 
   modalOverlay.classList.add('active');
+}
+
+// --- Per-copy modal loader ---
+async function loadModalCopies(card) {
+  const container = document.getElementById('copies-container');
+  if (!container) return;
+  try {
+    const res = await fetch(`/api/collection/copies?scryfall_id=${encodeURIComponent(card.scryfall_id)}`);
+    const copies = await res.json();
+    if (!copies.length) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = `<div class="modal-section"><span class="modal-section-title">Copies (${copies.length})</span></div>` +
+      copies.map(copy => renderCopySection(copy)).join('');
+    // Wire up dispose/delete handlers
+    container.querySelectorAll('.dispose-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = parseInt(btn.dataset.id);
+        const row = btn.closest('.copy-section');
+        const sel = row.querySelector('.dispose-select');
+        const priceInput = row.querySelector('.dispose-price');
+        const noteInput = row.querySelector('.dispose-note');
+        const newStatus = sel.value;
+        if (!newStatus) return;
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+        const body = { new_status: newStatus };
+        if (priceInput && priceInput.value) body.sale_price = parseFloat(priceInput.value);
+        if (noteInput && noteInput.value) body.note = noteInput.value;
+        const r = await fetch(`/api/collection/${id}/dispose`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (r.ok) {
+          loadModalCopies(card);
+          fetchCollection();
+        } else {
+          const err = await r.json();
+          alert(err.error || 'Dispose failed');
+          btn.disabled = false;
+          btn.textContent = 'Dispose';
+        }
+      });
+    });
+    container.querySelectorAll('.delete-copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = parseInt(btn.dataset.id);
+        if (!confirm(`Delete copy #${id}? This cannot be undone.`)) return;
+        btn.disabled = true;
+        btn.textContent = 'Deleting...';
+        const r = await fetch(`/api/collection/${id}?confirm=true`, { method: 'DELETE' });
+        if (r.ok) {
+          loadModalCopies(card);
+          fetchCollection();
+        } else {
+          const err = await r.json();
+          alert(err.error || 'Delete failed');
+          btn.disabled = false;
+          btn.textContent = 'Delete';
+        }
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div style="color:#e87e7e;font-size:0.85rem;">Failed to load copies</div>`;
+  }
+}
+
+function renderCopySection(copy) {
+  const date = copy.acquired_at ? new Date(copy.acquired_at).toLocaleDateString() : '';
+  const isActive = copy.status === 'owned' || copy.status === 'listed';
+  const isDeleteable = copy.status === 'owned' || copy.status === 'ordered';
+
+  let statusBadge = '';
+  if (!isActive) {
+    const lastLog = copy.status_history && copy.status_history.length
+      ? copy.status_history[copy.status_history.length - 1] : null;
+    const note = lastLog && lastLog.note ? ` — ${lastLog.note}` : '';
+    const logDate = lastLog ? new Date(lastLog.changed_at).toLocaleDateString() : '';
+    statusBadge = `<span class="disposition-badge ${copy.status}">${copy.status}</span>`;
+    if (logDate || note) statusBadge += `<span style="font-size:0.75rem;color:#888;margin-left:6px;">${logDate}${note}</span>`;
+  }
+
+  let orderHtml = '';
+  if (copy.order_id) {
+    orderHtml = `<div class="modal-row"><span class="label">Order</span><span class="value">${copy.seller_name || ''} #${copy.order_number || ''}${copy.order_date ? ' (' + copy.order_date + ')' : ''}</span></div>`;
+  }
+
+  let lineageHtml = '';
+  if (copy.image_md5) {
+    const linkUrl = copy.image_id ? `/correct?image_id=${copy.image_id}&card_idx=${copy.card_index}` : '#';
+    lineageHtml = `<div class="modal-row"><span class="label">Lineage</span><span class="value"><a href="${linkUrl}">View source image</a></span></div>`;
+  }
+
+  let priceHtml = '';
+  if (copy.purchase_price) {
+    priceHtml = `<div class="modal-row"><span class="label">Price</span><span class="value">$${parseFloat(copy.purchase_price).toFixed(2)}</span></div>`;
+  }
+  if (copy.sale_price) {
+    priceHtml += `<div class="modal-row"><span class="label">Sale Price</span><span class="value">$${parseFloat(copy.sale_price).toFixed(2)}</span></div>`;
+  }
+
+  const condLabel = copy.condition || 'Near Mint';
+  const finLabel = copy.finish ? copy.finish.charAt(0).toUpperCase() + copy.finish.slice(1) : '';
+
+  let controlsHtml = '';
+  if (isActive) {
+    controlsHtml = `<div class="dispose-controls">
+      <select class="dispose-select">
+        <option value="">Dispose...</option>
+        <option value="sold">Sold</option>
+        <option value="traded">Traded</option>
+        <option value="gifted">Gifted</option>
+        <option value="lost">Lost</option>
+        ${copy.status === 'owned' ? '<option value="listed">Listed</option>' : ''}
+        ${copy.status === 'listed' ? '<option value="owned">Unlist</option>' : ''}
+      </select>
+      <input type="number" step="0.01" placeholder="Price" class="dispose-price">
+      <input type="text" placeholder="Note" class="dispose-note">
+      <button class="dispose-btn" data-id="${copy.id}">Dispose</button>
+      ${isDeleteable ? `<button class="delete-copy-btn" data-id="${copy.id}">Delete</button>` : ''}
+    </div>`;
+  } else if (isDeleteable) {
+    controlsHtml = `<div class="dispose-controls">
+      <button class="delete-copy-btn" data-id="${copy.id}">Delete</button>
+    </div>`;
+  }
+
+  return `<div class="copy-section">
+    <div class="copy-header">
+      <span>${finLabel} ${condLabel} — ${copy.source || ''} ${date ? '(' + date + ')' : ''}</span>
+      <span class="copy-id">#${copy.id}</span>
+    </div>
+    ${statusBadge ? `<div style="margin-bottom:6px;">${statusBadge}</div>` : ''}
+    ${orderHtml}${priceHtml}${lineageHtml}
+    ${controlsHtml}
+  </div>`;
 }
 
 // --- CK URL helper ---
@@ -2047,7 +2380,8 @@ function updateViewButtons() {
   viewTableBtn.classList.toggle('active', currentView === 'table');
   viewGridBtn.classList.toggle('active', currentView === 'grid');
   gridSizeWrap.style.display = currentView === 'grid' ? '' : 'none';
-  document.querySelector('.col-config-wrap').style.display = currentView === 'table' ? '' : 'none';
+  colConfigBtn.style.display = currentView === 'table' ? '' : 'none';
+  if (currentView !== 'table') toggleColDrawer(false);
 }
 updateViewButtons();
 
@@ -2096,6 +2430,12 @@ function getFetchParams() {
     for (const code of selectedSets.keys()) {
       params.append('filter_set', code);
     }
+  }
+  // Disposition statuses need server re-fetch with status=all
+  const dispositionStatuses = ['sold', 'traded', 'gifted', 'lost'];
+  const hasDisposition = dispositionStatuses.some(s => document.getElementById('sf-' + s)?.checked);
+  if (hasDisposition) {
+    params.set('status', 'all');
   }
   return params.toString();
 }
@@ -2224,13 +2564,14 @@ function applyAllClientFilters(cards) {
     });
   }
 
-  // Status: Ordered / Wanted
-  const orderedOnly = document.getElementById('sf-ordered').checked;
-  const wantedOnly = document.getElementById('sf-wanted').checked;
-  if (orderedOnly || wantedOnly) {
+  // Status filters
+  const statusChecked = Array.from(document.querySelectorAll('#status-filters input:checked')).map(cb => cb.value);
+  if (statusChecked.length) {
     cards = cards.filter(c => {
-      if (orderedOnly && c.status === 'ordered') return true;
-      if (wantedOnly && isCardWanted(c)) return true;
+      for (const sv of statusChecked) {
+        if (sv === 'wanted' && isCardWanted(c)) return true;
+        if (sv !== 'wanted' && c.status === sv) return true;
+      }
       return false;
     });
   }
@@ -2686,8 +3027,19 @@ searchInput.addEventListener('input', () => {
 });
 
 // All other filters are client-side — instant refilter, no fetch
-document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input, #badge-filters input, #type-filters input, #status-filters input').forEach(cb => {
+document.querySelectorAll('#color-filters input, #rarity-filters input, #finish-filters input, #badge-filters input, #type-filters input').forEach(cb => {
   cb.addEventListener('change', refilterAndRender);
+});
+// Status filters: disposition statuses (sold/traded/gifted/lost) need server re-fetch
+const _dispositionValues = new Set(['sold', 'traded', 'gifted', 'lost']);
+document.querySelectorAll('#status-filters input').forEach(cb => {
+  cb.addEventListener('change', () => {
+    if (_dispositionValues.has(cb.value)) {
+      fetchCollection();
+    } else {
+      refilterAndRender();
+    }
+  });
 });
 
 const debouncedRefilter = () => {
@@ -2733,6 +3085,10 @@ function applySettings() {
     css += '.sheet-card-img-wrap img { object-fit: contain !important; object-position: center !important; }\n';
   }
   style.textContent = css;
+  // Sync image display pill selection
+  document.querySelectorAll('#image-display-pills .pill').forEach(p => {
+    p.classList.toggle('active', p.dataset.value === _settings.image_display);
+  });
 }
 
 // --- Wishlist state ---

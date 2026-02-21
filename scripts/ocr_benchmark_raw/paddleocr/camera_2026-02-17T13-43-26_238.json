@@ -1,0 +1,82 @@
+[
+  {
+    "text": "City Pigeon",
+    "x": 250.0,
+    "y": 642.0,
+    "w": 169.0,
+    "h": 38.0,
+    "confidence": 0.961
+  },
+  {
+    "text": "Creature-Bird",
+    "x": 262.0,
+    "y": 1078.0,
+    "w": 195.0,
+    "h": 28.0,
+    "confidence": 0.988
+  },
+  {
+    "text": "Flying",
+    "x": 264.0,
+    "y": 1123.0,
+    "w": 88.0,
+    "h": 34.0,
+    "confidence": 0.998
+  },
+  {
+    "text": "When this creature leaves the",
+    "x": 266.0,
+    "y": 1156.0,
+    "w": 363.0,
+    "h": 32.0,
+    "confidence": 0.97
+  },
+  {
+    "text": "battlefield, create a Food token. (It's an",
+    "x": 266.0,
+    "y": 1180.0,
+    "w": 488.0,
+    "h": 36.0,
+    "confidence": 0.942
+  },
+  {
+    "text": "artifact with 2,,Sacrifice this token:",
+    "x": 266.0,
+    "y": 1206.0,
+    "w": 469.0,
+    "h": 38.0,
+    "confidence": 0.939
+  },
+  {
+    "text": "You gain 3 life.\"",
+    "x": 270.0,
+    "y": 1238.0,
+    "w": 195.0,
+    "h": 30.0,
+    "confidence": 0.93
+  },
+  {
+    "text": "\"Aw, that was my lunch!",
+    "x": 270.0,
+    "y": 1280.0,
+    "w": 300.0,
+    "h": 40.0,
+    "confidence": 0.957
+  },
+  {
+    "text": "Spider-Man,Peter Parker",
+    "x": 298.0,
+    "y": 1312.0,
+    "w": 294.0,
+    "h": 32.0,
+    "confidence": 0.974
+  },
+  {
+    "text": "1/1",
+    "x": 701.0,
+    "y": 1336.0,
+    "w": 40.0,
+    "h": 24.0,
+    "confidence": 0.995
+  }
+]

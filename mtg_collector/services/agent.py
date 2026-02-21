@@ -23,7 +23,10 @@ You have OCR text fragments from a photo of MTG cards indicating position (bound
 text at that position, and confidence scores from OCR.
 
 YOUR JOB:
-Do your best to identify every card in the image. Repeat this strategy for all cards in the image:
+Do your best to identify every card in the image that is cleary visible. Cards that are
+partially visible or are obviously in the background do not need to be identified.
+
+Repeat this strategy for all cards in the image:
 1. Interpret OCR fragments to find card data. The most important indicators are name, set code, and collector number
 2. Search to verify using query_local_db — when disambiguating printings, JOIN sets to get
    set_name and released_at so you can reason about which sets are plausible
@@ -99,6 +102,8 @@ The DISAMBIGUATION RULE applies in these cases: Return all reasonable candidates
 * OCR gives you text printed on the card. Scryfall's data contains modern wordings of rules
   text on cards (aka Oracle text). These can be very different, so have caution when doing
   rules text matching.
+* Sometimes photos contain cards that are clearly visible in the foreground, and others that are
+  in the background, partly visible. The user is ONLY concernd with foreground cards. 
 """
 
 SYSTEM_CONTENT = [

@@ -1,0 +1,82 @@
+[
+  {
+    "text": "Benalish hero",
+    "x": 242.0,
+    "y": 624.0,
+    "w": 197.0,
+    "h": 38.0,
+    "confidence": 0.959
+  },
+  {
+    "text": "Surnmon Hero",
+    "x": 272.0,
+    "y": 1070.0,
+    "w": 187.0,
+    "h": 26.0,
+    "confidence": 0.901
+  },
+  {
+    "text": "Bands",
+    "x": 298.0,
+    "y": 1120.0,
+    "w": 81.0,
+    "h": 28.0,
+    "confidence": 0.997
+  },
+  {
+    "text": "Benalia has a complex castesystem",
+    "x": 300.0,
+    "y": 1146.0,
+    "w": 397.0,
+    "h": 28.0,
+    "confidence": 0.965
+  },
+  {
+    "text": "that changes with the lunar year.No",
+    "x": 298.0,
+    "y": 1168.0,
+    "w": 415.0,
+    "h": 32.0,
+    "confidence": 0.949
+  },
+  {
+    "text": "matter what the season, the only caste",
+    "x": 298.0,
+    "y": 1196.0,
+    "w": 421.0,
+    "h": 30.0,
+    "confidence": 0.955
+  },
+  {
+    "text": "that cannot be attained by either",
+    "x": 298.0,
+    "y": 1222.0,
+    "w": 397.0,
+    "h": 30.0,
+    "confidence": 0.955
+  },
+  {
+    "text": "heredity or money is that of the hero.",
+    "x": 298.0,
+    "y": 1246.0,
+    "w": 405.0,
+    "h": 32.0,
+    "confidence": 0.954
+  },
+  {
+    "text": "Illus. Douglas Shuler",
+    "x": 278.0,
+    "y": 1348.0,
+    "w": 280.0,
+    "h": 30.0,
+    "confidence": 0.904
+  },
+  {
+    "text": "/",
+    "x": 727.0,
+    "y": 1350.0,
+    "w": 29.0,
+    "h": 20.0,
+    "confidence": 0.527
+  }
+]

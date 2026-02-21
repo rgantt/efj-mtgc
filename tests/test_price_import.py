@@ -422,6 +422,12 @@ class TestMigrationV14ToV15:
                 raw_json TEXT,
                 UNIQUE(set_code, collector_number)
             );
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_number TEXT,
+                seller_name TEXT,
+                created_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS collection (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
@@ -441,8 +447,20 @@ class TestMigrationV14ToV15:
                 misprint INTEGER DEFAULT 0,
                 status TEXT NOT NULL DEFAULT 'owned',
                 sale_price REAL,
-                order_id INTEGER
+                order_id INTEGER REFERENCES orders(id)
             );
+            CREATE VIEW IF NOT EXISTS collection_view AS
+            SELECT c.id, card.name, s.set_name, p.set_code,
+                   p.collector_number, p.rarity, p.promo,
+                   c.finish, c.condition, c.language,
+                   c.purchase_price, c.acquired_at, c.source,
+                   c.source_image, c.notes, c.tags, c.tradelist,
+                   c.status, c.sale_price, c.scryfall_id, p.oracle_id,
+                   c.order_id
+            FROM collection c
+            JOIN printings p ON c.scryfall_id = p.scryfall_id
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code;
             CREATE TABLE IF NOT EXISTS ingest_cache (
                 image_md5 TEXT PRIMARY KEY,
                 image_path TEXT NOT NULL,

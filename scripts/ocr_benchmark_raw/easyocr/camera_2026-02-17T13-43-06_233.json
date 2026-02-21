@@ -1,0 +1,122 @@
+[
+  {
+    "text": "Denalish hero",
+    "bbox": {
+      "x": 243.0,
+      "y": 625.0,
+      "w": 198.0,
+      "h": 38.0
+    },
+    "confidence": 0.71
+  },
+  {
+    "text": "Surrrfon Hero",
+    "bbox": {
+      "x": 270.0,
+      "y": 1070.0,
+      "w": 188.0,
+      "h": 28.0
+    },
+    "confidence": 0.257
+  },
+  {
+    "text": "Bands",
+    "bbox": {
+      "x": 296.0,
+      "y": 1120.0,
+      "w": 82.0,
+      "h": 28.0
+    },
+    "confidence": 0.692
+  },
+  {
+    "text": "Benalia has & complex caste system",
+    "bbox": {
+      "x": 297.0,
+      "y": 1144.0,
+      "w": 400.0,
+      "h": 31.0
+    },
+    "confidence": 0.701
+  },
+  {
+    "text": "that changes with the lunar year:",
+    "bbox": {
+      "x": 298.0,
+      "y": 1170.0,
+      "w": 369.0,
+      "h": 33.0
+    },
+    "confidence": 0.675
+  },
+  {
+    "text": "No",
+    "bbox": {
+      "x": 674.0,
+      "y": 1170.0,
+      "w": 40.0,
+      "h": 26.0
+    },
+    "confidence": 1.0
+  },
+  {
+    "text": "matter what the season, the only caste",
+    "bbox": {
+      "x": 298.0,
+      "y": 1196.0,
+      "w": 424.0,
+      "h": 30.0
+    },
+    "confidence": 0.799
+  },
+  {
+    "text": "that cannot be attained by either",
+    "bbox": {
+      "x": 300.0,
+      "y": 1221.0,
+      "w": 364.0,
+      "h": 30.0
+    },
+    "confidence": 0.924
+  },
+  {
+    "text": "heredity or money is that of the hero",
+    "bbox": {
+      "x": 300.0,
+      "y": 1246.0,
+      "w": 402.0,
+      "h": 32.0
+    },
+    "confidence": 0.765
+  },
+  {
+    "text": "1/1",
+    "bbox": {
+      "x": 716.0,
+      "y": 1344.0,
+      "w": 48.0,
+      "h": 30.0
+    },
+    "confidence": 0.989
+  },
+  {
+    "text": "Douglas Shuler",
+    "bbox": {
+      "x": 372.0,
+      "y": 1350.0,
+      "w": 190.0,
+      "h": 30.0
+    },
+    "confidence": 0.94
+  },
+  {
+    "text": "Illus.",
+    "bbox": {
+      "x": 278.0,
+      "y": 1352.0,
+      "w": 60.0,
+      "h": 26.0
+    },
+    "confidence": 0.679
+  }
+]
