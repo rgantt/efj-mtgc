@@ -25,9 +25,10 @@ def register(subparsers):
     parser.add_argument("--tags", metavar="TAGS", help="Set tags")
     parser.add_argument(
         "--status",
-        choices=["owned", "ordered", "listed", "sold", "removed"],
+        choices=["owned", "ordered", "listed", "sold", "removed", "traded", "gifted", "lost"],
         help="Set lifecycle status",
     )
+    parser.add_argument("--status-note", metavar="NOTE", help="Note for status change (logged in status_log)")
     parser.add_argument("--sale-price", type=float, metavar="PRICE", help="Set sale price (for sold cards)")
     parser.add_argument("--tradelist", type=int, choices=[0, 1], help="Set tradelist flag (deprecated, use --status)")
     parser.add_argument("--alter", type=int, choices=[0, 1], help="Set alter flag")
@@ -112,7 +113,7 @@ def run(args):
         print("No changes specified. Use --help to see available options.")
         return
 
-    collection_repo.update(entry)
+    collection_repo.update(entry, status_note=getattr(args, 'status_note', None))
     conn.commit()
 
     print(f"Updated entry #{args.id}: {', '.join(changes)}")
