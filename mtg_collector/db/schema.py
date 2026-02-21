@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS collection (
     signed INTEGER DEFAULT 0,
     misprint INTEGER DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'owned'
-        CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed')),
+        CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed', 'traded', 'gifted', 'lost')),
     sale_price REAL,
     order_id INTEGER REFERENCES orders(id)
 );
@@ -372,6 +372,8 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v14_to_v15(conn)
         if current < 16:
             _migrate_v15_to_v16(conn)
+        if current < 17:
+            _migrate_v16_to_v17(conn)
 
     # Record schema version
     conn.execute(
@@ -941,6 +943,87 @@ def _migrate_v15_to_v16(conn: sqlite3.Connection):
             card_count      INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_config_set_product ON mtgjson_booster_configs(set_code, product);
+    """)
+
+
+def _migrate_v16_to_v17(conn: sqlite3.Connection):
+    """Expand status CHECK constraint to include traded, gifted, lost.
+
+    SQLite can't ALTER CHECK constraints, so we rebuild the collection table.
+    """
+    conn.executescript("""
+        CREATE TABLE collection_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
+            finish TEXT NOT NULL CHECK(finish IN ('nonfoil', 'foil', 'etched')),
+            condition TEXT NOT NULL DEFAULT 'Near Mint'
+                CHECK(condition IN ('Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged')),
+            language TEXT NOT NULL DEFAULT 'English',
+            purchase_price REAL,
+            acquired_at TEXT NOT NULL,
+            source TEXT NOT NULL,
+            source_image TEXT,
+            notes TEXT,
+            tags TEXT,
+            tradelist INTEGER DEFAULT 0,
+            is_alter INTEGER DEFAULT 0,
+            proxy INTEGER DEFAULT 0,
+            signed INTEGER DEFAULT 0,
+            misprint INTEGER DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'owned'
+                CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed', 'traded', 'gifted', 'lost')),
+            sale_price REAL,
+            order_id INTEGER REFERENCES orders(id)
+        );
+
+        INSERT INTO collection_new SELECT * FROM collection;
+
+        DROP TABLE collection;
+
+        ALTER TABLE collection_new RENAME TO collection;
+
+        CREATE INDEX IF NOT EXISTS idx_collection_scryfall ON collection(scryfall_id);
+        CREATE INDEX IF NOT EXISTS idx_collection_source ON collection(source);
+        CREATE INDEX IF NOT EXISTS idx_collection_status ON collection(status);
+    """)
+
+    # Rebuild collection_view
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+    conn.execute("""
+        CREATE VIEW collection_view AS
+        SELECT
+            c.id,
+            card.name,
+            s.set_name,
+            p.set_code,
+            p.collector_number,
+            p.rarity,
+            p.promo,
+            c.finish,
+            c.condition,
+            c.language,
+            card.type_line,
+            card.mana_cost,
+            card.cmc,
+            card.colors,
+            card.color_identity,
+            p.artist,
+            c.purchase_price,
+            c.acquired_at,
+            c.source,
+            c.source_image,
+            c.notes,
+            c.tags,
+            c.tradelist,
+            c.status,
+            c.sale_price,
+            c.scryfall_id,
+            p.oracle_id,
+            c.order_id
+        FROM collection c
+        JOIN printings p ON c.scryfall_id = p.scryfall_id
+        JOIN cards card ON p.oracle_id = card.oracle_id
+        JOIN sets s ON p.set_code = s.set_code
     """)
 
 
