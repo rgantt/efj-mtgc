@@ -836,6 +836,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._serve_static("explore_sheets.html")
         elif path == "/collection":
             self._serve_static("collection.html")
+        elif path == "/sealed":
+            self._serve_static("sealed.html")
         elif path == "/upload":
             self._serve_static("upload.html")
         elif path == "/recent":
