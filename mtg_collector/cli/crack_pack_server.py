@@ -1036,6 +1036,14 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_import_resolve()
         elif path == "/api/import/commit":
             self._api_import_commit()
+        # Sealed price fetch + TCGPlayer lookup
+        elif path == "/api/sealed/fetch-prices":
+            self._api_sealed_fetch_prices()
+        elif path == "/api/sealed/from-tcgplayer":
+            data = self._read_json_body()
+            if data is None:
+                return
+            self._api_sealed_from_tcgplayer(data)
         # Sealed collection POST routes
         elif path == "/api/sealed/collection":
             data = self._read_json_body()
@@ -4261,6 +4269,63 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True})
         else:
             self._send_json({"error": "Not found"}, 404)
+
+    def _api_sealed_fetch_prices(self):
+        """Trigger TCGCSV sealed price fetch."""
+        from mtg_collector.cli.data_cmd import fetch_sealed_prices
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            result = fetch_sealed_prices(self.db_path, conn=conn)
+        finally:
+            conn.close()
+        self._send_json({"ok": True, **(result or {})})
+
+    def _api_sealed_from_tcgplayer(self, data: dict):
+        """Look up a sealed product by TCGPlayer product ID or URL."""
+        from mtg_collector.db.models import SealedProductRepository
+        from mtg_collector.db.schema import init_db
+
+        raw = data.get("product_id") or data.get("url") or ""
+        # Extract numeric product ID from URL or raw input
+        # URL format: https://www.tcgplayer.com/product/529964/...
+        import re
+        match = re.search(r"(?:product/)?(\d+)", str(raw))
+        if not match:
+            self._send_json({"error": "Could not extract product ID"}, 400)
+            return
+
+        tcg_id = match.group(1)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedProductRepository(conn)
+        product = repo.get_by_tcgplayer_id(tcg_id)
+        conn.close()
+
+        if not product:
+            self._send_json({"error": f"No sealed product with TCGPlayer ID {tcg_id}"}, 404)
+            return
+
+        image_url = None
+        if product.tcgplayer_product_id:
+            image_url = f"https://tcgplayer-cdn.tcgplayer.com/product/{product.tcgplayer_product_id}_200w.jpg"
+
+        self._send_json({
+            "uuid": product.uuid,
+            "name": product.name,
+            "set_code": product.set_code,
+            "category": product.category,
+            "subtype": product.subtype,
+            "tcgplayer_product_id": product.tcgplayer_product_id,
+            "card_count": product.card_count,
+            "release_date": product.release_date,
+            "image_url": image_url,
+            "purchase_url_tcgplayer": product.purchase_url_tcgplayer,
+            "purchase_url_cardkingdom": product.purchase_url_cardkingdom,
+        })
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
