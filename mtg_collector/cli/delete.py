@@ -57,6 +57,7 @@ def run(args):
             print("Cancelled.")
             return
 
+    conn.execute("DELETE FROM ingest_lineage WHERE collection_id = ?", (args.id,))
     deleted = collection_repo.delete(args.id)
     conn.commit()
 
