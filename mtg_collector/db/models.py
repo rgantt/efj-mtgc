@@ -669,6 +669,45 @@ class CollectionRepository:
         cursor = self.conn.execute(query, params)
         return [dict(row) for row in cursor]
 
+    def get_copies(
+        self,
+        scryfall_id: str,
+        finish: Optional[str] = None,
+        condition: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return individual (unaggregated) collection rows for a printing, joined with order data."""
+        query = """
+            SELECT c.id, c.scryfall_id, c.finish, c.condition, c.language,
+                   c.purchase_price, c.acquired_at, c.source, c.status, c.order_id,
+                   o.seller_name as order_seller, o.order_number as order_number,
+                   o.order_date as order_date
+            FROM collection c
+            LEFT JOIN orders o ON c.order_id = o.id
+            WHERE c.scryfall_id = ?
+        """
+        params: list = [scryfall_id]
+        if finish:
+            query += " AND c.finish = ?"
+            params.append(finish)
+        if condition:
+            query += " AND c.condition = ?"
+            params.append(condition)
+        if status:
+            query += " AND c.status = ?"
+            params.append(status)
+        query += " ORDER BY c.acquired_at DESC"
+        cursor = self.conn.execute(query, params)
+        return [dict(row) for row in cursor]
+
+    def receive_card(self, collection_id: int) -> bool:
+        """Receive a single ordered card (flip ordered -> owned). Returns True if updated."""
+        entry = self.get(collection_id)
+        if entry is None or entry.status != "ordered":
+            return False
+        entry.status = "owned"
+        return self.update(entry, status_note="card received")
+
     def count(self, status: Optional[str] = None) -> int:
         """Get total number of entries in collection."""
         if status:
@@ -852,9 +891,10 @@ class OrderRepository:
         return [self._row_to_order(row) for row in cursor]
 
     def list_all(self, source: Optional[str] = None) -> List[Dict[str, Any]]:
-        """List all orders with card counts."""
+        """List all orders with card counts and ordered counts."""
         query = """
-            SELECT o.*, COUNT(c.id) as card_count
+            SELECT o.*, COUNT(c.id) as card_count,
+                   SUM(CASE WHEN c.status = 'ordered' THEN 1 ELSE 0 END) as ordered_count
             FROM orders o
             LEFT JOIN collection c ON c.order_id = o.id
             WHERE 1=1
@@ -885,14 +925,24 @@ class OrderRepository:
         )
         return [dict(row) for row in cursor]
 
-    def receive_order(self, order_id: int) -> int:
-        """Batch flip all ordered cards in this order to owned. Returns count."""
+    def receive_order(self, order_id: int, card_ids: Optional[List[int]] = None) -> int:
+        """Batch flip ordered cards in this order to owned. Returns count.
+
+        If card_ids is provided, only those specific collection entries are received.
+        """
         ts = now_iso()
         # Get IDs of cards to update
-        cursor = self.conn.execute(
-            "SELECT id FROM collection WHERE order_id = ? AND status = 'ordered'",
-            (order_id,),
-        )
+        if card_ids:
+            placeholders = ",".join("?" * len(card_ids))
+            cursor = self.conn.execute(
+                f"SELECT id FROM collection WHERE order_id = ? AND status = 'ordered' AND id IN ({placeholders})",
+                [order_id] + card_ids,
+            )
+        else:
+            cursor = self.conn.execute(
+                "SELECT id FROM collection WHERE order_id = ? AND status = 'ordered'",
+                (order_id,),
+            )
         ids = [row["id"] for row in cursor]
         if not ids:
             return 0
