@@ -190,10 +190,10 @@ class TestSchemaV16:
         assert "mtgjson_booster_sheets" in table_names
         assert "mtgjson_booster_configs" in table_names
 
-    def test_schema_version_is_16(self, test_db):
+    def test_schema_version_is_17(self, test_db):
         _, conn = test_db
-        assert get_current_version(conn) == 16
-        assert SCHEMA_VERSION == 16
+        assert get_current_version(conn) == 17
+        assert SCHEMA_VERSION == 17
 
 
 class TestImportMtgjson:
@@ -406,7 +406,7 @@ class TestMigrationV15ToV16:
         conn = sqlite3.connect(db_path)
         conn.execute("PRAGMA foreign_keys = ON")
 
-        # Create minimal v15 schema
+        # Create minimal v15 schema (includes tables needed by v16→v17 migration)
         conn.executescript("""
             CREATE TABLE IF NOT EXISTS schema_version (
                 version INTEGER PRIMARY KEY,
@@ -420,6 +420,55 @@ class TestMigrationV15ToV16:
                 set_code TEXT PRIMARY KEY,
                 set_name TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS printings (
+                scryfall_id TEXT PRIMARY KEY,
+                oracle_id TEXT NOT NULL REFERENCES cards(oracle_id),
+                set_code TEXT NOT NULL REFERENCES sets(set_code),
+                collector_number TEXT,
+                rarity TEXT,
+                promo INTEGER DEFAULT 0,
+                artist TEXT
+            );
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_number TEXT,
+                seller_name TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS collection (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
+                finish TEXT NOT NULL CHECK(finish IN ('nonfoil', 'foil', 'etched')),
+                condition TEXT NOT NULL DEFAULT 'Near Mint',
+                language TEXT NOT NULL DEFAULT 'English',
+                purchase_price REAL,
+                acquired_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_image TEXT,
+                notes TEXT,
+                tags TEXT,
+                tradelist INTEGER DEFAULT 0,
+                is_alter INTEGER DEFAULT 0,
+                proxy INTEGER DEFAULT 0,
+                signed INTEGER DEFAULT 0,
+                misprint INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'owned'
+                    CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed')),
+                sale_price REAL,
+                order_id INTEGER REFERENCES orders(id)
+            );
+            CREATE VIEW IF NOT EXISTS collection_view AS
+            SELECT c.id, card.name, s.set_name, p.set_code,
+                   p.collector_number, p.rarity, p.promo,
+                   c.finish, c.condition, c.language,
+                   c.purchase_price, c.acquired_at, c.source,
+                   c.source_image, c.notes, c.tags, c.tradelist,
+                   c.status, c.sale_price, c.scryfall_id, p.oracle_id,
+                   c.order_id
+            FROM collection c
+            JOIN printings p ON c.scryfall_id = p.scryfall_id
+            JOIN cards card ON p.oracle_id = card.oracle_id
+            JOIN sets s ON p.set_code = s.set_code;
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -449,11 +498,11 @@ class TestMigrationV15ToV16:
         conn.commit()
         conn.close()
 
-        # Now init_db should migrate to v16
+        # Now init_db should migrate through v16 and v17
         conn2 = get_connection(db_path)
         init_db(conn2)
 
-        assert get_current_version(conn2) == 16
+        assert get_current_version(conn2) == 17
 
         tables = conn2.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
