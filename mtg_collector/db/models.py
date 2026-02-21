@@ -99,6 +99,41 @@ class CollectionEntry:
 
 
 @dataclass
+class SealedProduct:
+    """A sealed MTG product (booster box, bundle, deck, etc.)."""
+    uuid: str
+    name: str
+    set_code: str
+    category: str
+    subtype: Optional[str] = None
+    tcgplayer_product_id: Optional[str] = None
+    card_count: Optional[int] = None
+    product_size: Optional[int] = None
+    release_date: Optional[str] = None
+    purchase_url_tcgplayer: Optional[str] = None
+    purchase_url_cardkingdom: Optional[str] = None
+    contents_json: Optional[str] = None
+    imported_at: Optional[str] = None
+
+
+@dataclass
+class SealedCollectionEntry:
+    """A sealed product in the user's collection."""
+    id: Optional[int]
+    sealed_product_uuid: str
+    quantity: int = 1
+    condition: str = "Near Mint"
+    purchase_price: Optional[float] = None
+    purchase_date: Optional[str] = None
+    source: Optional[str] = None
+    seller_name: Optional[str] = None
+    notes: Optional[str] = None
+    status: str = "owned"
+    sale_price: Optional[float] = None
+    added_at: Optional[str] = None
+
+
+@dataclass
 class WishlistEntry:
     """A card the user wants to acquire."""
     id: Optional[int]
@@ -1248,4 +1283,278 @@ class WishlistRepository:
             added_at=row["added_at"],
             source=row["source"],
             fulfilled_at=row["fulfilled_at"],
+        )
+
+
+class SealedProductRepository:
+    """CRUD operations for sealed_products table."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get(self, uuid: str) -> Optional[SealedProduct]:
+        """Get a sealed product by UUID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM sealed_products WHERE uuid = ?", (uuid,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_product(row)
+
+    def get_by_tcgplayer_id(self, tcgplayer_product_id: str) -> Optional[SealedProduct]:
+        """Get a sealed product by TCGPlayer product ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM sealed_products WHERE tcgplayer_product_id = ?",
+            (tcgplayer_product_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_product(row)
+
+    def search_by_name(self, name: str, limit: int = 20) -> List[SealedProduct]:
+        """Search sealed products by name (case-insensitive partial match)."""
+        cursor = self.conn.execute(
+            "SELECT * FROM sealed_products WHERE name LIKE ? COLLATE NOCASE ORDER BY name LIMIT ?",
+            (f"%{name}%", limit),
+        )
+        return [self._row_to_product(row) for row in cursor]
+
+    def list_by_set(self, set_code: str) -> List[SealedProduct]:
+        """List all sealed products for a set."""
+        cursor = self.conn.execute(
+            "SELECT * FROM sealed_products WHERE set_code = ? ORDER BY category, name",
+            (set_code,),
+        )
+        return [self._row_to_product(row) for row in cursor]
+
+    def list_sets_with_products(self) -> List[Dict[str, Any]]:
+        """List sets that have sealed products, with counts."""
+        cursor = self.conn.execute("""
+            SELECT sp.set_code, s.set_name, COUNT(*) as product_count
+            FROM sealed_products sp
+            LEFT JOIN sets s ON sp.set_code = s.set_code
+            GROUP BY sp.set_code
+            ORDER BY s.released_at DESC
+        """)
+        return [dict(row) for row in cursor]
+
+    def count(self) -> int:
+        """Get total number of sealed products."""
+        return self.conn.execute("SELECT COUNT(*) FROM sealed_products").fetchone()[0]
+
+    def _row_to_product(self, row: sqlite3.Row) -> SealedProduct:
+        return SealedProduct(
+            uuid=row["uuid"],
+            name=row["name"],
+            set_code=row["set_code"],
+            category=row["category"],
+            subtype=row["subtype"],
+            tcgplayer_product_id=row["tcgplayer_product_id"],
+            card_count=row["card_count"],
+            product_size=row["product_size"],
+            release_date=row["release_date"],
+            purchase_url_tcgplayer=row["purchase_url_tcgplayer"],
+            purchase_url_cardkingdom=row["purchase_url_cardkingdom"],
+            contents_json=row["contents_json"],
+            imported_at=row["imported_at"],
+        )
+
+
+class SealedCollectionRepository:
+    """CRUD operations for sealed_collection table."""
+
+    VALID_TRANSITIONS = {
+        'owned': {'sold', 'traded', 'gifted', 'listed', 'opened'},
+        'listed': {'sold', 'owned'},
+    }
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def add(self, entry: SealedCollectionEntry) -> int:
+        """Add a sealed product to the collection. Returns the new ID."""
+        if entry.added_at is None:
+            entry.added_at = now_iso()
+        cursor = self.conn.execute(
+            """
+            INSERT INTO sealed_collection
+            (sealed_product_uuid, quantity, condition, purchase_price, purchase_date,
+             source, seller_name, notes, status, sale_price, added_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                entry.sealed_product_uuid,
+                entry.quantity,
+                entry.condition,
+                entry.purchase_price,
+                entry.purchase_date,
+                entry.source,
+                entry.seller_name,
+                entry.notes,
+                entry.status,
+                entry.sale_price,
+                entry.added_at,
+            ),
+        )
+        return cursor.lastrowid
+
+    def get(self, entry_id: int) -> Optional[SealedCollectionEntry]:
+        """Get a sealed collection entry by ID."""
+        cursor = self.conn.execute(
+            "SELECT * FROM sealed_collection WHERE id = ?", (entry_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_entry(row)
+
+    def update(self, entry: SealedCollectionEntry) -> bool:
+        """Update a sealed collection entry. Returns True if updated."""
+        if entry.id is None:
+            return False
+        cursor = self.conn.execute(
+            """
+            UPDATE sealed_collection SET
+                sealed_product_uuid = ?, quantity = ?, condition = ?,
+                purchase_price = ?, purchase_date = ?, source = ?,
+                seller_name = ?, notes = ?, status = ?, sale_price = ?
+            WHERE id = ?
+            """,
+            (
+                entry.sealed_product_uuid,
+                entry.quantity,
+                entry.condition,
+                entry.purchase_price,
+                entry.purchase_date,
+                entry.source,
+                entry.seller_name,
+                entry.notes,
+                entry.status,
+                entry.sale_price,
+                entry.id,
+            ),
+        )
+        return cursor.rowcount > 0
+
+    def delete(self, entry_id: int) -> bool:
+        """Delete a sealed collection entry. Returns True if deleted."""
+        cursor = self.conn.execute(
+            "DELETE FROM sealed_collection WHERE id = ?", (entry_id,)
+        )
+        return cursor.rowcount > 0
+
+    def list_all(
+        self,
+        set_code: Optional[str] = None,
+        category: Optional[str] = None,
+        subtype: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """List sealed collection entries with product info and latest prices."""
+        query = """
+            SELECT
+                sc.id, sc.sealed_product_uuid, sc.quantity, sc.condition,
+                sc.purchase_price, sc.purchase_date, sc.source, sc.seller_name,
+                sc.notes, sc.status, sc.sale_price, sc.added_at,
+                sp.name, sp.set_code, sp.category, sp.subtype,
+                sp.tcgplayer_product_id, sp.card_count, sp.release_date,
+                sp.purchase_url_tcgplayer, sp.purchase_url_cardkingdom,
+                sp.contents_json,
+                s.set_name,
+                lsp.market_price, lsp.low_price, lsp.mid_price, lsp.high_price
+            FROM sealed_collection sc
+            JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
+            LEFT JOIN sets s ON sp.set_code = s.set_code
+            LEFT JOIN latest_sealed_prices lsp ON sp.tcgplayer_product_id = lsp.tcgplayer_product_id
+            WHERE 1=1
+        """
+        params: List[Any] = []
+
+        if set_code:
+            query += " AND sp.set_code = ?"
+            params.append(set_code.lower())
+        if category:
+            query += " AND sp.category = ?"
+            params.append(category)
+        if subtype:
+            query += " AND sp.subtype = ?"
+            params.append(subtype)
+        if status:
+            query += " AND sc.status = ?"
+            params.append(status)
+
+        query += " ORDER BY sc.added_at DESC"
+        cursor = self.conn.execute(query, params)
+        return [dict(row) for row in cursor]
+
+    def dispose(
+        self,
+        entry_id: int,
+        new_status: str,
+        sale_price: Optional[float] = None,
+    ) -> bool:
+        """Transition a sealed product to a disposition status."""
+        entry = self.get(entry_id)
+        if not entry:
+            raise ValueError(f"Sealed collection entry {entry_id} not found")
+
+        allowed = self.VALID_TRANSITIONS.get(entry.status)
+        if not allowed or new_status not in allowed:
+            raise ValueError(
+                f"Cannot transition from '{entry.status}' to '{new_status}'"
+            )
+
+        entry.status = new_status
+        if sale_price is not None:
+            entry.sale_price = sale_price
+        return self.update(entry)
+
+    def stats(self) -> Dict[str, Any]:
+        """Get sealed collection statistics."""
+        stats: Dict[str, Any] = {}
+        stats["total_entries"] = self.conn.execute(
+            "SELECT COUNT(*) FROM sealed_collection"
+        ).fetchone()[0]
+        stats["total_quantity"] = self.conn.execute(
+            "SELECT COALESCE(SUM(quantity), 0) FROM sealed_collection"
+        ).fetchone()[0]
+
+        cursor = self.conn.execute(
+            "SELECT status, COUNT(*) as cnt, SUM(quantity) as qty FROM sealed_collection GROUP BY status"
+        )
+        stats["by_status"] = {row["status"]: {"count": row["cnt"], "quantity": row["qty"]} for row in cursor}
+
+        total_cost = self.conn.execute(
+            "SELECT COALESCE(SUM(purchase_price * quantity), 0) FROM sealed_collection WHERE purchase_price IS NOT NULL"
+        ).fetchone()[0]
+        stats["total_cost"] = total_cost
+
+        market_value = self.conn.execute(
+            """SELECT COALESCE(SUM(lsp.market_price * sc.quantity), 0)
+            FROM sealed_collection sc
+            JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
+            LEFT JOIN latest_sealed_prices lsp ON sp.tcgplayer_product_id = lsp.tcgplayer_product_id
+            WHERE sc.status = 'owned'"""
+        ).fetchone()[0]
+        stats["market_value"] = market_value
+        stats["gain_loss"] = market_value - total_cost
+
+        return stats
+
+    def _row_to_entry(self, row: sqlite3.Row) -> SealedCollectionEntry:
+        return SealedCollectionEntry(
+            id=row["id"],
+            sealed_product_uuid=row["sealed_product_uuid"],
+            quantity=row["quantity"],
+            condition=row["condition"],
+            purchase_price=row["purchase_price"],
+            purchase_date=row["purchase_date"],
+            source=row["source"],
+            seller_name=row["seller_name"],
+            notes=row["notes"],
+            status=row["status"],
+            sale_price=row["sale_price"],
+            added_at=row["added_at"],
         )

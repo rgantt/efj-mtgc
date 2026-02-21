@@ -190,10 +190,9 @@ class TestSchemaV16:
         assert "mtgjson_booster_sheets" in table_names
         assert "mtgjson_booster_configs" in table_names
 
-    def test_schema_version_is_17(self, test_db):
+    def test_schema_version_is_current(self, test_db):
         _, conn = test_db
-        assert get_current_version(conn) == 17
-        assert SCHEMA_VERSION == 17
+        assert get_current_version(conn) == SCHEMA_VERSION
 
 
 class TestImportMtgjson:
@@ -502,7 +501,7 @@ class TestMigrationV15ToV16:
         conn2 = get_connection(db_path)
         init_db(conn2)
 
-        assert get_current_version(conn2) == 17
+        assert get_current_version(conn2) == SCHEMA_VERSION
 
         tables = conn2.execute(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"

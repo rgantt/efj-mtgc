@@ -2,7 +2,7 @@
 
 import sqlite3
 
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 19
 
 SCHEMA_SQL = """
 -- Abstract cards (oracle-level, cached from Scryfall)
@@ -266,6 +266,92 @@ CREATE INDEX IF NOT EXISTS idx_printings_oracle ON printings(oracle_id);
 CREATE INDEX IF NOT EXISTS idx_printings_set ON printings(set_code);
 CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name);
 
+-- Sealed product reference data (imported from MTGJSON AllPrintings.json)
+CREATE TABLE IF NOT EXISTS sealed_products (
+    uuid TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    set_code TEXT NOT NULL,
+    category TEXT NOT NULL,
+    subtype TEXT,
+    tcgplayer_product_id TEXT,
+    card_count INTEGER,
+    product_size INTEGER,
+    release_date TEXT,
+    purchase_url_tcgplayer TEXT,
+    purchase_url_cardkingdom TEXT,
+    contents_json TEXT,
+    imported_at TEXT NOT NULL,
+    FOREIGN KEY (set_code) REFERENCES sets(set_code)
+);
+CREATE INDEX IF NOT EXISTS idx_sealed_products_set ON sealed_products(set_code);
+CREATE INDEX IF NOT EXISTS idx_sealed_products_tcg ON sealed_products(tcgplayer_product_id);
+CREATE INDEX IF NOT EXISTS idx_sealed_products_category ON sealed_products(category);
+
+-- User's sealed product collection (one row per acquisition)
+CREATE TABLE IF NOT EXISTS sealed_collection (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sealed_product_uuid TEXT NOT NULL REFERENCES sealed_products(uuid),
+    quantity INTEGER NOT NULL DEFAULT 1,
+    condition TEXT DEFAULT 'Near Mint',
+    purchase_price REAL,
+    purchase_date TEXT,
+    source TEXT,
+    seller_name TEXT,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'owned'
+        CHECK (status IN ('owned', 'listed', 'sold', 'traded', 'gifted', 'opened')),
+    sale_price REAL,
+    added_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sealed_collection_product ON sealed_collection(sealed_product_uuid);
+CREATE INDEX IF NOT EXISTS idx_sealed_collection_status ON sealed_collection(status);
+
+-- Sealed product prices (time series from TCGCSV)
+CREATE TABLE IF NOT EXISTS sealed_prices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tcgplayer_product_id TEXT NOT NULL,
+    low_price REAL,
+    mid_price REAL,
+    high_price REAL,
+    market_price REAL,
+    direct_low_price REAL,
+    observed_at TEXT NOT NULL,
+    UNIQUE(tcgplayer_product_id, observed_at)
+);
+CREATE INDEX IF NOT EXISTS idx_sealed_prices_product ON sealed_prices(tcgplayer_product_id);
+CREATE INDEX IF NOT EXISTS idx_sealed_prices_date ON sealed_prices(observed_at);
+
+-- TCGCSV group mapping (set_code -> tcgplayer groupId)
+CREATE TABLE IF NOT EXISTS tcgplayer_groups (
+    group_id INTEGER PRIMARY KEY,
+    set_code TEXT,
+    name TEXT NOT NULL,
+    abbreviation TEXT,
+    published_on TEXT,
+    fetched_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_tcgplayer_groups_abbr ON tcgplayer_groups(abbreviation);
+
+-- Denormalized sealed collection view
+CREATE VIEW IF NOT EXISTS sealed_collection_view AS
+SELECT
+    sc.id, sc.quantity, sc.condition, sc.purchase_price, sc.purchase_date,
+    sc.source, sc.seller_name, sc.notes, sc.status, sc.sale_price, sc.added_at,
+    sp.uuid, sp.name, sp.set_code, sp.category, sp.subtype,
+    sp.tcgplayer_product_id, sp.card_count, sp.release_date,
+    sp.purchase_url_tcgplayer, sp.purchase_url_cardkingdom,
+    s.set_name, s.set_type, s.released_at AS set_released_at
+FROM sealed_collection sc
+JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
+LEFT JOIN sets s ON sp.set_code = s.set_code;
+
+-- Latest sealed prices view (same pattern as latest_prices)
+CREATE VIEW IF NOT EXISTS latest_sealed_prices AS
+SELECT tcgplayer_product_id, low_price, mid_price, high_price,
+       market_price, direct_low_price, observed_at
+FROM sealed_prices
+WHERE observed_at = (SELECT MAX(observed_at) FROM sealed_prices);
+
 -- Denormalized collection view
 CREATE VIEW IF NOT EXISTS collection_view AS
 SELECT
@@ -374,6 +460,10 @@ def init_db(conn: sqlite3.Connection, force: bool = False) -> bool:
             _migrate_v15_to_v16(conn)
         if current < 17:
             _migrate_v16_to_v17(conn)
+        if current < 18:
+            _migrate_v17_to_v18(conn)
+        if current < 19:
+            _migrate_v18_to_v19(conn)
 
     # Record schema version
     conn.execute(
@@ -1049,11 +1139,110 @@ def _migrate_v16_to_v17(conn: sqlite3.Connection):
     """)
 
 
+def _migrate_v17_to_v18(conn: sqlite3.Connection):
+    """Add sealed product tables, sealed collection, sealed prices, and TCGCSV groups."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS sealed_products (
+            uuid TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            set_code TEXT NOT NULL,
+            category TEXT NOT NULL,
+            subtype TEXT,
+            tcgplayer_product_id TEXT,
+            card_count INTEGER,
+            product_size INTEGER,
+            release_date TEXT,
+            purchase_url_tcgplayer TEXT,
+            purchase_url_cardkingdom TEXT,
+            contents_json TEXT,
+            imported_at TEXT NOT NULL,
+            FOREIGN KEY (set_code) REFERENCES sets(set_code)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sealed_products_set ON sealed_products(set_code);
+        CREATE INDEX IF NOT EXISTS idx_sealed_products_tcg ON sealed_products(tcgplayer_product_id);
+        CREATE INDEX IF NOT EXISTS idx_sealed_products_category ON sealed_products(category);
+
+        CREATE TABLE IF NOT EXISTS sealed_collection (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sealed_product_uuid TEXT NOT NULL REFERENCES sealed_products(uuid),
+            quantity INTEGER NOT NULL DEFAULT 1,
+            condition TEXT DEFAULT 'Near Mint',
+            purchase_price REAL,
+            purchase_date TEXT,
+            source TEXT,
+            seller_name TEXT,
+            notes TEXT,
+            status TEXT NOT NULL DEFAULT 'owned'
+                CHECK (status IN ('owned', 'listed', 'sold', 'traded', 'gifted', 'opened')),
+            sale_price REAL,
+            added_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sealed_collection_product ON sealed_collection(sealed_product_uuid);
+        CREATE INDEX IF NOT EXISTS idx_sealed_collection_status ON sealed_collection(status);
+
+        CREATE TABLE IF NOT EXISTS sealed_prices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tcgplayer_product_id TEXT NOT NULL,
+            low_price REAL,
+            mid_price REAL,
+            high_price REAL,
+            market_price REAL,
+            direct_low_price REAL,
+            observed_at TEXT NOT NULL,
+            UNIQUE(tcgplayer_product_id, observed_at)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sealed_prices_product ON sealed_prices(tcgplayer_product_id);
+        CREATE INDEX IF NOT EXISTS idx_sealed_prices_date ON sealed_prices(observed_at);
+
+        CREATE TABLE IF NOT EXISTS tcgplayer_groups (
+            group_id INTEGER PRIMARY KEY,
+            set_code TEXT,
+            name TEXT NOT NULL,
+            abbreviation TEXT,
+            published_on TEXT,
+            fetched_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_tcgplayer_groups_abbr ON tcgplayer_groups(abbreviation);
+    """)
+
+    conn.execute("""
+        CREATE VIEW IF NOT EXISTS sealed_collection_view AS
+        SELECT
+            sc.id, sc.quantity, sc.condition, sc.purchase_price, sc.purchase_date,
+            sc.source, sc.seller_name, sc.notes, sc.status, sc.sale_price, sc.added_at,
+            sp.uuid, sp.name, sp.set_code, sp.category, sp.subtype,
+            sp.tcgplayer_product_id, sp.card_count, sp.release_date,
+            sp.purchase_url_tcgplayer, sp.purchase_url_cardkingdom,
+            s.set_name, s.set_type, s.released_at AS set_released_at
+        FROM sealed_collection sc
+        JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
+        LEFT JOIN sets s ON sp.set_code = s.set_code
+    """)
+
+
+def _migrate_v18_to_v19(conn: sqlite3.Connection):
+    """Add latest_sealed_prices view for efficient price lookups."""
+    conn.execute("DROP VIEW IF EXISTS latest_sealed_prices")
+    conn.execute("""
+        CREATE VIEW latest_sealed_prices AS
+        SELECT tcgplayer_product_id, low_price, mid_price, high_price,
+               market_price, direct_low_price, observed_at
+        FROM sealed_prices
+        WHERE observed_at = (SELECT MAX(observed_at) FROM sealed_prices)
+    """)
+
+
 def drop_all_tables(conn: sqlite3.Connection):
     """Drop all tables (for testing/reset)."""
     conn.executescript("""
+        DROP VIEW IF EXISTS latest_sealed_prices;
+        DROP VIEW IF EXISTS sealed_collection_view;
         DROP VIEW IF EXISTS collection_view;
         DROP VIEW IF EXISTS latest_prices;
+        DROP TABLE IF EXISTS tcgplayer_groups;
+        DROP TABLE IF EXISTS sealed_prices;
+        DROP TABLE IF EXISTS sealed_collection;
+        DROP TABLE IF EXISTS sealed_products;
         DROP TABLE IF EXISTS price_fetch_log;
         DROP TABLE IF EXISTS prices;
         DROP TABLE IF EXISTS mtgjson_booster_configs;
