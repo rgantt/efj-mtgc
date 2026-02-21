@@ -23,4 +23,6 @@ moxfield_collection.csv
 *.swp
 
 # Claude
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
