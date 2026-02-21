@@ -70,8 +70,9 @@ def run(args):
         print("\n=== Step 3b: MTGJSON prices (skipped) ===")
     else:
         print("\n=== Step 3b: MTGJSON prices ===")
-        from mtg_collector.cli.data_cmd import _fetch_prices
+        from mtg_collector.cli.data_cmd import _fetch_prices, import_prices
         _fetch_prices(force=False)
+        import_prices(db_path)
 
     # Step 4: Load demo data
     if args.demo:
