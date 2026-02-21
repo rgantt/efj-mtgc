@@ -99,9 +99,9 @@ class APIClient:
             body = json.loads(e.read())
             return e.code, body
 
-    def post(self, path: str, data: dict) -> tuple:
+    def post(self, path: str, data: dict, timeout: int = 30) -> tuple:
         """POST JSON request. Returns (status_code, parsed_json)."""
-        return self._json_request("POST", path, data)
+        return self._json_request("POST", path, data, timeout=timeout)
 
     def put(self, path: str, data: dict) -> tuple:
         """PUT JSON request. Returns (status_code, parsed_json)."""
@@ -119,7 +119,7 @@ class APIClient:
             body = json.loads(e.read())
             return e.code, body
 
-    def _json_request(self, method: str, path: str, data: dict) -> tuple:
+    def _json_request(self, method: str, path: str, data: dict, timeout: int = 30) -> tuple:
         url = f"{self.base_url}{path}"
         body = json.dumps(data).encode()
         req = urllib.request.Request(
@@ -127,7 +127,7 @@ class APIClient:
             headers={"Content-Type": "application/json"},
         )
         try:
-            resp = urllib.request.urlopen(req, context=self._ctx, timeout=30)
+            resp = urllib.request.urlopen(req, context=self._ctx, timeout=timeout)
             resp_body = json.loads(resp.read())
             return resp.status, resp_body
         except urllib.error.HTTPError as e:

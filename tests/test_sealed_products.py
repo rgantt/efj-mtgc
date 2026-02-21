@@ -355,6 +355,151 @@ class TestMigrationV17ToV18:
         Path(db_path).unlink(missing_ok=True)
 
 
+class TestMigrationV18ToV19:
+    def test_migration(self):
+        """Create a v18 DB (with sealed tables but no price view), run init_db, verify v19."""
+        close_connection()
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as f:
+            db_path = f.name
+
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA foreign_keys = ON")
+
+        # Build a minimal v18 schema: core tables + sealed tables (no latest_sealed_prices view)
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS cards (
+                oracle_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sets (
+                set_code TEXT PRIMARY KEY,
+                set_name TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS printings (
+                scryfall_id TEXT PRIMARY KEY,
+                oracle_id TEXT NOT NULL REFERENCES cards(oracle_id),
+                set_code TEXT NOT NULL REFERENCES sets(set_code),
+                collector_number TEXT,
+                rarity TEXT,
+                promo INTEGER DEFAULT 0,
+                artist TEXT
+            );
+            CREATE TABLE IF NOT EXISTS collection (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
+                finish TEXT NOT NULL CHECK(finish IN ('nonfoil', 'foil', 'etched')),
+                condition TEXT NOT NULL DEFAULT 'Near Mint',
+                language TEXT NOT NULL DEFAULT 'English',
+                purchase_price REAL,
+                acquired_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_image TEXT,
+                notes TEXT,
+                tags TEXT,
+                tradelist INTEGER DEFAULT 0,
+                is_alter INTEGER DEFAULT 0,
+                proxy INTEGER DEFAULT 0,
+                signed INTEGER DEFAULT 0,
+                misprint INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'owned',
+                sale_price REAL,
+                order_id INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                set_code TEXT NOT NULL,
+                collector_number TEXT NOT NULL,
+                source TEXT NOT NULL,
+                price_type TEXT NOT NULL,
+                price REAL NOT NULL,
+                observed_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sealed_products (
+                uuid TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                set_code TEXT NOT NULL,
+                category TEXT,
+                subtype TEXT,
+                tcgplayer_product_id TEXT,
+                card_count INTEGER,
+                product_size INTEGER,
+                release_date TEXT,
+                purchase_url_tcgplayer TEXT,
+                purchase_url_cardkingdom TEXT,
+                contents_json TEXT,
+                imported_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sealed_collection (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sealed_product_uuid TEXT NOT NULL REFERENCES sealed_products(uuid),
+                quantity INTEGER NOT NULL DEFAULT 1,
+                condition TEXT NOT NULL DEFAULT 'Sealed',
+                purchase_price REAL,
+                purchase_date TEXT,
+                source TEXT,
+                seller_name TEXT,
+                notes TEXT,
+                status TEXT NOT NULL DEFAULT 'owned',
+                sale_price REAL,
+                added_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sealed_prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tcgplayer_product_id TEXT NOT NULL,
+                low_price REAL,
+                mid_price REAL,
+                high_price REAL,
+                market_price REAL,
+                direct_low_price REAL,
+                observed_at TEXT NOT NULL,
+                UNIQUE(tcgplayer_product_id, observed_at)
+            );
+            CREATE TABLE IF NOT EXISTS tcgplayer_groups (
+                group_id INTEGER PRIMARY KEY,
+                set_code TEXT,
+                name TEXT NOT NULL,
+                abbreviation TEXT,
+                published_on TEXT,
+                fetched_at TEXT NOT NULL
+            );
+            CREATE VIEW IF NOT EXISTS sealed_collection_view AS
+            SELECT sc.id, sp.name FROM sealed_collection sc
+            JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid;
+        """)
+        conn.execute(
+            "INSERT INTO schema_version (version, applied_at) VALUES (18, '2025-01-01T00:00:00Z')"
+        )
+        conn.commit()
+        conn.close()
+
+        # Now init_db should migrate v18 -> v19
+        conn2 = get_connection(db_path)
+        init_db(conn2)
+
+        assert get_current_version(conn2) == SCHEMA_VERSION
+
+        views = conn2.execute(
+            "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name"
+        ).fetchall()
+        view_names = [r[0] for r in views]
+        assert "latest_sealed_prices" in view_names
+
+        # Verify the view is functional (should return empty result, not error)
+        rows = conn2.execute("SELECT * FROM latest_sealed_prices").fetchall()
+        assert rows == []
+
+        close_connection()
+        Path(db_path).unlink(missing_ok=True)
+
+
 # =============================================================================
 # Import Tests
 # =============================================================================
@@ -699,3 +844,56 @@ class TestSealedCollectionRepository:
         assert "owned" in stats["by_status"]
         assert stats["by_status"]["owned"]["count"] == 2
         assert stats["by_status"]["owned"]["quantity"] == 3
+
+    def test_list_all_includes_price_columns(self, repos):
+        """list_all() includes market/low/mid/high price columns (NULL when no prices)."""
+        _, repo, conn = repos
+        repo.add(SealedCollectionEntry(id=None, sealed_product_uuid="sealed-uuid-001"))
+        conn.commit()
+
+        results = repo.list_all()
+        assert len(results) == 1
+        row = results[0]
+        # Price columns present but NULL (no price data loaded)
+        assert "market_price" in row
+        assert "low_price" in row
+        assert "mid_price" in row
+        assert "high_price" in row
+        assert row["market_price"] is None
+
+    def test_list_all_includes_contents_json(self, repos):
+        """list_all() includes contents_json from sealed_products."""
+        _, repo, conn = repos
+        repo.add(SealedCollectionEntry(id=None, sealed_product_uuid="sealed-uuid-001"))
+        conn.commit()
+
+        results = repo.list_all()
+        assert len(results) == 1
+        row = results[0]
+        assert "contents_json" in row
+        # sealed-uuid-001 has contents_json with a "pack" key (from fixture)
+        if row["contents_json"]:
+            contents = json.loads(row["contents_json"])
+            assert "pack" in contents
+
+    def test_list_all_with_prices(self, repos):
+        """list_all() returns price data when sealed_prices has data."""
+        _, repo, conn = repos
+        repo.add(SealedCollectionEntry(id=None, sealed_product_uuid="sealed-uuid-001"))
+        conn.commit()
+
+        # Insert a price row for tcgplayer_product_id "12345" (matches sealed-uuid-001)
+        conn.execute("""
+            INSERT INTO sealed_prices (tcgplayer_product_id, low_price, mid_price,
+                high_price, market_price, direct_low_price, observed_at)
+            VALUES ('12345', 100.0, 150.0, 200.0, 125.0, NULL, '2025-06-01')
+        """)
+        conn.commit()
+
+        results = repo.list_all()
+        assert len(results) == 1
+        row = results[0]
+        assert row["market_price"] == 125.0
+        assert row["low_price"] == 100.0
+        assert row["mid_price"] == 150.0
+        assert row["high_price"] == 200.0

@@ -358,3 +358,95 @@ class TestSealedCollectionStats:
             assert after["total_cost"] == before["total_cost"] + 500.00
         finally:
             api.delete(f"/api/sealed/collection/{added['id']}?confirm=true")
+
+
+# =============================================================================
+# Price fetch endpoint
+# =============================================================================
+
+
+class TestSealedPriceFetch:
+    def test_fetch_prices(self, api):
+        """POST /api/sealed/fetch-prices triggers TCGCSV price fetch."""
+        status, data = api.post("/api/sealed/fetch-prices", {}, timeout=120)
+        assert status == 200
+        assert "groups_fetched" in data
+        assert "prices_for_today" in data
+        assert isinstance(data["groups_fetched"], int)
+        assert isinstance(data["prices_for_today"], int)
+
+    def test_collection_list_has_price_fields(self, api):
+        """After a price fetch, collection list entries should include price columns."""
+        # Ensure prices are fetched first
+        api.post("/api/sealed/fetch-prices", {}, timeout=120)
+
+        # Add an entry for a product that likely has a TCGPlayer price
+        _, products = api.get("/api/sealed/products?q=play+booster+box&limit=1")
+        if not products:
+            pytest.skip("No sealed products available")
+
+        status, added = api.post("/api/sealed/collection", {
+            "sealed_product_uuid": products[0]["uuid"],
+            "source": "integration_test",
+        })
+        assert status == 200
+
+        try:
+            status, entries = api.get("/api/sealed/collection")
+            assert status == 200
+            entry = next(e for e in entries if e["id"] == added["id"])
+            # Price columns should be present in the response (may be null if no TCGCSV match)
+            assert "market_price" in entry
+            assert "low_price" in entry
+            assert "mid_price" in entry
+            assert "high_price" in entry
+            assert "contents_json" in entry
+        finally:
+            api.delete(f"/api/sealed/collection/{added['id']}?confirm=true")
+
+
+# =============================================================================
+# TCGPlayer URL lookup
+# =============================================================================
+
+
+class TestTcgPlayerLookup:
+    def test_lookup_by_product_id(self, api):
+        """POST /api/sealed/from-tcgplayer with a known product ID."""
+        # First find a product that has a tcgplayer_product_id
+        _, products = api.get("/api/sealed/products?q=play+booster+box&limit=1")
+        if not products or not products[0].get("tcgplayer_product_id"):
+            pytest.skip("No product with tcgplayer_product_id available")
+
+        tcg_id = products[0]["tcgplayer_product_id"]
+        status, data = api.post("/api/sealed/from-tcgplayer", {"product_id": str(tcg_id)})
+        assert status == 200
+        assert data["uuid"] == products[0]["uuid"]
+        assert data["name"] == products[0]["name"]
+
+    def test_lookup_by_url(self, api):
+        """POST /api/sealed/from-tcgplayer with a TCGPlayer URL."""
+        _, products = api.get("/api/sealed/products?q=play+booster+box&limit=1")
+        if not products or not products[0].get("tcgplayer_product_id"):
+            pytest.skip("No product with tcgplayer_product_id available")
+
+        tcg_id = products[0]["tcgplayer_product_id"]
+        url = f"https://www.tcgplayer.com/product/{tcg_id}/some-product-name"
+        status, data = api.post("/api/sealed/from-tcgplayer", {"url": url})
+        assert status == 200
+        assert data["uuid"] == products[0]["uuid"]
+        assert "image_url" in data
+
+    def test_lookup_not_found(self, api):
+        """POST /api/sealed/from-tcgplayer with a nonexistent product ID."""
+        status, data = api.post("/api/sealed/from-tcgplayer", {"product_id": "999999999"})
+        assert status == 404
+        assert "error" in data
+
+    def test_lookup_missing_input(self, api):
+        """POST /api/sealed/from-tcgplayer with no url or product_id."""
+        status, data = api.post("/api/sealed/from-tcgplayer", {})
+        assert status == 400
+        assert "error" in data
+
+
