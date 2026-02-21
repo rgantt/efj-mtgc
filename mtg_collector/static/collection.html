@@ -2373,7 +2373,7 @@ function renderOrderedBanner() {
   banner.id = 'ordered-banner';
   banner.className = 'ordered-banner';
   banner.innerHTML = `<span>${orderedCount} card${orderedCount !== 1 ? 's' : ''} awaiting delivery</span><button id="view-ordered-btn">View Ordered</button>`;
-  main.parentElement.insertBefore(banner, main);
+  main.insertBefore(banner, main.firstChild);
   document.getElementById('view-ordered-btn').addEventListener('click', () => {
     document.getElementById('sf-ordered').checked = true;
     document.getElementById('sf-wanted').checked = false;
