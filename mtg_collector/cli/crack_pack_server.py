@@ -857,6 +857,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             set_code = params.get("set", [""])[0]
             product = params.get("product", [""])[0]
             self._api_sheets(set_code, product)
+        elif path == "/api/collection/copies":
+            self._api_collection_copies(params)
         elif path == "/api/collection":
             self._api_collection(params)
         elif path == "/api/wishlist":
@@ -989,6 +991,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_order_resolve()
         elif path == "/api/order/commit":
             self._api_order_commit()
+        elif path.startswith("/api/collection/") and path.endswith("/receive"):
+            cid = path[len("/api/collection/"):-len("/receive")]
+            self._api_collection_receive(int(cid))
         elif path.startswith("/api/orders/") and path.endswith("/receive"):
             oid = path[len("/api/orders/"):-len("/receive")]
             self._api_order_receive(int(oid))
@@ -1412,7 +1417,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 LEFT JOIN ingest_lineage il ON il.collection_id = c.id
                 LEFT JOIN ingest_images ii ON il.image_md5 = ii.md5{wanted_join}
                 WHERE {where_sql}
-                GROUP BY p.scryfall_id, c.finish, c.condition, c.status
+                GROUP BY p.scryfall_id, c.finish, c.condition, c.status, c.order_id
                 ORDER BY {sort_col} {order_dir}, card.name ASC
             """
 
@@ -2951,15 +2956,49 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         conn.close()
         self._send_json(summary)
 
-    def _api_order_receive(self, order_id: int):
-        """Mark all ordered cards in an order as owned."""
-        from mtg_collector.db.models import OrderRepository
+    def _api_collection_copies(self, params: dict):
+        """Return individual collection rows for a printing, with order data."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+        scryfall_id = params.get("scryfall_id", [""])[0]
+        if not scryfall_id:
+            self._send_json({"error": "scryfall_id required"}, 400)
+            return
+        finish = params.get("finish", [""])[0] or None
+        condition = params.get("condition", [""])[0] or None
+        status = params.get("status", [""])[0] or None
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = CollectionRepository(conn)
+        copies = repo.get_copies(scryfall_id, finish=finish, condition=condition, status=status)
+        conn.close()
+        self._send_json(copies)
+
+    def _api_collection_receive(self, collection_id: int):
+        """Receive a single ordered card (flip ordered -> owned)."""
+        from mtg_collector.db.models import CollectionRepository
         from mtg_collector.db.schema import init_db
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         init_db(conn)
+        repo = CollectionRepository(conn)
+        ok = repo.receive_card(collection_id)
+        conn.commit()
+        conn.close()
+        self._send_json({"received": 1 if ok else 0})
+
+    def _api_order_receive(self, order_id: int):
+        """Mark ordered cards in an order as owned. Accepts optional card_ids in JSON body."""
+        from mtg_collector.db.models import OrderRepository
+        from mtg_collector.db.schema import init_db
+        data = self._read_json_body()  # None when no body — backward-compatible
+        card_ids = data.get("card_ids") if data else None
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
         repo = OrderRepository(conn)
-        count = repo.receive_order(order_id)
+        count = repo.receive_order(order_id, card_ids=card_ids)
         conn.commit()
         conn.close()
         self._send_json({"received": count})
