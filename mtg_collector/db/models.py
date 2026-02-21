@@ -787,6 +787,123 @@ class CollectionRepository:
         )
         return [dict(row) for row in cursor]
 
+    # Valid status transitions for dispose()
+    VALID_TRANSITIONS = {
+        'owned': {'sold', 'traded', 'gifted', 'lost', 'listed'},
+        'listed': {'sold', 'owned'},
+    }
+
+    def get_copies(
+        self,
+        scryfall_id: str,
+        finish: Optional[str] = None,
+        condition: Optional[str] = None,
+        status: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return individual collection rows for a card, joined with order and lineage info."""
+        query = """
+            SELECT
+                c.id, c.scryfall_id, c.finish, c.condition, c.language,
+                c.purchase_price, c.acquired_at, c.source, c.source_image,
+                c.notes, c.tags, c.status, c.sale_price, c.order_id,
+                o.order_number, o.source AS order_source, o.seller_name,
+                o.order_date,
+                il.image_md5, il.image_path, il.card_index,
+                ii.id AS image_id
+            FROM collection c
+            LEFT JOIN orders o ON c.order_id = o.id
+            LEFT JOIN ingest_lineage il ON il.collection_id = c.id
+            LEFT JOIN ingest_images ii ON il.image_md5 = ii.md5
+            WHERE c.scryfall_id = ?
+        """
+        params: List[Any] = [scryfall_id]
+
+        if finish:
+            query += " AND c.finish = ?"
+            params.append(finish)
+        if condition:
+            query += " AND c.condition = ?"
+            params.append(condition)
+        if status:
+            query += " AND c.status = ?"
+            params.append(status)
+
+        query += " ORDER BY c.acquired_at DESC"
+        cursor = self.conn.execute(query, params)
+        copies = []
+        for row in cursor:
+            copy = dict(row)
+            # Attach status history
+            copy['status_history'] = self.get_status_history(copy['id'])
+            copies.append(copy)
+        return copies
+
+    def dispose(
+        self,
+        entry_id: int,
+        new_status: str,
+        sale_price: Optional[float] = None,
+        note: Optional[str] = None,
+    ) -> bool:
+        """Transition a card to a disposition status (sold, traded, gifted, lost, listed).
+
+        Validates that the transition is allowed, then updates via the existing
+        update() method which handles status_log.
+        """
+        entry = self.get(entry_id)
+        if not entry:
+            raise ValueError(f"Collection entry {entry_id} not found")
+
+        allowed = self.VALID_TRANSITIONS.get(entry.status)
+        if not allowed or new_status not in allowed:
+            raise ValueError(
+                f"Cannot transition from '{entry.status}' to '{new_status}'"
+            )
+
+        entry.status = new_status
+        if sale_price is not None:
+            entry.sale_price = sale_price
+        return self.update(entry, status_note=note)
+
+    def delete_with_lineage(self, entry_id: int) -> bool:
+        """Delete a collection entry and its ingest_lineage rows.
+
+        Only allows deletion of entries with status 'owned' or 'ordered'.
+        """
+        entry = self.get(entry_id)
+        if not entry:
+            raise ValueError(f"Collection entry {entry_id} not found")
+        if entry.status not in ('owned', 'ordered'):
+            raise ValueError(
+                f"Cannot delete entry with status '{entry.status}' — "
+                "only 'owned' or 'ordered' entries can be deleted"
+            )
+
+        self.conn.execute(
+            "DELETE FROM ingest_lineage WHERE collection_id = ?", (entry_id,)
+        )
+        return self.delete(entry_id)
+
+    def bulk_delete(self, ids: List[int]) -> Dict[str, List[int]]:
+        """Delete multiple collection entries with lineage cleanup.
+
+        Returns dict with 'deleted' and 'skipped' ID lists.
+        """
+        deleted = []
+        skipped = []
+        for entry_id in ids:
+            entry = self.get(entry_id)
+            if not entry or entry.status not in ('owned', 'ordered'):
+                skipped.append(entry_id)
+                continue
+            self.conn.execute(
+                "DELETE FROM ingest_lineage WHERE collection_id = ?",
+                (entry_id,),
+            )
+            self.delete(entry_id)
+            deleted.append(entry_id)
+        return {"deleted": deleted, "skipped": skipped}
+
     def _row_to_entry(self, row: sqlite3.Row) -> CollectionEntry:
         # Handle optional columns that might not exist in older databases
         source_image = None
