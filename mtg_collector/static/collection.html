@@ -856,6 +856,101 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   border: 1px solid #8c5a2a;
   color: #f0c878;
 }
+
+/* Receive buttons */
+.receive-btn {
+  background: #f0a030;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.receive-btn:hover { background: #e89520; }
+.receive-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+.receive-btn.received { background: #4caf50; color: #fff; cursor: default; }
+
+/* Modal copies section */
+.modal-copies { margin-top: 4px; }
+.modal-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #2a2a3e;
+  font-size: 0.8rem;
+}
+.modal-copy-row:last-child { border-bottom: none; }
+.modal-copy-info { display: flex; gap: 8px; align-items: center; color: #aaa; }
+.modal-copy-info .copy-status { font-weight: 600; }
+.modal-copy-info .copy-status.ordered { color: #f0a030; }
+.modal-copy-info .copy-status.owned { color: #4caf50; }
+
+/* Order group headers for grid view */
+.order-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin: 8px 0 4px;
+  background: #1e2a45;
+  border: 1px solid #0f3460;
+  border-radius: 8px;
+}
+.order-group-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: #ccc;
+}
+.order-group-info .seller { font-weight: 600; color: #e0e0e0; }
+.order-group-info .order-num { color: #888; }
+.order-group-info .order-count { color: #f0a030; font-weight: 600; }
+
+/* Receive all button (order groups) */
+.receive-all-btn {
+  background: #f0a030;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.receive-all-btn:hover { background: #e89520; }
+.receive-all-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+.receive-all-btn.received { background: #4caf50; color: #fff; cursor: default; }
+
+/* Ordered banner */
+.ordered-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  margin: 8px 16px;
+  background: rgba(240, 160, 48, 0.1);
+  border: 1px solid rgba(240, 160, 48, 0.3);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #f0c878;
+}
+.ordered-banner button {
+  background: #f0a030;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ordered-banner button:hover { background: #e89520; }
+
 #include-unowned-btn.active {
   background: #e94560;
   color: #fff;
@@ -1581,6 +1676,7 @@ function showCardModal(card) {
         <div class="modal-row"><span class="label">Quantity</span><span class="value">${card.qty}</span></div>
         <div class="modal-row"><span class="label">Condition</span><span class="value">${condition}</span></div>
         <div class="modal-row"><span class="label">Finish</span><span class="value filterable" data-filter-type="finish" data-filter-value="${card.finish || 'nonfoil'}">${finish}</span></div>
+        <div id="modal-copies-container" class="modal-copies"></div>
       </div>
       ${tagsHtml ? `<div class="modal-section"><span class="modal-section-title">Treatments</span><div class="modal-tags">${tagsHtml}</div></div>` : ''}
       ${card.order_id ? `<div class="modal-section"><span class="modal-section-title">Order</span>
@@ -1613,6 +1709,55 @@ function showCardModal(card) {
   }
 
   renderDetails(0);
+
+  // Lazy-load copies for owned/ordered cards
+  if (card.qty > 0) {
+    const copiesParams = new URLSearchParams({ scryfall_id: card.scryfall_id });
+    if (card.finish) copiesParams.set('finish', card.finish);
+    if (card.condition) copiesParams.set('condition', card.condition);
+    fetch(`/api/collection/copies?${copiesParams}`)
+      .then(r => r.json())
+      .then(copies => {
+        const container = document.getElementById('modal-copies-container');
+        if (!container || copies.length <= 1) return;
+        container.innerHTML = copies.map(copy => {
+          const statusClass = copy.status === 'ordered' ? 'ordered' : 'owned';
+          const statusLabel = copy.status === 'ordered' ? 'Ordered' : 'Owned';
+          const seller = copy.order_seller ? ` &middot; ${copy.order_seller}` : '';
+          const price = copy.purchase_price ? ` &middot; $${parseFloat(copy.purchase_price).toFixed(2)}` : '';
+          const source = copy.source && copy.source !== 'manual' ? ` &middot; ${copy.source}` : '';
+          const receiveBtn = copy.status === 'ordered'
+            ? `<button class="receive-btn" data-collection-id="${copy.id}">Receive</button>`
+            : '';
+          return `<div class="modal-copy-row">
+            <div class="modal-copy-info">
+              <span class="copy-status ${statusClass}">${statusLabel}</span>
+              <span>${copy.finish || ''}${seller}${price}${source}</span>
+            </div>
+            ${receiveBtn}
+          </div>`;
+        }).join('');
+        // Wire up receive buttons
+        container.querySelectorAll('.receive-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = '...';
+            const cid = btn.dataset.collectionId;
+            const res = await fetch(`/api/collection/${cid}/receive`, { method: 'POST' });
+            const result = await res.json();
+            if (result.received) {
+              btn.textContent = 'Received';
+              btn.classList.add('received');
+              const statusEl = btn.closest('.modal-copy-row').querySelector('.copy-status');
+              if (statusEl) { statusEl.textContent = 'Owned'; statusEl.className = 'copy-status owned'; }
+              fetchCollection();
+            } else {
+              btn.textContent = 'Failed';
+            }
+          });
+        });
+      });
+  }
 
   // Want button handler
   modalDetails.addEventListener('click', async (e) => {
@@ -2207,9 +2352,107 @@ function populateSubtypeOptions() {
 }
 
 // --- Render ---
+function isOrderedOnlyFilter() {
+  return document.getElementById('sf-ordered').checked && !document.getElementById('sf-wanted').checked;
+}
+
 function render() {
+  renderOrderedBanner();
   if (currentView === 'table') renderTable();
+  else if (isOrderedOnlyFilter()) renderOrderGrouped();
   else renderGrid();
+}
+
+function renderOrderedBanner() {
+  const existing = document.getElementById('ordered-banner');
+  if (existing) existing.remove();
+  if (isOrderedOnlyFilter()) return; // already showing ordered view
+  const orderedCount = allCardsUnfiltered.filter(c => c.status === 'ordered').length;
+  if (orderedCount === 0) return;
+  const banner = document.createElement('div');
+  banner.id = 'ordered-banner';
+  banner.className = 'ordered-banner';
+  banner.innerHTML = `<span>${orderedCount} card${orderedCount !== 1 ? 's' : ''} awaiting delivery</span><button id="view-ordered-btn">View Ordered</button>`;
+  main.parentElement.insertBefore(banner, main);
+  document.getElementById('view-ordered-btn').addEventListener('click', () => {
+    document.getElementById('sf-ordered').checked = true;
+    document.getElementById('sf-wanted').checked = false;
+    refilterAndRender();
+  });
+}
+
+function renderOrderGrouped() {
+  if (allCards.length === 0) {
+    main.innerHTML = '<div class="empty-state">No ordered cards found</div>';
+    return;
+  }
+  // Group by order_id
+  const groups = new Map();
+  for (const card of allCards) {
+    const key = card.order_id || 0;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(card);
+  }
+
+  const container = document.createElement('div');
+
+  for (const [orderId, cards] of groups) {
+    const first = cards[0];
+    const orderedInGroup = cards.filter(c => c.status === 'ordered').length;
+    const header = document.createElement('div');
+    header.className = 'order-group-header';
+
+    if (orderId) {
+      const seller = first.order_seller || 'Unknown';
+      const orderNum = first.order_number || '';
+      const orderDate = first.order_date || '';
+      header.innerHTML = `
+        <div class="order-group-info">
+          <span class="seller">${seller}</span>
+          ${orderNum ? `<span class="order-num">#${orderNum}</span>` : ''}
+          ${orderDate ? `<span>${orderDate}</span>` : ''}
+          <span class="order-count">${cards.length} card${cards.length !== 1 ? 's' : ''}${orderedInGroup > 0 ? ` (${orderedInGroup} ordered)` : ''}</span>
+        </div>
+        ${orderedInGroup > 0 ? `<button class="receive-all-btn" data-order-id="${orderId}">Receive All (${orderedInGroup})</button>` : '<span class="receive-all-btn received" style="pointer-events:none">Received</span>'}
+      `;
+    } else {
+      header.innerHTML = `<div class="order-group-info"><span class="seller">Other</span><span class="order-count">${cards.length} card${cards.length !== 1 ? 's' : ''}</span></div>`;
+    }
+    container.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'card-grid';
+    for (const card of cards) {
+      const isOrdered = card.status === 'ordered';
+      const cardEl = document.createElement('div');
+      cardEl.className = 'sheet-card' + (isOrdered ? ' ordered' : '');
+      const rarityColor = getRarityColor(card.rarity);
+      const foilClass = (card.finish === 'foil' || card.finish === 'etched') ? ' foil' : '';
+      const qtyBadge = card.qty > 1 ? `<span class="qty-badge">${card.qty}x</span>` : '';
+      const orderedBadge = isOrdered ? '<span class="ordered-badge" title="Ordered"></span>' : '';
+      cardEl.innerHTML = `<div class="sheet-card-img-wrap${foilClass}" style="--rarity-color:${rarityColor};--set-color:#111"><img src="${card.image_uri || ''}" alt="${card.name}" loading="lazy">${qtyBadge}${orderedBadge}</div>`;
+      cardEl.addEventListener('click', () => showCardModal(card));
+      grid.appendChild(cardEl);
+    }
+    container.appendChild(grid);
+  }
+
+  // Wire receive-all buttons
+  container.querySelectorAll('.receive-all-btn[data-order-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.textContent = '...';
+      const oid = btn.dataset.orderId;
+      const res = await fetch(`/api/orders/${oid}/receive`, { method: 'POST' });
+      const result = await res.json();
+      btn.textContent = `Received ${result.received}`;
+      btn.classList.add('received');
+      fetchCollection();
+    });
+  });
+
+  main.innerHTML = '';
+  main.appendChild(container);
 }
 
 const CONDITION_ABBREV = {
