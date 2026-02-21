@@ -477,7 +477,11 @@ async function commitOrders() {
     msg += ` across ${summary.orders_created} order(s).`;
     if (summary.errors && summary.errors.length > 0) msg += ` ${summary.errors.length} error(s).`;
 
-    results.innerHTML = `<div class="status-msg success">${msg}</div>`;
+    let guidanceHtml = '';
+    if (selectedStatus === 'ordered') {
+      guidanceHtml = '<div class="status-msg" style="background:rgba(240,160,48,0.1);border:1px solid rgba(240,160,48,0.3);color:#f0c878;margin-top:8px">Cards added as <b>Ordered</b>. When they arrive, go to <a href="/collection" style="color:#7ec8e3">Collection</a> and filter by Ordered to mark them as received.</div>';
+    }
+    results.innerHTML = `<div class="status-msg success">${msg}</div>${guidanceHtml}`;
     resolvedOrders = null;
   } catch (err) {
     results.innerHTML = `<div class="status-msg error">Commit failed: ${err.message}</div>`;
