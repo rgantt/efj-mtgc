@@ -922,8 +922,16 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         # Sealed product API routes
         elif path == "/api/sealed/products/sets":
             self._api_sealed_products_sets()
+        elif path.startswith("/api/sealed/products/"):
+            uuid = path[len("/api/sealed/products/"):]
+            self._api_sealed_product_detail(uuid)
         elif path == "/api/sealed/products":
             self._api_sealed_products(params)
+        elif path == "/api/sealed/prices-status":
+            self._api_sealed_prices_status()
+        elif path.startswith("/api/sealed/prices/"):
+            tcg_id = path[len("/api/sealed/prices/"):]
+            self._api_sealed_price_history(tcg_id)
         elif path == "/api/sealed/collection/stats":
             self._api_sealed_collection_stats()
         elif path == "/api/sealed/collection":
@@ -4085,6 +4093,74 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         sets = repo.list_sets_with_products()
         conn.close()
         self._send_json(sets)
+
+    def _api_sealed_product_detail(self, uuid: str):
+        """Get a single sealed product by UUID."""
+        from mtg_collector.db.models import SealedProductRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedProductRepository(conn)
+        product = repo.get(uuid)
+        if not product:
+            conn.close()
+            self._send_json({"error": f"Sealed product '{uuid}' not found"}, 404)
+            return
+
+        image_url = None
+        if product.tcgplayer_product_id:
+            image_url = f"https://tcgplayer-cdn.tcgplayer.com/product/{product.tcgplayer_product_id}_200w.jpg"
+        set_name = None
+        row = conn.execute("SELECT set_name FROM sets WHERE set_code = ?", (product.set_code,)).fetchone()
+        if row:
+            set_name = row["set_name"]
+        conn.close()
+
+        self._send_json({
+            "uuid": product.uuid,
+            "name": product.name,
+            "set_code": product.set_code,
+            "set_name": set_name,
+            "category": product.category,
+            "subtype": product.subtype,
+            "tcgplayer_product_id": product.tcgplayer_product_id,
+            "card_count": product.card_count,
+            "product_size": product.product_size,
+            "release_date": product.release_date,
+            "image_url": image_url,
+            "purchase_url_tcgplayer": product.purchase_url_tcgplayer,
+            "purchase_url_cardkingdom": product.purchase_url_cardkingdom,
+            "contents_json": product.contents_json,
+        })
+
+    def _api_sealed_price_history(self, tcgplayer_product_id: str):
+        """Return price time series for a sealed product."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT low_price, mid_price, high_price, market_price, direct_low_price, observed_at "
+            "FROM sealed_prices WHERE tcgplayer_product_id = ? ORDER BY observed_at",
+            (tcgplayer_product_id,),
+        ).fetchall()
+        conn.close()
+        self._send_json([dict(r) for r in rows])
+
+    def _api_sealed_prices_status(self):
+        """Return info about cached sealed prices."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT MAX(observed_at) as last_date, COUNT(DISTINCT tcgplayer_product_id) as product_count "
+            "FROM sealed_prices"
+        ).fetchone()
+        conn.close()
+        self._send_json({
+            "available": row["last_date"] is not None,
+            "last_date": row["last_date"],
+            "product_count": row["product_count"],
+        })
 
     def _api_sealed_collection_list(self, params: dict):
         """List user's sealed collection with filters."""

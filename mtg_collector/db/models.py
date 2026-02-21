@@ -1531,6 +1531,16 @@ class SealedCollectionRepository:
         ).fetchone()[0]
         stats["total_cost"] = total_cost
 
+        market_value = self.conn.execute(
+            """SELECT COALESCE(SUM(lsp.market_price * sc.quantity), 0)
+            FROM sealed_collection sc
+            JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
+            LEFT JOIN latest_sealed_prices lsp ON sp.tcgplayer_product_id = lsp.tcgplayer_product_id
+            WHERE sc.status = 'owned'"""
+        ).fetchone()[0]
+        stats["market_value"] = market_value
+        stats["gain_loss"] = market_value - total_cost
+
         return stats
 
     def _row_to_entry(self, row: sqlite3.Row) -> SealedCollectionEntry:
