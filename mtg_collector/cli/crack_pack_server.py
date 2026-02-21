@@ -917,6 +917,15 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/ingest/image/"):
             filename = unquote(path[len("/api/ingest/image/"):])
             self._api_ingest_serve_image(filename)
+        # Sealed product API routes
+        elif path == "/api/sealed/products/sets":
+            self._api_sealed_products_sets()
+        elif path == "/api/sealed/products":
+            self._api_sealed_products(params)
+        elif path == "/api/sealed/collection/stats":
+            self._api_sealed_collection_stats()
+        elif path == "/api/sealed/collection":
+            self._api_sealed_collection_list(params)
         elif path.startswith("/static/"):
             self._serve_static(path[len("/static/"):])
         else:
@@ -1025,6 +1034,18 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_import_resolve()
         elif path == "/api/import/commit":
             self._api_import_commit()
+        # Sealed collection POST routes
+        elif path == "/api/sealed/collection":
+            data = self._read_json_body()
+            if data is None:
+                return
+            self._api_sealed_collection_add(data)
+        elif path.startswith("/api/sealed/collection/") and path.endswith("/dispose"):
+            entry_id = path[len("/api/sealed/collection/"):-len("/dispose")]
+            data = self._read_json_body()
+            if data is None:
+                return
+            self._api_sealed_collection_dispose(int(entry_id), data)
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -1034,6 +1055,12 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         if path == "/api/settings":
             self._api_put_settings()
+        elif path.startswith("/api/sealed/collection/"):
+            entry_id = path[len("/api/sealed/collection/"):]
+            data = self._read_json_body()
+            if data is None:
+                return
+            self._api_sealed_collection_update(int(entry_id), data)
         else:
             self._send_json({"error": "Not found"}, 404)
 
@@ -1042,7 +1069,14 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         path = parsed.path
         params = parse_qs(parsed.query)
 
-        if path.startswith("/api/collection/") and not path.startswith("/api/collection/bulk"):
+        if path.startswith("/api/sealed/collection/"):
+            entry_id = path[len("/api/sealed/collection/"):]
+            confirm = params.get("confirm", [""])[0]
+            if confirm != "true":
+                self._send_json({"error": "Must pass ?confirm=true"}, 400)
+                return
+            self._api_sealed_collection_delete(int(entry_id))
+        elif path.startswith("/api/collection/") and not path.startswith("/api/collection/bulk"):
             entry_id = path[len("/api/collection/"):]
             confirm = params.get("confirm", [""])[0]
             if confirm != "true":
@@ -3969,6 +4003,262 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             "deleted_ids": result["deleted"],
             "skipped_ids": result["skipped"],
         })
+
+    # ── Sealed product API handlers ─────────────────────────────────
+
+    def _api_sealed_products(self, params: dict):
+        """Search/list sealed products (reference data)."""
+        from mtg_collector.db.models import SealedProductRepository
+        from mtg_collector.db.schema import init_db
+
+        q = params.get("q", [""])[0]
+        set_code = params.get("set_code", [""])[0]
+        category = params.get("category", [""])[0]
+        limit = int(params.get("limit", ["50"])[0])
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedProductRepository(conn)
+
+        if q:
+            products = repo.search_by_name(q, limit=limit)
+        elif set_code:
+            products = repo.list_by_set(set_code.lower())
+        else:
+            # Default: return nothing without a search term or set filter
+            conn.close()
+            self._send_json([])
+            return
+
+        if category:
+            products = [p for p in products if p.category == category]
+
+        result = []
+        for p in products[:limit]:
+            image_url = None
+            if p.tcgplayer_product_id:
+                image_url = f"https://tcgplayer-cdn.tcgplayer.com/product/{p.tcgplayer_product_id}_200w.jpg"
+            # Look up set name
+            set_name = None
+            row = conn.execute("SELECT set_name FROM sets WHERE set_code = ?", (p.set_code,)).fetchone()
+            if row:
+                set_name = row["set_name"]
+            result.append({
+                "uuid": p.uuid,
+                "name": p.name,
+                "set_code": p.set_code,
+                "set_name": set_name,
+                "category": p.category,
+                "subtype": p.subtype,
+                "tcgplayer_product_id": p.tcgplayer_product_id,
+                "card_count": p.card_count,
+                "product_size": p.product_size,
+                "release_date": p.release_date,
+                "image_url": image_url,
+                "purchase_url_tcgplayer": p.purchase_url_tcgplayer,
+                "purchase_url_cardkingdom": p.purchase_url_cardkingdom,
+            })
+
+        conn.close()
+        self._send_json(result)
+
+    def _api_sealed_products_sets(self):
+        """List sets that have sealed products."""
+        from mtg_collector.db.models import SealedProductRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedProductRepository(conn)
+        sets = repo.list_sets_with_products()
+        conn.close()
+        self._send_json(sets)
+
+    def _api_sealed_collection_list(self, params: dict):
+        """List user's sealed collection with filters."""
+        from mtg_collector.db.models import SealedCollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        set_code = params.get("set_code", [""])[0] or None
+        category = params.get("category", [""])[0] or None
+        subtype = params.get("subtype", [""])[0] or None
+        status = params.get("status", [""])[0] or None
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedCollectionRepository(conn)
+        entries = repo.list_all(set_code=set_code, category=category, subtype=subtype, status=status)
+
+        # Attach image URLs
+        for entry in entries:
+            tcg_id = entry.get("tcgplayer_product_id")
+            if tcg_id:
+                entry["image_url"] = f"https://tcgplayer-cdn.tcgplayer.com/product/{tcg_id}_200w.jpg"
+            else:
+                entry["image_url"] = None
+
+        conn.close()
+        self._send_json(entries)
+
+    def _api_sealed_collection_stats(self):
+        """Get sealed collection statistics."""
+        from mtg_collector.db.models import SealedCollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedCollectionRepository(conn)
+        stats = repo.stats()
+        conn.close()
+        self._send_json(stats)
+
+    def _api_sealed_collection_add(self, data: dict):
+        """Add a sealed product to the collection."""
+        from mtg_collector.db.models import SealedCollectionEntry, SealedCollectionRepository, SealedProductRepository
+        from mtg_collector.db.schema import init_db
+
+        uuid = data.get("sealed_product_uuid")
+        if not uuid:
+            self._send_json({"error": "sealed_product_uuid required"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        # Verify the product exists
+        product_repo = SealedProductRepository(conn)
+        product = product_repo.get(uuid)
+        if not product:
+            conn.close()
+            self._send_json({"error": f"Sealed product '{uuid}' not found"}, 404)
+            return
+
+        entry = SealedCollectionEntry(
+            id=None,
+            sealed_product_uuid=uuid,
+            quantity=data.get("quantity", 1),
+            condition=data.get("condition", "Near Mint"),
+            purchase_price=data.get("purchase_price"),
+            purchase_date=data.get("purchase_date"),
+            source=data.get("source"),
+            seller_name=data.get("seller_name"),
+            notes=data.get("notes"),
+            status=data.get("status", "owned"),
+        )
+
+        repo = SealedCollectionRepository(conn)
+        new_id = repo.add(entry)
+        conn.commit()
+
+        # Fetch back for response
+        created = repo.get(new_id)
+        conn.close()
+
+        image_url = None
+        if product.tcgplayer_product_id:
+            image_url = f"https://tcgplayer-cdn.tcgplayer.com/product/{product.tcgplayer_product_id}_200w.jpg"
+
+        self._send_json({
+            "id": created.id,
+            "sealed_product_uuid": created.sealed_product_uuid,
+            "product_name": product.name,
+            "set_code": product.set_code,
+            "category": product.category,
+            "quantity": created.quantity,
+            "condition": created.condition,
+            "purchase_price": created.purchase_price,
+            "purchase_date": created.purchase_date,
+            "source": created.source,
+            "seller_name": created.seller_name,
+            "notes": created.notes,
+            "status": created.status,
+            "added_at": created.added_at,
+            "image_url": image_url,
+        })
+
+    def _api_sealed_collection_update(self, entry_id: int, data: dict):
+        """Update a sealed collection entry."""
+        from mtg_collector.db.models import SealedCollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedCollectionRepository(conn)
+
+        entry = repo.get(entry_id)
+        if not entry:
+            conn.close()
+            self._send_json({"error": "Not found"}, 404)
+            return
+
+        # Apply updates from request body
+        if "quantity" in data:
+            entry.quantity = data["quantity"]
+        if "condition" in data:
+            entry.condition = data["condition"]
+        if "purchase_price" in data:
+            entry.purchase_price = data["purchase_price"]
+        if "purchase_date" in data:
+            entry.purchase_date = data["purchase_date"]
+        if "source" in data:
+            entry.source = data["source"]
+        if "seller_name" in data:
+            entry.seller_name = data["seller_name"]
+        if "notes" in data:
+            entry.notes = data["notes"]
+
+        repo.update(entry)
+        conn.commit()
+        conn.close()
+        self._send_json({"ok": True})
+
+    def _api_sealed_collection_dispose(self, entry_id: int, data: dict):
+        """Transition a sealed collection entry's status."""
+        from mtg_collector.db.models import SealedCollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        new_status = data.get("new_status")
+        if not new_status:
+            self._send_json({"error": "new_status required"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedCollectionRepository(conn)
+
+        try:
+            repo.dispose(entry_id, new_status, sale_price=data.get("sale_price"))
+            conn.commit()
+            conn.close()
+            self._send_json({"ok": True})
+        except ValueError as e:
+            conn.close()
+            self._send_json({"error": str(e)}, 400)
+
+    def _api_sealed_collection_delete(self, entry_id: int):
+        """Delete a sealed collection entry."""
+        from mtg_collector.db.models import SealedCollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+        repo = SealedCollectionRepository(conn)
+
+        deleted = repo.delete(entry_id)
+        conn.commit()
+        conn.close()
+        if deleted:
+            self._send_json({"ok": True})
+        else:
+            self._send_json({"error": "Not found"}, 404)
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
