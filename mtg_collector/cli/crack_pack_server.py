@@ -857,6 +857,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             set_code = params.get("set", [""])[0]
             product = params.get("product", [""])[0]
             self._api_sheets(set_code, product)
+        elif path == "/api/collection/copies":
+            self._api_collection_copies(params)
         elif path == "/api/collection":
             self._api_collection(params)
         elif path == "/api/wishlist":
@@ -995,6 +997,25 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/wishlist/") and path.endswith("/fulfill"):
             wid = path[len("/api/wishlist/"):-len("/fulfill")]
             self._api_wishlist_fulfill(int(wid))
+        elif path == "/api/collection/bulk-delete":
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON"}, 400)
+                return
+            self._api_collection_bulk_delete(data)
+        elif path.startswith("/api/collection/") and path.endswith("/dispose"):
+            entry_id = path[len("/api/collection/"):-len("/dispose")]
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+            except json.JSONDecodeError:
+                self._send_json({"error": "Invalid JSON"}, 400)
+                return
+            self._api_collection_dispose(int(entry_id), data)
         elif path == "/api/import/parse":
             self._api_import_parse()
         elif path == "/api/import/resolve":
@@ -1016,8 +1037,16 @@ class CrackPackHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         parsed = urlparse(self.path)
         path = parsed.path
+        params = parse_qs(parsed.query)
 
-        if path.startswith("/api/wishlist/"):
+        if path.startswith("/api/collection/") and not path.startswith("/api/collection/bulk"):
+            entry_id = path[len("/api/collection/"):]
+            confirm = params.get("confirm", [""])[0]
+            if confirm != "true":
+                self._send_json({"error": "Must pass ?confirm=true"}, 400)
+                return
+            self._api_collection_delete(int(entry_id))
+        elif path.startswith("/api/wishlist/"):
             wid = path[len("/api/wishlist/"):]
             self._api_wishlist_delete(int(wid))
         else:
@@ -3804,6 +3833,105 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         conn.close()
         self._send_json(results)
+
+    def _api_collection_copies(self, params: dict):
+        """Return per-copy data for a card (by scryfall_id + optional filters)."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        scryfall_id = params.get("scryfall_id", [""])[0]
+        if not scryfall_id:
+            self._send_json({"error": "scryfall_id required"}, 400)
+            return
+
+        finish = params.get("finish", [""])[0] or None
+        condition = params.get("condition", [""])[0] or None
+        status = params.get("status", [""])[0] or None
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = CollectionRepository(conn)
+        copies = repo.get_copies(scryfall_id, finish=finish, condition=condition, status=status)
+        conn.close()
+        self._send_json(copies)
+
+    def _api_collection_dispose(self, entry_id: int, data: dict):
+        """Transition a collection entry to a disposition status."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        new_status = data.get("new_status")
+        if not new_status:
+            self._send_json({"error": "new_status required"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = CollectionRepository(conn)
+        try:
+            repo.dispose(
+                entry_id,
+                new_status,
+                sale_price=data.get("sale_price"),
+                note=data.get("note"),
+            )
+            conn.commit()
+            conn.close()
+            self._send_json({"ok": True})
+        except ValueError as e:
+            conn.close()
+            self._send_json({"error": str(e)}, 400)
+
+    def _api_collection_delete(self, entry_id: int):
+        """Hard-delete a collection entry with lineage cleanup."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = CollectionRepository(conn)
+        try:
+            deleted = repo.delete_with_lineage(entry_id)
+            conn.commit()
+            conn.close()
+            if deleted:
+                self._send_json({"ok": True})
+            else:
+                self._send_json({"error": "Not found"}, 404)
+        except ValueError as e:
+            conn.close()
+            self._send_json({"error": str(e)}, 400)
+
+    def _api_collection_bulk_delete(self, data: dict):
+        """Bulk-delete collection entries with lineage cleanup."""
+        from mtg_collector.db.models import CollectionRepository
+        from mtg_collector.db.schema import init_db
+
+        ids = data.get("ids", [])
+        if not ids:
+            self._send_json({"error": "ids array required"}, 400)
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        repo = CollectionRepository(conn)
+        result = repo.bulk_delete(ids)
+        conn.commit()
+        conn.close()
+        self._send_json({
+            "deleted": len(result["deleted"]),
+            "skipped": len(result["skipped"]),
+            "deleted_ids": result["deleted"],
+            "skipped_ids": result["skipped"],
+        })
 
     def _send_json(self, obj, status=200):
         body = json.dumps(obj).encode()
