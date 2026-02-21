@@ -1,0 +1,98 @@
+[
+  {
+    "text": "Thwip!",
+    "x": 271.0,
+    "y": 661.0,
+    "w": 103.0,
+    "h": 42.0,
+    "confidence": 0.982
+  },
+  {
+    "text": "Instant",
+    "x": 281.0,
+    "y": 1068.0,
+    "w": 81.0,
+    "h": 26.0,
+    "confidence": 0.993
+  },
+  {
+    "text": "Target creature gets +2/+2 and gains",
+    "x": 284.0,
+    "y": 1112.0,
+    "w": 397.0,
+    "h": 28.0,
+    "confidence": 0.973
+  },
+  {
+    "text": "flying until end of turn. If it's a Spider,",
+    "x": 284.0,
+    "y": 1134.0,
+    "w": 419.0,
+    "h": 32.0,
+    "confidence": 0.961
+  },
+  {
+    "text": "you gain 2 life.",
+    "x": 284.0,
+    "y": 1160.0,
+    "w": 159.0,
+    "h": 24.0,
+    "confidence": 0.94
+  },
+  {
+    "text": "YesThis is what being Spider-Man is all",
+    "x": 284.0,
+    "y": 1202.0,
+    "w": 423.0,
+    "h": 30.0,
+    "confidence": 0.967
+  },
+  {
+    "text": "aboutSwinging through the sky-a New",
+    "x": 284.0,
+    "y": 1226.0,
+    "w": 421.0,
+    "h": 32.0,
+    "confidence": 0.964
+  },
+  {
+    "text": "York sky-patrolling the city.Every moment",
+    "x": 284.0,
+    "y": 1248.0,
+    "w": 441.0,
+    "h": 34.0,
+    "confidence": 0.969
+  },
+  {
+    "text": "a chance to make a difference.To fight the",
+    "x": 286.0,
+    "y": 1276.0,
+    "w": 421.0,
+    "h": 26.0,
+    "confidence": 0.981
+  },
+  {
+    "text": "good fight.\"",
+    "x": 284.0,
+    "y": 1298.0,
+    "w": 117.0,
+    "h": 24.0,
+    "confidence": 0.943
+  },
+  {
+    "text": "CALARVEE",
+    "x": 676.0,
+    "y": 1336.0,
+    "w": 61.0,
+    "h": 22.0,
+    "confidence": 0.835
+  },
+  {
+    "text": "2025Wizards",
+    "x": 564.0,
+    "y": 1346.0,
+    "w": 115.0,
+    "h": 20.0,
+    "confidence": 0.971
+  }
+]

@@ -15,7 +15,7 @@ from functools import partial
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import requests
 
@@ -915,7 +915,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             image_id = params.get("image_id", [""])[0]
             self._api_ingest2_next_card(int(image_id) if image_id else None)
         elif path.startswith("/api/ingest/image/"):
-            filename = path[len("/api/ingest/image/"):]
+            filename = unquote(path[len("/api/ingest/image/"):])
             self._api_ingest_serve_image(filename)
         elif path.startswith("/static/"):
             self._serve_static(path[len("/static/"):])

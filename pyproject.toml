@@ -30,6 +30,9 @@ dependencies = [
     "easyocr>=1.7.0",
     "numpy<2",
     "torch<=2.2.2",
+    "paddleocr>=2.10,<3",
+    "paddlepaddle>=2.6,<3",
+    "setuptools",
     "requests>=2.28.0",
 ]
 
