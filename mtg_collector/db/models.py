@@ -1461,10 +1461,13 @@ class SealedCollectionRepository:
                 sp.name, sp.set_code, sp.category, sp.subtype,
                 sp.tcgplayer_product_id, sp.card_count, sp.release_date,
                 sp.purchase_url_tcgplayer, sp.purchase_url_cardkingdom,
-                s.set_name
+                sp.contents_json,
+                s.set_name,
+                lsp.market_price, lsp.low_price, lsp.mid_price, lsp.high_price
             FROM sealed_collection sc
             JOIN sealed_products sp ON sc.sealed_product_uuid = sp.uuid
             LEFT JOIN sets s ON sp.set_code = s.set_code
+            LEFT JOIN latest_sealed_prices lsp ON sp.tcgplayer_product_id = lsp.tcgplayer_product_id
             WHERE 1=1
         """
         params: List[Any] = []
