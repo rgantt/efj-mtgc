@@ -950,45 +950,67 @@ def _migrate_v16_to_v17(conn: sqlite3.Connection):
     """Expand status CHECK constraint to include traded, gifted, lost.
 
     SQLite can't ALTER CHECK constraints, so we rebuild the collection table.
+    Must drop collection_view first — SQLite 3.25+ validates schema on
+    ALTER TABLE RENAME and will error on a view referencing a dropped table.
     """
+    # Drop view BEFORE the table rebuild to avoid schema validation errors
+    conn.execute("DROP VIEW IF EXISTS collection_view")
+
+    # Detect partially-migrated state from a previous failed run.
+    # executescript auto-commits each DDL statement, so a failure mid-script
+    # can leave collection_new present and collection already dropped.
+    has_collection = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection'"
+    ).fetchone() is not None
+    has_collection_new = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='collection_new'"
+    ).fetchone() is not None
+
+    if has_collection_new and not has_collection:
+        # Recovery: previous run dropped collection but failed on rename
+        conn.execute("ALTER TABLE collection_new RENAME TO collection")
+    else:
+        # Normal migration (clean up leftover collection_new if present)
+        conn.executescript("""
+            DROP TABLE IF EXISTS collection_new;
+
+            CREATE TABLE collection_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
+                finish TEXT NOT NULL CHECK(finish IN ('nonfoil', 'foil', 'etched')),
+                condition TEXT NOT NULL DEFAULT 'Near Mint'
+                    CHECK(condition IN ('Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged')),
+                language TEXT NOT NULL DEFAULT 'English',
+                purchase_price REAL,
+                acquired_at TEXT NOT NULL,
+                source TEXT NOT NULL,
+                source_image TEXT,
+                notes TEXT,
+                tags TEXT,
+                tradelist INTEGER DEFAULT 0,
+                is_alter INTEGER DEFAULT 0,
+                proxy INTEGER DEFAULT 0,
+                signed INTEGER DEFAULT 0,
+                misprint INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'owned'
+                    CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed', 'traded', 'gifted', 'lost')),
+                sale_price REAL,
+                order_id INTEGER REFERENCES orders(id)
+            );
+
+            INSERT INTO collection_new SELECT * FROM collection;
+
+            DROP TABLE collection;
+
+            ALTER TABLE collection_new RENAME TO collection;
+        """)
+
+    # Ensure indexes and view exist (idempotent for both normal and recovery paths)
     conn.executescript("""
-        CREATE TABLE collection_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scryfall_id TEXT NOT NULL REFERENCES printings(scryfall_id),
-            finish TEXT NOT NULL CHECK(finish IN ('nonfoil', 'foil', 'etched')),
-            condition TEXT NOT NULL DEFAULT 'Near Mint'
-                CHECK(condition IN ('Near Mint', 'Lightly Played', 'Moderately Played', 'Heavily Played', 'Damaged')),
-            language TEXT NOT NULL DEFAULT 'English',
-            purchase_price REAL,
-            acquired_at TEXT NOT NULL,
-            source TEXT NOT NULL,
-            source_image TEXT,
-            notes TEXT,
-            tags TEXT,
-            tradelist INTEGER DEFAULT 0,
-            is_alter INTEGER DEFAULT 0,
-            proxy INTEGER DEFAULT 0,
-            signed INTEGER DEFAULT 0,
-            misprint INTEGER DEFAULT 0,
-            status TEXT NOT NULL DEFAULT 'owned'
-                CHECK(status IN ('owned', 'ordered', 'listed', 'sold', 'removed', 'traded', 'gifted', 'lost')),
-            sale_price REAL,
-            order_id INTEGER REFERENCES orders(id)
-        );
-
-        INSERT INTO collection_new SELECT * FROM collection;
-
-        DROP TABLE collection;
-
-        ALTER TABLE collection_new RENAME TO collection;
-
         CREATE INDEX IF NOT EXISTS idx_collection_scryfall ON collection(scryfall_id);
         CREATE INDEX IF NOT EXISTS idx_collection_source ON collection(source);
         CREATE INDEX IF NOT EXISTS idx_collection_status ON collection(status);
     """)
-
-    # Rebuild collection_view
-    conn.execute("DROP VIEW IF EXISTS collection_view")
     conn.execute("""
         CREATE VIEW collection_view AS
         SELECT
