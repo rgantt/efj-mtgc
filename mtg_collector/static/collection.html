@@ -904,6 +904,38 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   color: #f0c878;
 }
 
+/* Receive buttons */
+.receive-btn {
+  background: #f0a030;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.receive-btn:hover { background: #e89520; }
+.receive-btn:disabled { background: #555; color: #888; cursor: not-allowed; }
+.receive-btn.received { background: #4caf50; color: #fff; cursor: default; }
+
+/* Modal copies section */
+.modal-copies { margin-top: 4px; }
+.modal-copy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid #2a2a3e;
+  font-size: 0.8rem;
+}
+.modal-copy-row:last-child { border-bottom: none; }
+.modal-copy-info { display: flex; gap: 8px; align-items: center; color: #aaa; }
+.modal-copy-info .copy-status { font-weight: 600; }
+.modal-copy-info .copy-status.ordered { color: #f0a030; }
+.modal-copy-info .copy-status.owned { color: #4caf50; }
+
 /* Order group headers for grid view */
 .order-group-header {
   display: flex;
@@ -1840,6 +1872,13 @@ function showCardModal(card) {
         <div class="modal-row"><span class="label">Number</span><span class="value">${card.collector_number || ''}</span></div>
         <div class="modal-row"><span class="label">Rarity</span><span class="value filterable" data-filter-type="rarity" data-filter-value="${card.rarity || 'common'}">${rarity}</span></div>
       </div>
+      <div class="modal-section">
+        <span class="modal-section-title">Collection</span>
+        <div class="modal-row"><span class="label">Quantity</span><span class="value">${card.qty}</span></div>
+        <div class="modal-row"><span class="label">Condition</span><span class="value">${condition}</span></div>
+        <div class="modal-row"><span class="label">Finish</span><span class="value filterable" data-filter-type="finish" data-filter-value="${card.finish || 'nonfoil'}">${finish}</span></div>
+        <div id="modal-copies-container" class="modal-copies"></div>
+      </div>
       ${tagsHtml ? `<div class="modal-section"><span class="modal-section-title">Treatments</span><div class="modal-tags">${tagsHtml}</div></div>` : ''}
       ${(() => {
         const wl = getWishlistEntry(card);
@@ -1865,6 +1904,55 @@ function showCardModal(card) {
   }
 
   renderDetails(0);
+
+  // Lazy-load copies for owned/ordered cards
+  if (card.qty > 0) {
+    const copiesParams = new URLSearchParams({ scryfall_id: card.scryfall_id });
+    if (card.finish) copiesParams.set('finish', card.finish);
+    if (card.condition) copiesParams.set('condition', card.condition);
+    fetch(`/api/collection/copies?${copiesParams}`)
+      .then(r => r.json())
+      .then(copies => {
+        const container = document.getElementById('modal-copies-container');
+        if (!container || copies.length <= 1) return;
+        container.innerHTML = copies.map(copy => {
+          const statusClass = copy.status === 'ordered' ? 'ordered' : 'owned';
+          const statusLabel = copy.status === 'ordered' ? 'Ordered' : 'Owned';
+          const seller = copy.order_seller ? ` &middot; ${copy.order_seller}` : '';
+          const price = copy.purchase_price ? ` &middot; $${parseFloat(copy.purchase_price).toFixed(2)}` : '';
+          const source = copy.source && copy.source !== 'manual' ? ` &middot; ${copy.source}` : '';
+          const receiveBtn = copy.status === 'ordered'
+            ? `<button class="receive-btn" data-collection-id="${copy.id}">Receive</button>`
+            : '';
+          return `<div class="modal-copy-row">
+            <div class="modal-copy-info">
+              <span class="copy-status ${statusClass}">${statusLabel}</span>
+              <span>${copy.finish || ''}${seller}${price}${source}</span>
+            </div>
+            ${receiveBtn}
+          </div>`;
+        }).join('');
+        // Wire up receive buttons
+        container.querySelectorAll('.receive-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            btn.textContent = '...';
+            const cid = btn.dataset.collectionId;
+            const res = await fetch(`/api/collection/${cid}/receive`, { method: 'POST' });
+            const result = await res.json();
+            if (result.received) {
+              btn.textContent = 'Received';
+              btn.classList.add('received');
+              const statusEl = btn.closest('.modal-copy-row').querySelector('.copy-status');
+              if (statusEl) { statusEl.textContent = 'Owned'; statusEl.className = 'copy-status owned'; }
+              fetchCollection();
+            } else {
+              btn.textContent = 'Failed';
+            }
+          });
+        });
+      });
+  }
 
   // Want button handler
   modalDetails.addEventListener('click', async (e) => {
@@ -2626,7 +2714,7 @@ function renderOrderedBanner() {
   banner.id = 'ordered-banner';
   banner.className = 'ordered-banner';
   banner.innerHTML = `<span>${orderedCount} card${orderedCount !== 1 ? 's' : ''} awaiting delivery</span><button id="view-ordered-btn">View Ordered</button>`;
-  main.parentElement.insertBefore(banner, main);
+  main.insertBefore(banner, main.firstChild);
   document.getElementById('view-ordered-btn').addEventListener('click', () => {
     document.getElementById('sf-ordered').checked = true;
     document.getElementById('sf-wanted').checked = false;
