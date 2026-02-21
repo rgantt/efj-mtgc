@@ -3,12 +3,14 @@
 from mtg_collector.importers.archidekt import ArchidektImporter
 from mtg_collector.importers.base import BaseImporter
 from mtg_collector.importers.deckbox import DeckboxImporter
+from mtg_collector.importers.decklist import DecklistImporter
 from mtg_collector.importers.moxfield import MoxfieldImporter
 
 IMPORTERS = {
     "moxfield": MoxfieldImporter,
     "archidekt": ArchidektImporter,
     "deckbox": DeckboxImporter,
+    "decklist": DecklistImporter,
 }
 
 
@@ -22,27 +24,48 @@ def get_importer(format_name: str) -> BaseImporter:
 
 def detect_format(file_path: str) -> str:
     """
-    Auto-detect the format of a CSV file.
+    Auto-detect the format of an import file (CSV or text deck list).
 
     Returns format name or raises ValueError if unknown.
     """
     import csv
 
+    from mtg_collector.importers.decklist import ParseError, parse_line
+
     with open(file_path, "r", encoding="utf-8") as f:
-        # Try to detect delimiter
         sample = f.read(4096)
-        f.seek(0)
 
-        # Archidekt uses semicolon
-        if ";" in sample and sample.count(";") > sample.count(","):
-            dialect = csv.Sniffer().sniff(sample, delimiters=";,")
-        else:
-            dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+    # Check for text deck list format before trying CSV.
+    # Try parsing non-blank lines — if most succeed, it's a deck list.
+    non_blank = [ln for ln in sample.splitlines() if ln.strip()]
+    if non_blank:
+        parsed = 0
+        for i, ln in enumerate(non_blank):
+            try:
+                parse_line(ln.strip(), i + 1)
+                parsed += 1
+            except ParseError:
+                pass
+        if parsed / len(non_blank) > 0.5:
+            return "decklist"
 
-        f.seek(0)
-        reader = csv.reader(f, dialect)
-        headers = next(reader, [])
-        headers_lower = [h.lower().strip() for h in headers]
+    # Try CSV detection
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            sample = f.read(4096)
+            f.seek(0)
+
+            if ";" in sample and sample.count(";") > sample.count(","):
+                dialect = csv.Sniffer().sniff(sample, delimiters=";,")
+            else:
+                dialect = csv.Sniffer().sniff(sample, delimiters=",;")
+
+            f.seek(0)
+            reader = csv.reader(f, dialect)
+            headers = next(reader, [])
+            headers_lower = [h.lower().strip() for h in headers]
+    except csv.Error:
+        raise ValueError("Could not auto-detect format. Please specify format explicitly.")
 
     # Check for Archidekt-specific columns
     if "scryfall_uuid" in headers_lower or "export_type" in headers_lower:
@@ -60,7 +83,7 @@ def detect_format(file_path: str) -> str:
     if "count" in headers_lower and "name" in headers_lower:
         return "moxfield"
 
-    raise ValueError("Could not auto-detect CSV format. Please specify --format explicitly.")
+    raise ValueError("Could not auto-detect format. Please specify format explicitly.")
 
 
 __all__ = [
@@ -68,6 +91,7 @@ __all__ = [
     "MoxfieldImporter",
     "ArchidektImporter",
     "DeckboxImporter",
+    "DecklistImporter",
     "get_importer",
     "detect_format",
     "IMPORTERS",

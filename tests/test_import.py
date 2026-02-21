@@ -332,6 +332,163 @@ class TestImportFile:
             os.unlink(csv_path)
 
 
+# ── TestDecklistImport ───────────────────────────────────────────────
+
+
+def _write_decklist(lines):
+    """Write deck list text to a temp file and return the path."""
+    fd, path = tempfile.mkstemp(suffix=".txt")
+    with os.fdopen(fd, "w") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+class TestDecklistImport:
+    """Tests for the text deck list importer (Moxfield export format)."""
+
+    def test_detect_format_decklist(self):
+        """Auto-detect identifies text deck list format."""
+        from mtg_collector.importers import detect_format
+
+        path = _write_decklist([
+            "1 Test Card Alpha (tst) 001",
+            "1 Test Card Beta (tst) 002",
+        ])
+        try:
+            assert detect_format(path) == "decklist"
+        finally:
+            os.unlink(path)
+
+    def test_detect_format_csv_still_works(self):
+        """Auto-detect still identifies Moxfield CSV."""
+        path = _write_csv([
+            {"Count": "1", "Name": "Alpha", "Edition": "tst",
+             "Collector Number": "001", "Condition": "Near Mint",
+             "Foil": "", "Language": "English", "Purchase Price": ""},
+        ])
+        try:
+            from mtg_collector.importers import detect_format
+
+            assert detect_format(path) == "moxfield"
+        finally:
+            os.unlink(path)
+
+    def test_parse_decklist(self):
+        """DecklistImporter.parse_file parses Moxfield text export."""
+        from mtg_collector.importers.decklist import DecklistImporter
+
+        imp = DecklistImporter()
+        path = _write_decklist([
+            "1 Auntie Ool, Cursewretch (ECC) 2 *F*",
+            "1 Aberrant Return (ECC) 7",
+            "6 Forest (ECL) 283",
+            "",  # blank line should be skipped
+        ])
+        try:
+            rows = imp.parse_file(path)
+            assert len(rows) == 3
+
+            assert rows[0]["Name"] == "Auntie Ool, Cursewretch"
+            assert rows[0]["Edition"] == "ECC"
+            assert rows[0]["Collector Number"] == "2"
+            assert rows[0]["Count"] == "1"
+            assert rows[0]["Foil"] == "foil"
+
+            assert rows[1]["Name"] == "Aberrant Return"
+            assert rows[1]["Edition"] == "ECC"
+            assert rows[1]["Collector Number"] == "7"
+            assert rows[1]["Foil"] == ""
+
+            assert rows[2]["Name"] == "Forest"
+            assert rows[2]["Count"] == "6"
+            assert rows[2]["Edition"] == "ECL"
+        finally:
+            os.unlink(path)
+
+    def test_decklist_row_to_lookup(self):
+        """row_to_lookup extracts name, set, cn, quantity correctly."""
+        from mtg_collector.importers.decklist import DecklistImporter
+
+        imp = DecklistImporter()
+        row = {"Count": "3", "Name": "Forest", "Edition": "ECL",
+               "Collector Number": "283", "Foil": ""}
+        name, set_code, cn, qty = imp.row_to_lookup(row)
+        assert name == "Forest"
+        assert set_code == "ECL"
+        assert cn == "283"
+        assert qty == 3
+
+    def test_decklist_import_end_to_end(self, repos):
+        """Full import flow with deck list format."""
+        from mtg_collector.importers.decklist import DecklistImporter
+
+        imp = DecklistImporter()
+        path = _write_decklist([
+            "1 Test Card Alpha (tst) 001",
+            "2 Test Card Beta (tst) 002",
+        ])
+        try:
+            result = imp.import_file(
+                path, repos["conn"],
+                repos["card_repo"], repos["set_repo"],
+                repos["printing_repo"], repos["collection_repo"],
+            )
+            assert result.cards_added == 3  # 1 + 2
+            assert result.cards_skipped == 0
+            assert len(result.errors) == 0
+        finally:
+            os.unlink(path)
+
+    def test_decklist_foil_marker(self, repos):
+        """*F* marker produces foil entries."""
+        from mtg_collector.importers.decklist import DecklistImporter
+
+        imp = DecklistImporter()
+        path = _write_decklist([
+            "1 Test Card Alpha (tst) 001 *F*",
+        ])
+        try:
+            result = imp.import_file(
+                path, repos["conn"],
+                repos["card_repo"], repos["set_repo"],
+                repos["printing_repo"], repos["collection_repo"],
+            )
+            assert result.cards_added == 1
+            entries = repos["collection_repo"].list_all()
+            assert entries[0]["finish"] == "foil"
+        finally:
+            os.unlink(path)
+
+    def test_parse_error_missing_set_code(self):
+        """Missing parenthesized set code gives a clear error."""
+        from mtg_collector.importers.decklist import ParseError, parse_line
+
+        with pytest.raises(ParseError, match="missing set code"):
+            parse_line("1 Some Card 123", 1)
+
+    def test_parse_error_missing_collector_number(self):
+        """Missing collector number after set code gives a clear error."""
+        from mtg_collector.importers.decklist import ParseError, parse_line
+
+        with pytest.raises(ParseError, match="missing collector number"):
+            parse_line("1 Some Card (SET)", 3)
+
+    def test_parse_error_bad_quantity(self):
+        """Non-numeric quantity gives a clear error."""
+        from mtg_collector.importers.decklist import ParseError, parse_line
+
+        with pytest.raises(ParseError, match="expected quantity"):
+            parse_line("abc Some Card (SET) 1", 5)
+
+    def test_parse_error_includes_line_number(self):
+        """ParseError includes the line number for debugging."""
+        from mtg_collector.importers.decklist import ParseError, parse_line
+
+        with pytest.raises(ParseError) as exc_info:
+            parse_line("garbage", 42)
+        assert exc_info.value.line_number == 42
+
+
 # ── TestWebImportResolve ─────────────────────────────────────────────
 
 CONTAINER_NAME = "mtgc-test-import"
