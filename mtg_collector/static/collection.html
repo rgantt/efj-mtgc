@@ -1218,6 +1218,7 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
       <button class="secondary" id="more-menu-btn">More</button>
       <div class="col-config-dropdown" id="more-menu-dropdown">
         <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
+        <button class="menu-item" id="toggle-order-group-btn">Group by Order</button>
         <div class="more-menu-section">
           <span class="more-menu-label">Image Display</span>
           <div class="pill-row" id="image-display-pills">
@@ -1449,6 +1450,7 @@ let allCardsUnfiltered = [];  // pre-status-filter snapshot for client-side re-f
 let debounceTimer = null;
 let _settings = {};
 let multiSelectMode = false;
+let groupByOrder = false;
 let selectedCards = new Set();
 let lastSelectedIdx = null;
 let wishlistMap = {};  // wishlist_id → {id, oracle_id, scryfall_id, name, set_code, collector_number, ...}
@@ -1589,6 +1591,13 @@ document.getElementById('toggle-multiselect-btn').addEventListener('click', () =
   selectedCards.clear();
   lastSelectedIdx = null;
   updateSelectionBar();
+  render();
+});
+
+document.getElementById('toggle-order-group-btn').addEventListener('click', () => {
+  moreMenuDropdown.classList.remove('open');
+  groupByOrder = !groupByOrder;
+  document.getElementById('toggle-order-group-btn').textContent = groupByOrder ? 'Ungroup Orders' : 'Group by Order';
   render();
 });
 
@@ -1914,7 +1923,7 @@ function showCardModal(card) {
       .then(r => r.json())
       .then(copies => {
         const container = document.getElementById('modal-copies-container');
-        if (!container || copies.length <= 1) return;
+        if (!container) return;
         container.innerHTML = copies.map(copy => {
           const statusClass = copy.status === 'ordered' ? 'ordered' : 'owned';
           const statusLabel = copy.status === 'ordered' ? 'Ordered' : 'Owned';
@@ -2698,7 +2707,8 @@ function isOrderedOnlyFilter() {
 }
 
 function render() {
-  if (currentView === 'table') renderTable();
+  if (groupByOrder) renderOrderGrouped();
+  else if (currentView === 'table') renderTable();
   else if (isOrderedOnlyFilter()) renderOrderGrouped();
   else renderGrid();
   renderOrderedBanner();
