@@ -79,9 +79,11 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 .view-toggle-group button.secondary:first-child {
   border-radius: 6px 0 0 6px;
 }
+.view-toggle-group button.secondary:not(:first-child) {
+  margin-left: -1px; /* collapse double-border between adjacent buttons */
+}
 .view-toggle-group button.secondary:last-child {
   border-radius: 0 6px 6px 0;
-  margin-left: -1px; /* collapse double-border between the two buttons */
 }
 .view-toggle-group button.secondary.active {
   z-index: 1; /* active button's border-color (#e94560) shows over the adjacent border */
@@ -1211,6 +1213,7 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
     <div class="view-toggle-group">
       <button class="secondary" id="view-table-btn" title="Table view">Table</button>
       <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
+      <button class="secondary" id="view-orders-btn" title="Group by order">Orders</button>
     </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
     <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
@@ -1218,7 +1221,6 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
       <button class="secondary" id="more-menu-btn">More</button>
       <div class="col-config-dropdown" id="more-menu-dropdown">
         <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
-        <button class="menu-item" id="toggle-order-group-btn">Group by Order</button>
         <div class="more-menu-section">
           <span class="more-menu-label">Image Display</span>
           <div class="pill-row" id="image-display-pills">
@@ -1404,6 +1406,7 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 const searchInput = document.getElementById('search-input');
 const viewTableBtn = document.getElementById('view-table-btn');
 const viewGridBtn = document.getElementById('view-grid-btn');
+const viewOrdersBtn = document.getElementById('view-orders-btn');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 const sidebar = document.getElementById('sidebar');
 const main = document.getElementById('main');
@@ -1594,12 +1597,6 @@ document.getElementById('toggle-multiselect-btn').addEventListener('click', () =
   render();
 });
 
-document.getElementById('toggle-order-group-btn').addEventListener('click', () => {
-  moreMenuDropdown.classList.remove('open');
-  groupByOrder = !groupByOrder;
-  document.getElementById('toggle-order-group-btn').textContent = groupByOrder ? 'Ungroup Orders' : 'Group by Order';
-  render();
-});
 
 document.querySelectorAll('#image-display-pills .pill').forEach(pill => {
   pill.addEventListener('click', async () => {
@@ -2382,12 +2379,14 @@ function applyFilter(type, value) {
 }
 
 // --- View toggle ---
-viewTableBtn.addEventListener('click', () => { currentView = 'table'; updateViewButtons(); render(); });
-viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewButtons(); render(); });
+viewTableBtn.addEventListener('click', () => { currentView = 'table'; groupByOrder = false; updateViewButtons(); render(); });
+viewGridBtn.addEventListener('click', () => { currentView = 'grid'; groupByOrder = false; updateViewButtons(); render(); });
+viewOrdersBtn.addEventListener('click', () => { groupByOrder = !groupByOrder; if (groupByOrder) currentView = 'orders'; else currentView = 'table'; updateViewButtons(); render(); });
 
 function updateViewButtons() {
   viewTableBtn.classList.toggle('active', currentView === 'table');
   viewGridBtn.classList.toggle('active', currentView === 'grid');
+  viewOrdersBtn.classList.toggle('active', currentView === 'orders');
   gridSizeWrap.style.display = currentView === 'grid' ? '' : 'none';
   colConfigBtn.style.display = currentView === 'table' ? '' : 'none';
   if (currentView !== 'table') toggleColDrawer(false);
