@@ -4451,13 +4451,28 @@ def run(args):
 
     db_path = get_db_path(getattr(args, "db", None))
 
-    gen = PackGenerator(db_path)
-
     # Start background ingest worker pool
     global _ingest_executor, _background_db_path
     _background_db_path = db_path
     _ingest_executor = ThreadPoolExecutor(max_workers=4)
     _recover_pending_images(db_path)
+
+    # Auto-import MTGJSON data if tables are empty but AllPrintings.json exists
+    _conn = sqlite3.connect(db_path)
+    _has_data = _conn.execute("SELECT COUNT(*) FROM mtgjson_booster_configs").fetchone()[0]
+    _conn.close()
+    if not _has_data:
+        from mtg_collector.cli.data_cmd import get_allprintings_path, import_mtgjson
+
+        ap = get_allprintings_path()
+        if ap.exists():
+            print("[startup] MTGJSON tables empty — auto-importing from AllPrintings.json ...", flush=True)
+            import_mtgjson(db_path)
+        else:
+            print("[startup] WARNING: MTGJSON tables empty and AllPrintings.json not found.", flush=True)
+            print("[startup] Crack-a-Pack set search will not work. Run: mtg data fetch", flush=True)
+
+    gen = PackGenerator(db_path)
 
     static_dir = Path(__file__).resolve().parent.parent / "static"
     handler = partial(CrackPackHandler, gen, static_dir, db_path)
