@@ -95,6 +95,9 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 
 #search-input { width: 220px; }
 
+/* Icon buttons in view toggle */
+.view-toggle-group button svg { display: block; }
+
 /* Vertical ellipsis overflow button */
 #more-menu-btn { font-size: 1.3rem; padding: 5px 10px; line-height: 1; letter-spacing: 0; }
 
@@ -1214,9 +1217,9 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   <div class="controls">
     <input type="text" id="search-input" placeholder="Search cards...">
     <div class="view-toggle-group" id="view-toggle-group">
-      <button class="secondary" id="view-table-btn" title="Table view">Table</button>
-      <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
-      <button class="secondary" id="view-orders-btn" title="Group by order" style="display:none">Orders</button>
+      <button class="secondary" id="view-table-btn" title="Table view"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx=".5"/><rect x="1" y="7" width="14" height="2" rx=".5"/><rect x="1" y="12" width="14" height="2" rx=".5"/></svg></button>
+      <button class="secondary" id="view-grid-btn" title="Grid view"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button>
+      <button class="secondary" id="view-orders-btn" title="Group by order" style="display:none"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5.5" y="4.5" width="9" height="8" rx="1"/><path d="M5.5 4.5L10 8.5l4.5-4"/><line x1="1" y1="7" x2="3.5" y2="7" stroke-linecap="round"/><line x1=".5" y1="10" x2="3" y2="10" stroke-linecap="round"/></svg></button>
     </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
     <div class="col-config-wrap">
