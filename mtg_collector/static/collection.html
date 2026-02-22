@@ -85,12 +85,25 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 .view-toggle-group button.secondary:last-child {
   border-radius: 0 6px 6px 0;
 }
+/* When Orders is hidden, Grid becomes the visual last child */
+.view-toggle-group.no-orders #view-orders-btn { display: none; }
+.view-toggle-group.no-orders #view-grid-btn { border-radius: 0 6px 6px 0; }
 .view-toggle-group button.secondary.active {
   z-index: 1; /* active button's border-color (#e94560) shows over the adjacent border */
   position: relative;
 }
 
 #search-input { width: 220px; }
+
+/* Vertical ellipsis overflow button */
+#more-menu-btn { font-size: 1.3rem; padding: 5px 10px; line-height: 1; letter-spacing: 0; }
+
+/* Menu divider */
+.menu-divider { height: 1px; background: #0f3460; margin: 4px 0; }
+
+/* Active state for unowned toggle inside the menu */
+#include-unowned-btn.active { color: #e94560; font-weight: 700; }
+#include-unowned-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 #status {
   font-size: 0.85rem;
@@ -1013,14 +1026,6 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 }
 .ordered-banner button:hover { background: #e89520; }
 
-#include-unowned-btn.active {
-  background: #e94560;
-  color: #fff;
-}
-#include-unowned-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
-}
 
 /* Want button in modal */
 .want-btn {
@@ -1118,22 +1123,6 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 .wl-cart-row button { flex: 1; }
 
 /* Buy Missing dropdown */
-.buy-missing-wrap { position: relative; display: none; }
-.buy-missing-wrap.visible { display: inline-block; }
-.buy-missing-dropdown {
-  display: none;
-  position: absolute;
-  top: 100%;
-  right: 0;
-  background: #16213e;
-  border: 1px solid #0f3460;
-  border-radius: 6px;
-  padding: 4px 0;
-  z-index: 60;
-  min-width: 170px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-}
-.buy-missing-dropdown.open { display: block; }
 
 /* Copy sections in modal */
 .copy-section {
@@ -1210,7 +1199,8 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 #sel-delete-btn:hover { background: #7a2a2a; color: #fff; }
 
 @media (max-width: 768px) {
-  #search-input { width: 140px; }
+  #search-input { width: 100%; order: -1; }
+  .controls { flex-wrap: wrap; }
   .sidebar { width: 280px; left: -300px; }
   .wishlist-panel { width: 280px; right: -300px; }
 }
@@ -1223,15 +1213,22 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   <h1><a href="/" style="color:inherit;text-decoration:none">Collection</a></h1>
   <div class="controls">
     <input type="text" id="search-input" placeholder="Search cards...">
-    <div class="view-toggle-group">
+    <div class="view-toggle-group" id="view-toggle-group">
       <button class="secondary" id="view-table-btn" title="Table view">Table</button>
       <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
-      <button class="secondary" id="view-orders-btn" title="Group by order">Orders</button>
+      <button class="secondary" id="view-orders-btn" title="Group by order" style="display:none">Orders</button>
     </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
     <div class="col-config-wrap">
-      <button class="secondary" id="more-menu-btn">More</button>
+      <button class="secondary" id="more-menu-btn" title="More options">&#8942;</button>
       <div class="col-config-dropdown" id="more-menu-dropdown">
+        <button class="menu-item" id="include-unowned-btn" disabled title="Select a set first">+ Unowned</button>
+        <div id="buy-missing-menu-section" style="display:none">
+          <button class="menu-item" id="buy-missing-ck">Copy for Card Kingdom</button>
+          <button class="menu-item" id="buy-missing-tcg">Copy for TCGplayer</button>
+        </div>
+        <button class="menu-item" id="wishlist-toggle-btn">Wishlist (0)</button>
+        <div class="menu-divider"></div>
         <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
         <div class="more-menu-section">
           <span class="more-menu-label">Image Display</span>
@@ -1242,15 +1239,6 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
         </div>
       </div>
     </div>
-    <button class="secondary" id="include-unowned-btn" disabled title="Select a set first">+ Unowned</button>
-    <div class="buy-missing-wrap" id="buy-missing-wrap">
-      <button class="secondary" id="buy-missing-btn">Buy Missing</button>
-      <div class="buy-missing-dropdown" id="buy-missing-dropdown">
-        <button class="menu-item" id="buy-missing-ck">Copy for Card Kingdom</button>
-        <button class="menu-item" id="buy-missing-tcg">Copy for TCGplayer</button>
-      </div>
-    </div>
-    <button class="secondary" id="wishlist-toggle-btn">Wishlist (0)</button>
     <div class="size-slider-wrap" id="grid-size-wrap" style="display:none"><span>Size</span><input type="range" id="grid-size-slider" min="100" max="500" value="264"></div>
   </div>
   <div id="status"></div>
@@ -2403,6 +2391,19 @@ function updateViewButtons() {
 }
 updateViewButtons();
 
+function updateOrdersBtn() {
+  const hasOrders = allCardsUnfiltered.some(c => c.status === 'ordered');
+  const group = document.getElementById('view-toggle-group');
+  group.classList.toggle('no-orders', !hasOrders);
+  viewOrdersBtn.style.display = hasOrders ? '' : 'none';
+  // If orders view was active but no more orders, switch back to table
+  if (!hasOrders && currentView === 'orders') {
+    currentView = 'table';
+    groupByOrder = false;
+    updateViewButtons();
+  }
+}
+
 // --- Sidebar toggle (slide-in panel) ---
 const sidebarBackdrop = document.getElementById('sidebar-backdrop');
 function toggleSidebar(open) {
@@ -2423,6 +2424,7 @@ includeUnownedBtn.addEventListener('click', () => {
   const idx = UNOWNED_CYCLE.indexOf(includeUnowned);
   includeUnowned = UNOWNED_CYCLE[(idx + 1) % UNOWNED_CYCLE.length];
   updateUnownedBtn();
+  moreMenuDropdown.classList.remove('open');
   fetchCollection();
 });
 
@@ -2434,7 +2436,7 @@ function updateUnownedBtn() {
   }
   includeUnownedBtn.classList.toggle('active', !!includeUnowned);
   includeUnownedBtn.textContent = UNOWNED_LABELS[includeUnowned] || '+ Unowned';
-  document.getElementById('buy-missing-wrap').classList.toggle('visible', !!includeUnowned);
+  document.getElementById('buy-missing-menu-section').style.display = includeUnowned ? '' : 'none';
 }
 
 // --- Fetch ---
@@ -2671,6 +2673,7 @@ async function fetchCollection() {
   // Populate set/subtype options from unfiltered data
   populateSetOptions();
   populateSubtypeOptions();
+  updateOrdersBtn();
 
   // All filtering + sorting happens client-side
   allCards = applyClientSort(applyAllClientFilters([...allCardsUnfiltered]));
@@ -3168,7 +3171,10 @@ function toggleWishlistPanel(open) {
 }
 
 // Wishlist panel events
-document.getElementById('wishlist-toggle-btn').addEventListener('click', () => toggleWishlistPanel());
+document.getElementById('wishlist-toggle-btn').addEventListener('click', () => {
+  moreMenuDropdown.classList.remove('open');
+  toggleWishlistPanel();
+});
 document.getElementById('wishlist-close').addEventListener('click', () => toggleWishlistPanel(false));
 document.getElementById('wishlist-backdrop').addEventListener('click', () => toggleWishlistPanel(false));
 
@@ -3233,20 +3239,6 @@ document.getElementById('wl-clear-all').addEventListener('click', async () => {
 });
 
 // --- Buy Missing ---
-const buyMissingBtn = document.getElementById('buy-missing-btn');
-const buyMissingDropdown = document.getElementById('buy-missing-dropdown');
-
-buyMissingBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  buyMissingDropdown.classList.toggle('open');
-});
-
-document.addEventListener('click', (e) => {
-  if (!buyMissingDropdown.contains(e.target) && e.target !== buyMissingBtn) {
-    buyMissingDropdown.classList.remove('open');
-  }
-});
-
 function getUnownedCards() {
   // If multi-select active with selections, use only selected unowned cards
   if (multiSelectMode && selectedCards.size > 0) {
@@ -3256,14 +3248,14 @@ function getUnownedCards() {
 }
 
 document.getElementById('buy-missing-ck').addEventListener('click', () => {
-  buyMissingDropdown.classList.remove('open');
+  moreMenuDropdown.classList.remove('open');
   const cards = getUnownedCards();
   if (!cards.length) { alert('No unowned cards in current view'); return; }
   copyAndOpen(buildCKList(cards), 'https://www.cardkingdom.com/builder');
 });
 
 document.getElementById('buy-missing-tcg').addEventListener('click', () => {
-  buyMissingDropdown.classList.remove('open');
+  moreMenuDropdown.classList.remove('open');
   const cards = getUnownedCards();
   if (!cards.length) { alert('No unowned cards in current view'); return; }
   copyAndOpen(buildTCGList(cards), 'https://www.tcgplayer.com/massentry');
