@@ -79,9 +79,11 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 .view-toggle-group button.secondary:first-child {
   border-radius: 6px 0 0 6px;
 }
+.view-toggle-group button.secondary:not(:first-child) {
+  margin-left: -1px; /* collapse double-border between adjacent buttons */
+}
 .view-toggle-group button.secondary:last-child {
   border-radius: 0 6px 6px 0;
-  margin-left: -1px; /* collapse double-border between the two buttons */
 }
 .view-toggle-group button.secondary.active {
   z-index: 1; /* active button's border-color (#e94560) shows over the adjacent border */
@@ -694,6 +696,19 @@ a.lineage-link {
 }
 .col-config-dropdown.open { display: block; }
 
+/* Column config icon in table header */
+.col-config-th {
+  width: 28px;
+  padding: 8px 4px !important;
+  text-align: center !important;
+  cursor: pointer;
+  color: #666;
+  font-size: 0.9rem;
+}
+.col-config-th:hover { color: #e94560 !important; }
+.col-config-th.active { color: #e94560 !important; }
+.col-config-th svg { width: 16px; height: 16px; vertical-align: middle; fill: currentColor; }
+
 /* Sort arrow */
 .sort-arrow { font-size: 0.7rem; margin-left: 2px; }
 
@@ -1211,14 +1226,13 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
     <div class="view-toggle-group">
       <button class="secondary" id="view-table-btn" title="Table view">Table</button>
       <button class="secondary" id="view-grid-btn" title="Grid view">Grid</button>
+      <button class="secondary" id="view-orders-btn" title="Group by order">Orders</button>
     </div>
     <button class="secondary" id="sidebar-toggle-btn" title="Toggle filters">Filters</button>
-    <button class="secondary" id="col-config-btn" title="Configure columns">Columns</button>
     <div class="col-config-wrap">
       <button class="secondary" id="more-menu-btn">More</button>
       <div class="col-config-dropdown" id="more-menu-dropdown">
         <button class="menu-item" id="toggle-multiselect-btn">Toggle Multi-Select</button>
-        <button class="menu-item" id="toggle-order-group-btn">Group by Order</button>
         <div class="more-menu-section">
           <span class="more-menu-label">Image Display</span>
           <div class="pill-row" id="image-display-pills">
@@ -1404,6 +1418,7 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
 const searchInput = document.getElementById('search-input');
 const viewTableBtn = document.getElementById('view-table-btn');
 const viewGridBtn = document.getElementById('view-grid-btn');
+const viewOrdersBtn = document.getElementById('view-orders-btn');
 const sidebarToggleBtn = document.getElementById('sidebar-toggle-btn');
 const sidebar = document.getElementById('sidebar');
 const main = document.getElementById('main');
@@ -1416,7 +1431,6 @@ const modalFlipBtn = document.getElementById('modal-flip-btn');
 const modalDetails = document.getElementById('modal-details');
 const modalClose = document.getElementById('modal-close');
 const clearFiltersBtn = document.getElementById('clear-filters-btn');
-const colConfigBtn = document.getElementById('col-config-btn');
 const colConfigDropdown = document.getElementById('col-config-dropdown');
 const colDrawer = document.getElementById('col-drawer');
 const colDrawerBackdrop = document.getElementById('col-drawer-backdrop');
@@ -1565,10 +1579,10 @@ function toggleColDrawer(open) {
   if (open === undefined) open = !colDrawer.classList.contains('open');
   colDrawer.classList.toggle('open', open);
   colDrawerBackdrop.classList.toggle('active', open);
-  colConfigBtn.classList.toggle('active', open);
+  const th = document.getElementById('col-config-th');
+  if (th) th.classList.toggle('active', open);
 }
 
-colConfigBtn.addEventListener('click', () => toggleColDrawer());
 colDrawerBackdrop.addEventListener('click', () => toggleColDrawer(false));
 
 moreMenuBtn.addEventListener('click', (e) => {
@@ -1594,12 +1608,6 @@ document.getElementById('toggle-multiselect-btn').addEventListener('click', () =
   render();
 });
 
-document.getElementById('toggle-order-group-btn').addEventListener('click', () => {
-  moreMenuDropdown.classList.remove('open');
-  groupByOrder = !groupByOrder;
-  document.getElementById('toggle-order-group-btn').textContent = groupByOrder ? 'Ungroup Orders' : 'Group by Order';
-  render();
-});
 
 document.querySelectorAll('#image-display-pills .pill').forEach(pill => {
   pill.addEventListener('click', async () => {
@@ -2382,14 +2390,15 @@ function applyFilter(type, value) {
 }
 
 // --- View toggle ---
-viewTableBtn.addEventListener('click', () => { currentView = 'table'; updateViewButtons(); render(); });
-viewGridBtn.addEventListener('click', () => { currentView = 'grid'; updateViewButtons(); render(); });
+viewTableBtn.addEventListener('click', () => { currentView = 'table'; groupByOrder = false; updateViewButtons(); render(); });
+viewGridBtn.addEventListener('click', () => { currentView = 'grid'; groupByOrder = false; updateViewButtons(); render(); });
+viewOrdersBtn.addEventListener('click', () => { groupByOrder = !groupByOrder; if (groupByOrder) currentView = 'orders'; else currentView = 'table'; updateViewButtons(); render(); });
 
 function updateViewButtons() {
   viewTableBtn.classList.toggle('active', currentView === 'table');
   viewGridBtn.classList.toggle('active', currentView === 'grid');
+  viewOrdersBtn.classList.toggle('active', currentView === 'orders');
   gridSizeWrap.style.display = currentView === 'grid' ? '' : 'none';
-  colConfigBtn.style.display = currentView === 'table' ? '' : 'none';
   if (currentView !== 'table') toggleColDrawer(false);
 }
 updateViewButtons();
@@ -2868,7 +2877,10 @@ function renderTable() {
 
   const visCols = getVisibleColumns();
 
+  const drawerOpen = colDrawer.classList.contains('open');
+  const colIcon = `<svg viewBox="0 0 16 16"><path d="M1 1h4v4H1zm5 0h4v4H6zm5 0h4v4H11zM1 6h4v4H1zm5 0h4v4H6zm5 0h4v4H11zM1 11h4v4H1zm5 0h4v4H6zm5 0h4v4H11z"/></svg>`;
   let html = '<table class="collection-table"><thead><tr>';
+  html += `<th class="col-config-th${drawerOpen ? ' active' : ''}" id="col-config-th" title="Configure columns">${colIcon}</th>`;
   if (multiSelectMode) {
     const allChecked = selectedCards.size === allCards.length && allCards.length > 0;
     html += `<th class="select-col"><input type="checkbox" class="sel-all-cb" ${allChecked ? 'checked' : ''}></th>`;
@@ -2911,6 +2923,7 @@ function renderTable() {
     const isOrdered = card.status === 'ordered';
     const trClasses = [isSelected ? 'selected' : '', isUnowned ? 'unowned' : '', isUnowned && isWanted ? 'wanted' : '', isOrdered ? 'ordered' : ''].filter(Boolean).join(' ');
     html += `<tr data-idx="${idx}"${trClasses ? ` class="${trClasses}"` : ''}>`;
+    html += '<td></td>'; // spacer for col-config column
     if (multiSelectMode) {
       html += `<td class="select-col"><input type="checkbox" class="row-sel-cb" data-idx="${idx}" ${isSelected ? 'checked' : ''}></td>`;
     }
@@ -2961,6 +2974,15 @@ function renderTable() {
     const tr = e.target.closest('tr[data-idx]');
     if (tr) showCardModal(allCards[parseInt(tr.dataset.idx)]);
   });
+
+  // Column config icon
+  const colTh = document.getElementById('col-config-th');
+  if (colTh) {
+    colTh.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleColDrawer();
+    });
+  }
 
   // Column header click sorting
   main.querySelectorAll('.collection-table th[data-col]').forEach(th => {
