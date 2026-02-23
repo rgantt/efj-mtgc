@@ -1,0 +1,9 @@
+# Scenario: Add a sealed product and verify it appears in table view
+#
+# Related:
+#   issues: []
+#   pull_requests: [92]
+
+description: >
+  I can add a Lorwyn Eclipsed Collector Booster Pack to my sealed collection
+  and then see it in the table view.
