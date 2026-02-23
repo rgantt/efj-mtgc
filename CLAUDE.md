@@ -20,6 +20,7 @@ MTG Card Collection Builder — Python CLI + web UI for managing Magic: The Gath
 uv sync                                                # Install deps
 uv run pytest                                          # All tests
 uv run ruff check mtg_collector/                       # Lint
+uv run shot-scraper install                            # One-time: install Chromium for Playwright
 
 mtg setup                                              # Init DB + cache Scryfall + fetch MTGJSON
 mtg setup --demo                                       # Full setup + load demo data (~50 cards)
@@ -50,7 +51,7 @@ Each module has `register(subparsers)` and `run(args)`.
 | `ingest_ocr.py` | 411 | CLI image-based card ingestion via EasyOCR + Claude |
 | `ingest_corners.py` | 340 | CLI corner-photo card ingestion via Claude Vision |
 | `ingest_ids.py` | 286 | Manual card entry by rarity/collector-number/set |
-| `demo_data.py` | 254 | Load demo collection for testing |
+| `demo_data.py` | 300 | Load demo collection for testing |
 
 ### `mtg_collector/db/` — SQLite layer
 
@@ -260,6 +261,26 @@ Check logs if anything fails:
 
 ```bash
 journalctl --user -u mtgc-<instance> -f
+```
+
+### Visual Validation
+
+Use `shot-scraper` to screenshot key pages for visual regression checks. The self-signed cert requires `--browser-arg '--ignore-certificate-errors'`.
+
+```bash
+mkdir -p screenshots
+
+uv run shot-scraper "https://localhost:${PORT}/" \
+  --browser-arg '--ignore-certificate-errors' \
+  -o screenshots/index.png
+
+uv run shot-scraper "https://localhost:${PORT}/collection" \
+  --browser-arg '--ignore-certificate-errors' \
+  -o screenshots/collection.png
+
+uv run shot-scraper "https://localhost:${PORT}/sealed" \
+  --browser-arg '--ignore-certificate-errors' \
+  -o screenshots/sealed.png
 ```
 
 ### Teardown

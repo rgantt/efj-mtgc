@@ -22,6 +22,9 @@ moxfield_collection.csv
 .vscode/
 *.swp
 
+# Screenshots
+screenshots/
+
 # Claude
 .claude/*
 !.claude/settings.json
