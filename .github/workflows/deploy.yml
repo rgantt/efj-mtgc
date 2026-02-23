@@ -20,5 +20,8 @@ jobs:
       - name: Pull latest code
         run: git -C /opt/mtgc-${{ env.INSTANCE }} pull --ff-only origin ${{ github.ref_name }}
 
+      - name: Prune dangling images
+        run: podman image prune -f
+
       - name: Build and restart
         run: bash /opt/mtgc-${{ env.INSTANCE }}/deploy/deploy.sh ${{ env.INSTANCE }}
