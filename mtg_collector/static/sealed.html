@@ -389,6 +389,7 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
   z-index: 1;
   position: relative;
 }
+.view-toggle-group button svg { display: block; }
 
 /* Table view */
 .sealed-table {
@@ -919,8 +920,8 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
     <button id="add-btn">+ Add</button>
     <button class="secondary" id="filter-btn">Filters</button>
     <div class="view-toggle-group">
-      <button class="secondary active" id="view-grid-btn" title="Grid view">&#9638;</button>
-      <button class="secondary" id="view-table-btn" title="Table view">&#9776;</button>
+      <button class="secondary" id="view-table-btn" title="Table view"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx=".5"/><rect x="1" y="7" width="14" height="2" rx=".5"/><rect x="1" y="12" width="14" height="2" rx=".5"/></svg></button>
+      <button class="secondary active" id="view-grid-btn" title="Grid view"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg></button>
     </div>
   </div>
   <div id="status">Loading... <span class="prices-status" id="prices-status" title="Click to fetch/refresh sealed prices"></span></div>
@@ -1517,7 +1518,7 @@ function renderGrid() {
     const qtyBadge = entry.quantity > 1 ? `<span class="qty-badge">${entry.quantity}x</span>` : '';
     const statusBadge = `<span class="status-badge ${entry.status}">${entry.status}</span>`;
     const costText = entry.purchase_price != null ? `$${(entry.purchase_price * entry.quantity).toFixed(2)}` : '';
-    const marketText = entry.market_price != null ? `$${entry.market_price.toFixed(2)}` : '';
+    const marketText = entry.market_price != null ? `$${(entry.market_price * entry.quantity).toFixed(2)}` : '';
 
     html += `<div class="sheet-card" data-id="${entry.id}">
       <div class="sheet-card-img-wrap">
@@ -1558,7 +1559,7 @@ function renderTable() {
 
   allEntriesFiltered.forEach(entry => {
     const cost = entry.purchase_price != null ? `$${(entry.purchase_price * entry.quantity).toFixed(2)}` : '';
-    const market = entry.market_price != null ? `$${entry.market_price.toFixed(2)}` : '';
+    const market = entry.market_price != null ? `$${(entry.market_price * entry.quantity).toFixed(2)}` : '';
     const added = entry.added_at ? entry.added_at.slice(0, 10) : '';
 
     html += `<tr data-id="${entry.id}">`;
@@ -1616,7 +1617,7 @@ function openDetailModal(entry) {
   if (entry.market_price != null) {
     html += `<div class="modal-section">
       <div class="modal-section-title">Market Price</div>
-      <div class="modal-row"><span class="label">Market</span><span class="value" style="color:#7ec8e3;font-weight:700">$${entry.market_price.toFixed(2)}</span></div>
+      <div class="modal-row"><span class="label">Market</span><span class="value" style="color:#7ec8e3;font-weight:700">$${(entry.market_price * entry.quantity).toFixed(2)}${entry.quantity > 1 ? ` (${entry.quantity} × $${entry.market_price.toFixed(2)})` : ''}</span></div>
       ${entry.low_price != null ? `<div class="modal-row"><span class="label">Low</span><span class="value">$${entry.low_price.toFixed(2)}</span></div>` : ''}
       ${entry.mid_price != null ? `<div class="modal-row"><span class="label">Mid</span><span class="value">$${entry.mid_price.toFixed(2)}</span></div>` : ''}
       ${entry.high_price != null ? `<div class="modal-row"><span class="label">High</span><span class="value">$${entry.high_price.toFixed(2)}</span></div>` : ''}
