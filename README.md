@@ -251,6 +251,24 @@ uv run pytest             # Run tests (some require ANTHROPIC_API_KEY)
 uv run ruff check mtg_collector/  # Lint
 ```
 
+### UI scenario tests
+
+UX regression tests using Claude Vision to drive a headless browser through real user flows. Each scenario is a YAML file describing a goal in natural language — Claude figures out the clicks, fills, and navigation to accomplish it, screenshotting at every step.
+
+```bash
+# One-time: install Chromium for Playwright
+uv run shot-scraper install
+
+# Start a test instance with demo data
+bash deploy/setup.sh ui-test --init
+systemctl --user start mtgc-ui-test
+
+# Run all UI scenarios (requires ANTHROPIC_API_KEY)
+uv run pytest tests/ui/ -v --instance ui-test
+```
+
+Scenarios live in `tests/ui/scenarios/`. To add a new one, create a YAML file with a `description` field and annotate it with related issue/PR numbers. See `tests/ui/scenarios/sealed_add_and_table_view.yaml` for an example.
+
 ## License
 
 MIT
