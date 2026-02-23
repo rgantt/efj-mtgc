@@ -1314,10 +1314,16 @@ class SealedProductRepository:
         return self._row_to_product(row)
 
     def search_by_name(self, name: str, limit: int = 20) -> List[SealedProduct]:
-        """Search sealed products by name (case-insensitive partial match)."""
+        """Search sealed products by name (case-insensitive, each word matched independently)."""
+        words = name.split()
+        if not words:
+            return []
+        clauses = ["name LIKE ? COLLATE NOCASE"] * len(words)
+        params = [f"%{w}%" for w in words]
+        params.append(limit)
         cursor = self.conn.execute(
-            "SELECT * FROM sealed_products WHERE name LIKE ? COLLATE NOCASE ORDER BY name LIMIT ?",
-            (f"%{name}%", limit),
+            f"SELECT * FROM sealed_products WHERE {' AND '.join(clauses)} ORDER BY name LIMIT ?",
+            params,
         )
         return [self._row_to_product(row) for row in cursor]
 

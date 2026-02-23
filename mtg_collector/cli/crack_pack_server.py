@@ -4379,9 +4379,9 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         init_db(conn)
         repo = SealedProductRepository(conn)
         product = repo.get_by_tcgplayer_id(tcg_id)
-        conn.close()
 
         if not product:
+            conn.close()
             self._send_json({"error": f"No sealed product with TCGPlayer ID {tcg_id}"}, 404)
             return
 
@@ -4389,10 +4389,17 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         if product.tcgplayer_product_id:
             image_url = f"https://tcgplayer-cdn.tcgplayer.com/product/{product.tcgplayer_product_id}_200w.jpg"
 
+        set_name = None
+        row = conn.execute("SELECT set_name FROM sets WHERE set_code = ?", (product.set_code,)).fetchone()
+        if row:
+            set_name = row["set_name"]
+        conn.close()
+
         self._send_json({
             "uuid": product.uuid,
             "name": product.name,
             "set_code": product.set_code,
+            "set_name": set_name,
             "category": product.category,
             "subtype": product.subtype,
             "tcgplayer_product_id": product.tcgplayer_product_id,

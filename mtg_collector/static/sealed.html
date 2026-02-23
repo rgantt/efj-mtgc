@@ -156,17 +156,14 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 .multi-search-input:focus { outline: 2px solid #e94560; }
 .multi-dropdown {
   display: none;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  position: fixed;
   max-height: 200px;
   overflow-y: auto;
   background: #1a1a2e;
   border: 1px solid #0f3460;
   border-top: none;
   border-radius: 0 0 4px 4px;
-  z-index: 50;
+  z-index: 200;
   list-style: none;
 }
 .multi-dropdown.open { display: block; }
@@ -1326,12 +1323,21 @@ function initMultiSelect(config) {
     }
   }
 
+  function positionDropdown() {
+    const rect = searchEl.getBoundingClientRect();
+    dropdownEl.style.top = rect.bottom + 'px';
+    dropdownEl.style.left = rect.left + 'px';
+    dropdownEl.style.width = rect.width + 'px';
+  }
+
   searchEl.addEventListener('focus', () => {
     renderDropdown(searchEl.value);
+    positionDropdown();
     dropdownEl.classList.add('open');
   });
   searchEl.addEventListener('input', () => {
     renderDropdown(searchEl.value);
+    positionDropdown();
     dropdownEl.classList.add('open');
   });
   searchEl.addEventListener('blur', () => {
@@ -1350,11 +1356,11 @@ function getSetOptions() {
   });
   allSets.forEach(s => {
     if (!merged.has(s.set_code)) {
-      merged.set(s.set_code, s.set_name);
+      merged.set(s.set_code, s.set_name || s.set_code);
     }
   });
   return [...merged.entries()]
-    .map(([code, name]) => ({ code, name }))
+    .map(([code, name]) => ({ code, name: name || code }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
