@@ -22,6 +22,9 @@ uv run pytest                                          # All tests
 uv run ruff check mtg_collector/                       # Lint
 uv run shot-scraper install                            # One-time: install Chromium for Playwright
 
+# UI scenario tests (requires running container instance + ANTHROPIC_API_KEY)
+uv run pytest tests/ui/ -v --instance <instance>       # Run all UI scenarios
+
 mtg setup                                              # Init DB + cache Scryfall + fetch MTGJSON
 mtg setup --demo                                       # Full setup + load demo data (~50 cards)
 mtg setup --skip-cache --skip-data                     # Fast start if data is already loaded. 
@@ -112,6 +115,17 @@ Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingR
 | `test_ingest_ids.py` | 423 | Manual card entry + `resolve_and_add_ids()` |
 | `test_order_parser.py` | 368 | Order parsing (TCGPlayer HTML/text, Card Kingdom) |
 | `test_order_resolver.py` | 302 | Order resolution to Scryfall cards |
+
+### UI scenario tests (`tests/ui/`)
+
+Claude Vision agent loop that drives a headless browser through UX flows. Each scenario is a YAML file with a goal description — Claude decides what to click, type, and navigate at each step.
+
+| File | Purpose |
+|------|---------|
+| `harness.py` | `UIHarness` — Playwright + Claude Vision agent loop with auto-screenshots |
+| `conftest.py` | Fixtures: headless Chromium, container port discovery, screenshot dir |
+| `test_scenarios.py` | Parametrized test runner that discovers and executes YAML scenarios |
+| `scenarios/*.yaml` | One file per UX scenario (goal + metadata) |
 
 ## Data Model
 
@@ -295,6 +309,62 @@ bash deploy/teardown.sh <instance> --purge   # Stop + remove container, volume, 
 - `--init` runs `mtg setup --demo` inside the volume: initializes the DB, caches Scryfall data, downloads MTGJSON data files (AllPrintings.json + AllPricesToday.json), and loads ~50 demo cards
 - Data persists on the volume across container restarts. Only `--purge` removes it.
 - If the Scryfall bulk cache step fails (FK constraint at ~75k cards), the remaining steps still complete and the server will start. Demo data may be partial.
+
+## UI Scenario Tests
+
+Data-driven UX regression tests using Claude Vision + Playwright. Each scenario is a YAML file describing a UX goal in natural language. A Claude Vision agent loop drives a headless browser to accomplish the goal, screenshotting at every step.
+
+### How it works
+
+1. Harness loads the homepage in headless Chromium
+2. Screenshots the page + extracts all visible interactive elements
+3. Sends screenshot + element list + goal to Claude (tool-use mode)
+4. Claude picks an action: `navigate`, `click`, `fill`, `select_option`, `scroll`, `done`, or `fail`
+5. Harness executes the action via Playwright, waits for async updates
+6. Repeats until Claude calls `done` (pass) or `fail` (fail), or 20 steps hit
+
+### Writing scenarios
+
+Create a YAML file in `tests/ui/scenarios/`:
+
+```yaml
+# Related:
+#   issues: [42]
+#   pull_requests: [93]
+
+description: >
+  I can do the thing and then verify the result.
+```
+
+That's it — just a goal description and metadata. Claude figures out the steps.
+
+### Running
+
+```bash
+# Requires a running container instance + ANTHROPIC_API_KEY
+uv run pytest tests/ui/ -v --instance <instance>
+
+# Override the model (default: claude-sonnet-4-6)
+UI_TEST_MODEL=claude-haiku-4-5-20251001 uv run pytest tests/ui/ -v --instance <instance>
+```
+
+Screenshots are saved to `screenshots/ui/<timestamp>/` (gitignored).
+
+### When to write UI scenarios
+
+**Every UX-focused issue and PR should include a UI scenario.** When planning, implementing, or reviewing a UX change:
+
+1. Write a scenario YAML describing what the user should be able to do
+2. Annotate it with the relevant issue/PR numbers
+3. Run it against a test instance to verify the feature works end-to-end
+4. The scenario becomes a permanent regression test
+
+### Key files
+
+- `tests/ui/harness.py` — `UIHarness` class (Playwright + Claude Vision agent loop)
+- `tests/ui/conftest.py` — Fixtures (browser, port discovery, screenshot dir)
+- `tests/ui/test_scenarios.py` — Parametrized pytest runner for YAML scenarios
+- `tests/ui/scenarios/*.yaml` — One file per scenario
 
 ## Web UI Shared Conventions (crack_pack.html)
 
