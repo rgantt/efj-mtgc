@@ -11,6 +11,8 @@ from mtg_collector.db.models import (
     CollectionRepository,
     Order,
     OrderRepository,
+    SealedCollectionEntry,
+    SealedCollectionRepository,
     WishlistEntry,
     WishlistRepository,
 )
@@ -126,6 +128,26 @@ DEMO_WISHLIST = [
     ("otj", "196", "For Obeka combo deck", 3, 25.00),         # Obeka
 ]
 
+# Each tuple: (set_code, category_keyword, quantity, purchase_price, status)
+# Looked up from sealed_products by set_code + category LIKE match.
+DEMO_SEALED_PRODUCTS = [
+    # Booster boxes
+    ("dsk", "booster_box", 1, 105.00, "owned"),          # Duskmourn booster box
+    ("blb", "booster_box", 1, 110.00, "owned"),           # Bloomburrow booster box
+
+    # Booster packs
+    ("fdn", "booster_pack", 6, 4.50, "owned"),            # Foundations packs
+    ("mh3", "booster_pack", 3, 9.00, "owned"),            # MH3 packs
+
+    # Bundles
+    ("otj", "bundle", 1, 45.00, "owned"),                 # Thunder Junction bundle
+    ("dsk", "bundle", 1, 40.00, "owned"),                  # Duskmourn bundle
+
+    # Status variety
+    ("blb", "booster_pack", 4, 4.25, "opened"),           # Opened BLB packs
+    ("fdn", "booster_box", 1, 130.00, "listed"),          # Listed FDN box
+]
+
 
 def load_demo_data(conn: sqlite3.Connection) -> bool:
     """Load demo fixture data into the database.
@@ -215,6 +237,29 @@ def load_demo_data(conn: sqlite3.Connection) -> bool:
         collection_repo.add(entry)
         added += 1
 
+    # Create sealed collection entries
+    sealed_repo = SealedCollectionRepository(conn)
+    sealed_added = 0
+    for set_code, category_keyword, quantity, purchase_price, status in DEMO_SEALED_PRODUCTS:
+        cursor = conn.execute(
+            "SELECT uuid FROM sealed_products WHERE set_code = ? AND category LIKE ? LIMIT 1",
+            (set_code, f"%{category_keyword}%"),
+        )
+        row = cursor.fetchone()
+        if not row:
+            continue
+        entry = SealedCollectionEntry(
+            id=None,
+            sealed_product_uuid=row["uuid"],
+            quantity=quantity,
+            purchase_price=purchase_price,
+            status=status,
+            source="demo",
+            added_at=ts,
+        )
+        sealed_repo.add(entry)
+        sealed_added += 1
+
     # Create wishlist entries
     wishlist_added = 0
     for set_code, cn, notes, priority, max_price in DEMO_WISHLIST:
@@ -249,6 +294,7 @@ def load_demo_data(conn: sqlite3.Connection) -> bool:
 
     print(f"  Added {added} collection entries ({len(missing)} skipped — not cached)")
     print(f"  Created {len(order_ids)} demo orders")
+    print(f"  Added {sealed_added} sealed collection entries")
     print(f"  Added {wishlist_added} wishlist entries")
 
     return True

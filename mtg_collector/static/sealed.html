@@ -1014,9 +1014,8 @@ let viewMode = localStorage.getItem('sealedViewMode') || 'grid';
 // ─── Column config ──────────────────────────────────────────────────────────
 const ALL_COLUMNS = [
   { key: 'qty',      label: 'Qty',      sort: 'quantity',       defaultOn: true },
-  { key: 'name',     label: 'Product',   sort: 'name',           defaultOn: true },
-  { key: 'set',      label: 'Set',       sort: 'set_name',       defaultOn: true },
-  { key: 'category', label: 'Category',  sort: 'category',       defaultOn: true },
+  { key: 'name',     label: 'Set',       sort: 'set_name',       defaultOn: true },
+  { key: 'set',      label: 'Type',      sort: 'category',       defaultOn: true },
   { key: 'cost',     label: 'Cost',      sort: 'purchase_price', defaultOn: true },
   { key: 'market',   label: 'Market',    sort: 'market_price',   defaultOn: true },
   { key: 'added',    label: 'Added',     sort: 'added_at',       defaultOn: false },
@@ -1493,6 +1492,13 @@ function render() {
   });
 }
 
+function formatCategory(entry) {
+  const parts = [];
+  if (entry.subtype && entry.subtype !== 'default') parts.push(entry.subtype);
+  if (entry.category) parts.push(entry.category);
+  return parts.join(' ').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function renderGrid() {
   let html = '<div class="card-grid">';
   allEntriesFiltered.forEach(entry => {
@@ -1512,8 +1518,8 @@ function renderGrid() {
         ${statusBadge}
       </div>
       <div class="card-info">
-        <div class="card-name">${esc(entry.name || 'Unknown')}</div>
-        <div class="card-set">${esc(entry.set_name || entry.set_code || '')}</div>
+        <div class="card-name">${esc(entry.set_name || entry.set_code || '')}</div>
+        <div class="card-set">${esc(formatCategory(entry))}</div>
         ${marketText ? `<div class="market-price">${marketText} mkt</div>` : ''}
         ${costText ? `<div class="card-price">${costText} cost</div>` : ''}
       </div>
@@ -1524,7 +1530,6 @@ function renderGrid() {
 }
 
 function renderTable() {
-  const formatCat = c => c ? c.replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase()) : '';
   const visCols = getVisibleColumns();
   const drawerOpen = colDrawer.classList.contains('open');
   const colIcon = `<svg viewBox="0 0 16 16"><path d="M1 1h4v4H1zm5 0h4v4H6zm5 0h4v4H11zM1 6h4v4H1zm5 0h4v4H6zm5 0h4v4H11zM1 11h4v4H1zm5 0h4v4H6zm5 0h4v4H11z"/></svg>`;
@@ -1545,13 +1550,15 @@ function renderTable() {
     const added = entry.added_at ? entry.added_at.slice(0, 10) : '';
 
     html += `<tr data-id="${entry.id}">`;
-    html += '<td></td>'; // spacer for col-config column
+    const thumbHtml = entry.image_url
+      ? `<img class="table-thumb" src="${entry.image_url}" alt="" loading="lazy">`
+      : '';
+    html += `<td>${thumbHtml}</td>`;
     for (const col of visCols) {
       switch (col.key) {
         case 'qty':      html += `<td>${entry.quantity}</td>`; break;
-        case 'name':     html += `<td>${esc(entry.name || 'Unknown')}</td>`; break;
-        case 'set':      html += `<td>${esc(entry.set_name || entry.set_code || '')}</td>`; break;
-        case 'category': html += `<td>${formatCat(entry.category)}</td>`; break;
+        case 'name':     html += `<td>${esc(entry.set_name || entry.set_code || '')}</td>`; break;
+        case 'set':      html += `<td>${esc(formatCategory(entry))}</td>`; break;
         case 'cost':     html += `<td>${cost}</td>`; break;
         case 'market':   html += `<td>${market}</td>`; break;
         case 'added':    html += `<td>${added}</td>`; break;
