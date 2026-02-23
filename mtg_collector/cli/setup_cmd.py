@@ -74,6 +74,14 @@ def run(args):
         _fetch_prices(force=False)
         import_prices(db_path)
 
+    # Step 3c: Import TCGCSV sealed products (supplements MTGJSON catalog)
+    if args.skip_data:
+        print("\n=== Step 3c: TCGCSV sealed products (skipped) ===")
+    else:
+        print("\n=== Step 3c: TCGCSV sealed products ===")
+        from mtg_collector.cli.data_cmd import import_sealed_products
+        import_sealed_products(db_path)
+
     # Step 4: Load demo data
     if args.demo:
         print("\n=== Step 4: Demo data ===")

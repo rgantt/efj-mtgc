@@ -129,18 +129,19 @@ sed \
     -e "s|{{PORT}}:8081|${PORT_MAPPING}|g" \
     "$REPO_DIR/deploy/mtgc.container" > "$QUADLET_FILE"
 
-## --- Generate and install price timer units ---
+## --- Generate and install timer units ---
 
-TIMER_SERVICE="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.service"
-TIMER_UNIT="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.timer"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+mkdir -p "$SYSTEMD_USER_DIR"
 
-echo "==> Installing price timer: $TIMER_UNIT"
-
-sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
-    "$REPO_DIR/deploy/mtgc-prices.service" > "$TIMER_SERVICE"
-
-sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
-    "$REPO_DIR/deploy/mtgc-prices.timer" > "$TIMER_UNIT"
+for UNIT_PREFIX in mtgc-prices mtgc-sealed-catalog; do
+    echo "==> Installing ${UNIT_PREFIX} timer"
+    for EXT in service timer; do
+        sed -e "s|{{INSTANCE}}|${INSTANCE}|g" \
+            "$REPO_DIR/deploy/${UNIT_PREFIX}.${EXT}" \
+            > "${SYSTEMD_USER_DIR}/${UNIT_PREFIX}-${INSTANCE}.${EXT}"
+    done
+done
 
 systemctl --user daemon-reload
 
@@ -169,4 +170,5 @@ echo "  Init data:  podman exec -it systemd-${SERVICE_NAME} mtg setup"
 fi
 echo "  Logs:       journalctl --user -u $SERVICE_NAME -f"
 echo "  Prices:     systemctl --user enable --now mtgc-prices-${INSTANCE}.timer"
+echo "  Sealed:     systemctl --user enable --now mtgc-sealed-catalog-${INSTANCE}.timer"
 echo "  Teardown:   bash deploy/teardown.sh $INSTANCE"

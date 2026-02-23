@@ -1,0 +1,10 @@
+[Unit]
+Description=MTGC weekly sealed catalog refresh ({{INSTANCE}})
+
+[Timer]
+OnCalendar=Mon *-*-* 04:00:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,7 @@
+[Unit]
+Description=MTGC weekly sealed catalog refresh ({{INSTANCE}})
+
+[Service]
+Type=oneshot
+ExecStart=podman exec systemd-mtgc-{{INSTANCE}} mtg data import-sealed-products
+TimeoutStartSec=600

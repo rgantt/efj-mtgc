@@ -33,12 +33,14 @@ fi
 
 echo "==> Tearing down $SERVICE_NAME..."
 
-# Stop and disable price timer
-TIMER_SERVICE="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.service"
-TIMER_UNIT="${QUADLET_DIR}/mtgc-prices-${INSTANCE}.timer"
-systemctl --user stop "mtgc-prices-${INSTANCE}.timer" 2>/dev/null || true
-systemctl --user disable "mtgc-prices-${INSTANCE}.timer" 2>/dev/null || true
-rm -f "$TIMER_SERVICE" "$TIMER_UNIT"
+# Stop and disable timers
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+for PREFIX in mtgc-prices mtgc-sealed-catalog; do
+    systemctl --user stop "${PREFIX}-${INSTANCE}.timer" 2>/dev/null || true
+    systemctl --user disable "${PREFIX}-${INSTANCE}.timer" 2>/dev/null || true
+    rm -f "${SYSTEMD_USER_DIR}/${PREFIX}-${INSTANCE}.service" \
+          "${SYSTEMD_USER_DIR}/${PREFIX}-${INSTANCE}.timer"
+done
 
 # Stop and disable
 systemctl --user stop "$SERVICE_NAME" 2>/dev/null || true
