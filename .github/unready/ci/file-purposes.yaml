@@ -1,0 +1,83 @@
+# File Index purposes for CLAUDE.md
+# Keys are paths relative to repo root. Values are purpose strings.
+# Run `uv run scripts/update-file-index.py` to regenerate the File Index section.
+# New files without entries here will appear as "TODO: add purpose".
+
+# ── CLI subcommands ──
+mtg_collector/cli/crack_pack_server.py: "**Web server**: all HTTP routes, API handlers, SSE endpoints"
+mtg_collector/cli/data_cmd.py: "MTGJSON + price data import/export commands"
+mtg_collector/cli/ingest_ocr.py: "CLI image-based card ingestion via EasyOCR + Claude"
+mtg_collector/cli/ingest_corners.py: "CLI corner-photo card ingestion via Claude Vision"
+mtg_collector/cli/ingest_ids.py: "Manual card entry by rarity/collector-number/set"
+mtg_collector/cli/demo_data.py: "Load demo collection for testing"
+mtg_collector/cli/cache_cmd.py: "Scryfall bulk data caching commands"
+mtg_collector/cli/db_cmd.py: "Database init/reset/migrate commands"
+mtg_collector/cli/ingest_order.py: "CLI order ingestion from TCGPlayer/Card Kingdom"
+mtg_collector/cli/wishlist.py: "Wishlist management commands"
+mtg_collector/cli/edit.py: "Edit collection entries"
+mtg_collector/cli/show.py: "Show card details"
+mtg_collector/cli/list_cmd.py: "List collection entries"
+mtg_collector/cli/import_cmd.py: "CSV import (Moxfield, Archidekt, Deckbox)"
+mtg_collector/cli/orders.py: "Order listing and management"
+mtg_collector/cli/ingest_requeue.py: "Re-queue failed ingest images"
+mtg_collector/cli/setup_cmd.py: "`mtg setup` orchestration"
+mtg_collector/cli/crack_pack.py: "CLI booster pack generation"
+mtg_collector/cli/stats.py: "Collection statistics"
+mtg_collector/cli/delete.py: "Delete collection entries"
+mtg_collector/cli/export.py: "CSV export"
+mtg_collector/cli/debug_ingest.py: "Debug ingest pipeline"
+
+# ── Database layer ──
+mtg_collector/db/schema.py: "Schema DDL, all migrations, `init_db()`"
+mtg_collector/db/models.py: "Dataclasses + repository classes (CRUD for every table)"
+mtg_collector/db/connection.py: "`get_db_path()`, connection factory"
+
+# ── Services ──
+mtg_collector/services/agent.py: "Agentic OCR: Claude tool-use loop with `query_local_db` and `analyze_image` tools"
+mtg_collector/services/claude.py: "Claude Vision API: corner reading, card identification"
+mtg_collector/services/scryfall.py: "`ScryfallAPI` class, caching, `cache_scryfall_data()`, `ensure_set_cached()`"
+mtg_collector/services/order_parser.py: "Parse TCGPlayer HTML/text and Card Kingdom text into `ParsedOrder`"
+mtg_collector/services/order_resolver.py: "Resolve parsed orders to Scryfall cards, treatment-aware matching"
+mtg_collector/services/pack_generator.py: "MTGJSON-based booster pack simulation from SQLite"
+mtg_collector/services/ocr.py: "EasyOCR wrapper for card text extraction"
+
+# ── Web UI ──
+mtg_collector/static/collection.html: "**Collection browser**: filters, sorting, card grid, inline editing. Canonical card display."
+mtg_collector/static/crack_pack.html: "Booster pack simulator with rarity borders and badge system"
+mtg_collector/static/correct.html: "Fix misidentified cards in ingest pipeline"
+mtg_collector/static/explore_sheets.html: "Browse MTGJSON booster sheet layouts"
+mtg_collector/static/ingest_ids.html: "Manual card entry web UI"
+mtg_collector/static/ingest_corners.html: "Corner photo ingest web UI"
+mtg_collector/static/recent.html: "Recently ingested images gallery"
+mtg_collector/static/import_csv.html: "CSV import web UI"
+mtg_collector/static/ingest_order.html: "Order ingestion web UI"
+mtg_collector/static/process.html: "OCR processing + Claude identification"
+mtg_collector/static/upload.html: "Photo upload for image ingest"
+mtg_collector/static/disambiguate.html: "Resolve ambiguous Scryfall matches"
+mtg_collector/static/index.html: "Homepage / navigation"
+
+# ── Importers / Exporters ──
+mtg_collector/importers/base.py: "Shared importer interface"
+mtg_collector/importers/moxfield.py: "Moxfield CSV parser"
+mtg_collector/importers/archidekt.py: "Archidekt CSV parser"
+mtg_collector/importers/deckbox.py: "Deckbox CSV parser"
+mtg_collector/importers/decklist.py: "Moxfield paste/text deck list parser"
+mtg_collector/exporters/base.py: "Shared exporter interface"
+mtg_collector/exporters/moxfield.py: "Moxfield CSV writer"
+mtg_collector/exporters/archidekt.py: "Archidekt CSV writer"
+mtg_collector/exporters/deckbox.py: "Deckbox CSV writer"
+
+# ── Other ──
+mtg_collector.py: "Legacy entrypoint (predates package structure)"
+mtg_collector/utils.py: "`get_mtgc_home()`, `now_iso()`, JSON array helpers, condition/finish normalizers"
+Containerfile: "Multi-stage Podman build"
+pyproject.toml: "Package config, dependencies, CLI entrypoint"
+scripts/agent_ingest.py: "Standalone script to run agentic ingest"
+
+# ── Tests ──
+tests/test_import.py: "CSV import (Moxfield, Archidekt, Deckbox, decklist)"
+tests/test_price_import.py: "MTGJSON price import pipeline"
+tests/test_mtgjson_import.py: "MTGJSON AllPrintings import"
+tests/test_ingest_ids.py: "Manual card entry + `resolve_and_add_ids()`"
+tests/test_order_parser.py: "Order parsing (TCGPlayer HTML/text, Card Kingdom)"
+tests/test_order_resolver.py: "Order resolution to Scryfall cards"
