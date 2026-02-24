@@ -1,5 +1,7 @@
 """Setup command: mtg setup — bootstrap a working installation."""
 
+import shutil
+
 from mtg_collector.db import SCHEMA_VERSION, close_connection, get_connection, init_db
 
 
@@ -29,12 +31,21 @@ def register(subparsers):
         action="store_true",
         help="Skip MTGJSON price data download and import",
     )
+    parser.add_argument(
+        "--from-fixture",
+        metavar="PATH",
+        help="Copy a pre-built fixture DB instead of downloading data",
+    )
     parser.set_defaults(func=run)
 
 
 def run(args):
     """Run the setup command."""
     db_path = args.db_path
+
+    if args.from_fixture:
+        _run_from_fixture(args)
+        return
 
     # Step 1: Initialize database
     print("=== Step 1: Database ===")
@@ -86,6 +97,40 @@ def run(args):
     if args.demo:
         print("\n=== Step 4: Demo data ===")
         print("  NOTE: Demo data is for testing/staging only.")
+        conn = get_connection(db_path)
+        init_db(conn)
+
+        from mtg_collector.cli.demo_data import load_demo_data
+        loaded = load_demo_data(conn)
+        if loaded:
+            print("  Demo data loaded successfully.")
+        else:
+            print("  Demo data already loaded (skipping).")
+        conn.close()
+
+    print("\nSetup complete!")
+
+
+def _run_from_fixture(args):
+    """Fast setup path: copy a pre-built fixture DB, apply migrations, optionally load demo data."""
+    db_path = args.db_path
+    fixture_path = args.from_fixture
+
+    print("=== Step 1: Copy fixture DB ===")
+    shutil.copy2(fixture_path, db_path)
+    print(f"  Copied {fixture_path} -> {db_path}")
+
+    print("\n=== Step 2: Apply migrations ===")
+    conn = get_connection(db_path)
+    created = init_db(conn)
+    if created:
+        print(f"  Database migrated to v{SCHEMA_VERSION}")
+    else:
+        print(f"  Database already up to date (v{SCHEMA_VERSION})")
+    close_connection()
+
+    if args.demo:
+        print("\n=== Step 3: Demo data ===")
         conn = get_connection(db_path)
         init_db(conn)
 
