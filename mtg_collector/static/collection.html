@@ -1048,6 +1048,46 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
   color: #7ee8b0;
 }
 .want-btn.wanted:hover { background: #c73651; border-color: #e94560; color: #fff; }
+.add-collection-btn {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #555;
+  background: #333;
+  color: #aaa;
+}
+.add-collection-btn:hover { color: #fff; background: #555; border-color: #777; }
+.add-collection-form {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 6px;
+}
+.add-collection-form input {
+  padding: 3px 6px;
+  border-radius: 3px;
+  border: 1px solid #555;
+  background: #222;
+  color: #ddd;
+  font-size: 0.75rem;
+}
+.add-collection-form input[type="date"] { width: 120px; }
+.add-collection-form input[type="number"] { width: 70px; }
+.add-collection-form input[type="text"] { width: 100px; }
+.add-collection-form button {
+  padding: 3px 10px;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid #2a8c5a;
+  background: #1a5c3a;
+  color: #7ee8b0;
+}
+.add-collection-form button:hover { background: #2a8c5a; }
 
 /* Wishlist panel */
 .wishlist-backdrop {
@@ -1904,7 +1944,9 @@ function showCardModal(card) {
         <a class="badge link" href="${sfUrl}" target="_blank" rel="noopener">SF${tcgPrice !== '—' ? ' ' + tcgPrice : ''}</a>
         <a class="badge link" href="${ckUrl}" target="_blank" rel="noopener">CK${ckPrice !== '—' ? ' ' + ckPrice : ''}</a>
         <button class="want-btn${getWishlistEntry(card) ? ' wanted' : ''}" id="modal-want-btn">${getWishlistEntry(card) ? 'Wanted' : 'Want'}</button>
+        <button class="add-collection-btn" id="modal-add-btn">Add</button>
       </div>
+      <div id="add-collection-form-container"></div>
       <div id="copies-container"><div style="color:#888;font-size:0.85rem;padding:8px 0;">Loading copies...</div></div>
     `;
     // Load per-copy data
@@ -1997,6 +2039,72 @@ function showCardModal(card) {
     }
     updateWishlistCount();
     renderWishlistPanel();
+  });
+
+  // Add to collection button handler
+  modalDetails.addEventListener('click', async (e) => {
+    const btn = e.target.closest('#modal-add-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    const container = document.getElementById('add-collection-form-container');
+    if (!container) return;
+    // Toggle form
+    if (container.querySelector('.add-collection-form')) {
+      container.innerHTML = '';
+      return;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    container.innerHTML = `<div class="add-collection-form">
+      <input type="date" id="add-date" value="${today}">
+      <input type="number" step="0.01" min="0" id="add-price" placeholder="Price">
+      <input type="text" id="add-source" placeholder="Source">
+      <button id="add-confirm-btn">Confirm</button>
+    </div>`;
+    container.querySelector('#add-confirm-btn').addEventListener('click', async () => {
+      const confirmBtn = container.querySelector('#add-confirm-btn');
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = 'Adding...';
+      const body = {
+        printing_id: card.printing_id,
+        finish: card.finish || 'nonfoil',
+        acquired_at: container.querySelector('#add-date').value || today,
+      };
+      const priceVal = container.querySelector('#add-price').value;
+      if (priceVal) body.purchase_price = parseFloat(priceVal);
+      const sourceVal = container.querySelector('#add-source').value.trim();
+      if (sourceVal) body.source = sourceVal;
+      const res = await fetch('/api/collection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const result = await res.json();
+        container.innerHTML = '';
+        // If a wishlist entry was auto-fulfilled, update frontend state
+        if (result.fulfilled_wishlist_id) {
+          const wid = result.fulfilled_wishlist_id;
+          const wEntry = wishlistMap[wid];
+          if (wEntry) {
+            _removeWishlistEntry(wEntry);
+            const wantBtn = document.getElementById('modal-want-btn');
+            if (wantBtn) {
+              wantBtn.classList.remove('wanted');
+              wantBtn.textContent = 'Want';
+            }
+            updateWishlistCount();
+            renderWishlistPanel();
+          }
+        }
+        loadModalCopies(card);
+        fetchCollection();
+      } else {
+        const err = await res.json();
+        alert(err.error || 'Add failed');
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm';
+      }
+    });
   });
 
   // Flip button handler
