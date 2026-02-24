@@ -1,5 +1,6 @@
 """Crack-a-pack web server: mtg crack-pack-server --port 8080"""
 
+import gzip
 import hashlib
 import json
 import os
@@ -1513,15 +1514,46 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             card["ck_url"] = ""
             results.append(card)
 
-        # Prices via SQLite latest_prices
-        for card in results:
-            foil = card["finish"] in ("foil", "etched")
-            price_type = "foil" if foil else "normal"
-            sc = card["set_code"].lower()
-            cn = card["collector_number"]
-            card["ck_price"] = _get_sqlite_price(self.db_path, sc, cn, "cardkingdom", price_type)
-            card["tcg_price"] = _get_sqlite_price(self.db_path, sc, cn, "tcgplayer", price_type)
-            card["ck_url"] = self.generator.get_ck_url(card["printing_id"], foil) if self.generator else ""
+        # Bulk price lookup — one query replaces 3600 individual queries
+        if results:
+            price_keys = []
+            for card in results:
+                foil = card["finish"] in ("foil", "etched")
+                price_type = "foil" if foil else "normal"
+                sc = card["set_code"].lower()
+                cn = card["collector_number"]
+                price_keys.append((sc, cn, price_type))
+
+            # Collect unique (set_code, collector_number) pairs for batch lookup
+            unique_cards = list({(sc, cn) for sc, cn, _ in price_keys})
+            ph = ",".join("(?,?)" for _ in unique_cards)
+            params = [v for pair in unique_cards for v in pair]
+            price_map: dict[tuple[str, str, str, str], str] = {}
+            for r in conn.execute(
+                f"SELECT set_code, collector_number, source, price_type, price "
+                f"FROM latest_prices WHERE (set_code, collector_number) IN ({ph})",
+                params,
+            ).fetchall():
+                price_map[(r["set_code"], r["collector_number"], r["source"], r["price_type"])] = str(r["price"])
+
+            # Bulk CK URL lookup
+            ck_url_map: dict[str, tuple[str, str]] = {}
+            if self.generator:
+                pids = [card["printing_id"] for card in results]
+                ph = ",".join("?" for _ in pids)
+                for r in conn.execute(
+                    f"SELECT printing_id, ck_url, ck_url_foil FROM mtgjson_printings WHERE printing_id IN ({ph})",
+                    pids,
+                ).fetchall():
+                    ck_url_map[r["printing_id"]] = (r["ck_url"] or "", r["ck_url_foil"] or "")
+
+            for i, card in enumerate(results):
+                sc, cn, pt = price_keys[i]
+                card["ck_price"] = price_map.get((sc, cn, "cardkingdom", pt))
+                card["tcg_price"] = price_map.get((sc, cn, "tcgplayer", pt))
+                foil = card["finish"] in ("foil", "etched")
+                urls = ck_url_map.get(card["printing_id"], ("", ""))
+                card["ck_url"] = (urls[1] if foil else urls[0]) or urls[0]
 
         conn.close()
         self._send_json(results)
@@ -4328,6 +4360,10 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         body = json.dumps(obj).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        accept_enc = self.headers.get("Accept-Encoding", "")
+        if "gzip" in accept_enc and len(body) > 1024:
+            body = gzip.compress(body)
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
