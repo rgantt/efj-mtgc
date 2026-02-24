@@ -32,6 +32,28 @@ SAMPLES = [
         "confidence": "medium",
         "ocr_confidence": [0.92, 0.75],
     },
+    {
+        "name": "Arenson's Aura",
+        "set_code": "ice",
+        "collector_number": None,
+        "fixture": "sample-arensons-aura.jpg",
+        "stored_name": "sample_arensons_aura.jpg",
+        "status": "READY_FOR_DISAMBIGUATION",
+        "confidence": "high",
+        "ocr_confidence": [0.95, 0.90],
+        "artist": "Nicola Leonard",
+        "extra_sets": ["ptc"],  # also has a Pro Tour Collector Set printing
+    },
+    {
+        "name": "Armed Response",
+        "set_code": "5dn",
+        "collector_number": "2",
+        "fixture": "sample-armed-response.jpg",
+        "stored_name": "sample_armed_response.jpg",
+        "status": "DONE",
+        "confidence": "high",
+        "ocr_confidence": [0.94, 0.88],
+    },
 ]
 
 
@@ -126,9 +148,13 @@ def run(args):
             print(f"  error: no printings for '{sample['name']}' in set '{sample['set_code']}' — run 'mtg setup' first")
             continue
 
-        # Build candidates list
+        # Build candidates list (target set + any extra_sets)
+        candidate_printings = list(set_printings)
+        for extra_sc in sample.get("extra_sets", []):
+            candidate_printings.extend(p for p in all_printings if p.set_code == extra_sc)
+
         candidates = []
-        for p in set_printings:
+        for p in candidate_printings:
             c = _format_candidate(p)
             if c:
                 candidates.append(c)
@@ -158,6 +184,8 @@ def run(args):
         }
         if claude_cn:
             claude_entry["collector_number"] = claude_cn
+        if sample.get("artist"):
+            claude_entry["artist"] = sample["artist"]
         claude_result = [claude_entry]
 
         # Build ocr_result
@@ -172,12 +200,19 @@ def run(args):
         shutil.copy2(str(fixture_path), str(image_path))
         md5 = hashlib.md5(image_path.read_bytes()).hexdigest()
 
+        # Build confirmed_finishes: for DONE cards, default to nonfoil
+        if sample["status"] == "DONE" and disambiguated[0] is not None:
+            confirmed_finishes = ["nonfoil"]
+        else:
+            confirmed_finishes = [None]
+
         # Insert the record
         conn.execute(
             """INSERT INTO ingest_images
                (filename, stored_name, md5, status, ocr_result, claude_result,
-                scryfall_matches, disambiguated, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                scryfall_matches, disambiguated, confirmed_finishes,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 sample["stored_name"],
                 sample["stored_name"],
@@ -187,6 +222,7 @@ def run(args):
                 json.dumps(claude_result),
                 json.dumps([candidates]),
                 json.dumps(disambiguated),
+                json.dumps(confirmed_finishes),
                 ts,
                 ts,
             ),

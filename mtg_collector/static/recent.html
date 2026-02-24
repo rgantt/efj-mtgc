@@ -146,6 +146,51 @@ header a:hover { color: #e94560; }
   object-fit: cover;
   display: block;
 }
+/* Foil shimmer overlay (positioned over the photo) */
+.img-card .foil-shimmer {
+  display: none;
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  pointer-events: none;
+  z-index: 1;
+}
+.img-card img.foil ~ .foil-shimmer { display: block; }
+.img-card .foil-shimmer::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255,0,0,0.08),
+    rgba(255,165,0,0.08) 5%,
+    rgba(255,255,0,0.08) 10%,
+    rgba(0,200,0,0.08) 15%,
+    rgba(0,140,255,0.08) 20%,
+    rgba(130,0,255,0.08) 25%,
+    rgba(255,0,200,0.08) 30%,
+    rgba(255,0,0,0.08) 33.33%
+  );
+  mix-blend-mode: color;
+  pointer-events: none;
+}
+.img-card .foil-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  background:
+    linear-gradient(135deg, transparent 46%, rgba(255,255,255,0.12) 49%, rgba(255,255,255,0.12) 51%, transparent 54%)
+    100% 100% / 240% 240%;
+  pointer-events: none;
+  animation: foil-streak 3s ease-in-out infinite;
+}
+@keyframes foil-streak {
+  0% { background-position: 100% 100%; }
+  15%, 100% { background-position: 0 0; }
+}
 .img-card .set-overlay {
   position: absolute;
   bottom: 30px;
@@ -162,14 +207,35 @@ header a:hover { color: #e94560; }
   right: 6px;
   background: rgba(0,0,0,0.7);
   color: #ddd;
-  font-size: 0.55rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  padding: 2px 5px;
+  padding: 3px 7px;
   border-radius: 3px;
   pointer-events: none;
   z-index: 1;
   text-transform: capitalize;
 }
+.img-card .finish-badges {
+  position: absolute;
+  bottom: 30px;
+  right: 6px;
+  display: flex;
+  gap: 3px;
+  z-index: 2;
+}
+.img-card .finish-badge {
+  background: rgba(0,0,0,0.7);
+  color: #ddd;
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  text-transform: capitalize;
+  border: 1px solid transparent;
+}
+.img-card .finish-badge:hover { border-color: #e94560; color: #fff; }
+.img-card .finish-badge.active { border-color: #4caf50; background: rgba(76,175,80,0.3); color: #fff; }
 .img-card .card-title {
   text-align: center;
   font-weight: 700;
@@ -346,26 +412,26 @@ header a:hover { color: #e94560; }
   left: 4px;
   font-size: 1.4rem;
   color: #fff;
-  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,1.0));
   pointer-events: none;
-  -webkit-text-stroke: 2px rgba(0,0,0,0.85);
+  
   paint-order: stroke fill;
 }
 .acc-candidate .set-overlay.ss-grad::before {
   -webkit-text-fill-color: currentColor;
 }
 .acc-candidate .set-overlay.ss-common {
-  -webkit-text-stroke: 2px rgba(255,255,255,0.9);
+  
 }
 .acc-candidate .cn-overlay {
   position: absolute;
   bottom: 4px;
   left: 28px;
-  font-size: 0.55rem;
+  font-size: 0.95rem;
   font-weight: 600;
   color: #ddd;
   background: rgba(0,0,0,0.7);
-  padding: 1px 4px;
+  padding: 2px 6px;
   border-radius: 3px;
   pointer-events: none;
 }
@@ -375,9 +441,9 @@ header a:hover { color: #e94560; }
   right: 4px;
   background: rgba(0,0,0,0.7);
   color: #ddd;
-  font-size: 0.55rem;
+  font-size: 0.95rem;
   font-weight: 600;
-  padding: 2px 5px;
+  padding: 3px 7px;
   border-radius: 3px;
   pointer-events: none;
   text-transform: capitalize;
@@ -534,22 +600,34 @@ function buildCardOverlays(img) {
   let setHtml = '';
   let finishHtml = '';
   let titleHtml = '';
+  let isFoil = false;
   if (cards.length) {
     const c = cards[0];
     const resolved = img.border_status === 'done';
-    if (resolved && c.set_code) {
+    const hasFinishBadges = c.finish_options && c.finish_options.length >= 1;
+    const finishResolved = hasFinishBadges && c.finish_scryfall_id;
+    if ((resolved || finishResolved) && c.set_code) {
       const sc = keyruneSetCode(c.set_code.toLowerCase());
       setHtml = `<i class="ss ss-${sc} set-overlay" title="${escapeHtml(c.set_code)}"></i>`;
     }
-    if (resolved) {
+    if (hasFinishBadges) {
+      const sid = c.finish_scryfall_id || '';
+      const badges = c.finish_options.map(f => {
+        const isActive = c.finish === f;
+        return `<span class="finish-badge${isActive ? ' active' : ''}" data-img-id="${img.id}" data-scryfall-id="${escapeHtml(sid)}" data-finish="${escapeHtml(f)}">${escapeHtml(f)}</span>`;
+      }).join('');
+      finishHtml = `<div class="finish-badges">${badges}</div>`;
+      isFoil = resolved && c.finish === 'foil';
+    } else if (resolved) {
       const finish = c.finish || 'nonfoil';
       finishHtml = `<span class="finish-overlay">${escapeHtml(finish)}</span>`;
+      isFoil = finish === 'foil';
     }
     const name = c.name || '';
-    const cn = resolved && c.collector_number ? ` #${c.collector_number}` : '';
+    const cn = (resolved || finishResolved) && c.collector_number ? ` #${c.collector_number}` : '';
     if (name) titleHtml = `<div class="card-title">${escapeHtml(name)}${escapeHtml(cn)}</div>`;
   }
-  return { setHtml, finishHtml, titleHtml };
+  return { setHtml, finishHtml, titleHtml, isFoil };
 }
 
 function createCardEl(img) {
@@ -559,16 +637,20 @@ function createCardEl(img) {
   const errorIcon = img.border_status === 'error' ? '<div class="error-icon">&times;</div>' : '';
   const errorTooltip = img.border_status === 'error' && img.error_message
     ? `<div class="error-tooltip">${escapeHtml(img.error_message.substring(0, 200))}</div>` : '';
-  const { setHtml, finishHtml, titleHtml } = buildCardOverlays(img);
+  const { setHtml, finishHtml, titleHtml, isFoil } = buildCardOverlays(img);
   card.innerHTML = `
-    <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy">
+    <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy"${isFoil ? ' class="foil"' : ''}>
+    <div class="foil-shimmer"></div>
     ${errorIcon}
     ${errorTooltip}
     ${setHtml}
     ${finishHtml}
     ${titleHtml}
   `;
-  card.addEventListener('click', () => toggleAccordion(img.id));
+  card.addEventListener('click', (e) => {
+    if (e.target.closest('.finish-badge')) return;
+    toggleAccordion(img.id);
+  });
   return card;
 }
 
@@ -790,7 +872,8 @@ function renderAccordionContent(imgId, detail) {
 
   // Render candidates
   const highlightSid = isPending ? null : sid;
-  const narrowed = isPending ? narrowCandidates(candidates, cardInfo) : candidates;
+  let narrowed = isPending ? narrowCandidates(candidates, cardInfo) : candidates;
+  if (narrowed.length <= 1 && candidates.length > 1) narrowed = candidates;
   const containerEl = document.getElementById(`acc-candidates-${imgId}`);
 
   const onSelect = async (c) => {
@@ -971,6 +1054,14 @@ async function toggleAccordion(imgId) {
   // Fetch detail and render
   const detail = await loadAccordionDetail(imgId);
   renderAccordionContent(imgId, detail);
+
+  // Scroll accordion into view if it extends below the viewport
+  requestAnimationFrame(() => {
+    const rect = accordionPanel.getBoundingClientRect();
+    if (rect.bottom > window.innerHeight) {
+      accordionPanel.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  });
 }
 
 function updateCardEl(card, img) {
@@ -1002,17 +1093,28 @@ function updateCardEl(card, img) {
     tooltip.remove();
   }
 
-  const { setHtml, finishHtml, titleHtml } = buildCardOverlays(img);
+  const { setHtml, finishHtml, titleHtml, isFoil } = buildCardOverlays(img);
+
+  // Update foil class on img
+  const imgEl = card.querySelector('img');
+  if (imgEl) imgEl.classList.toggle('foil', isFoil);
+
+  // Ensure foil-shimmer div exists
+  if (!card.querySelector('.foil-shimmer')) {
+    imgEl.insertAdjacentHTML('afterend', '<div class="foil-shimmer"></div>');
+  }
 
   // Update set overlay
   const oldSet = card.querySelector('.set-overlay');
   if (oldSet) oldSet.remove();
-  if (setHtml) card.querySelector('img').insertAdjacentHTML('afterend', setHtml);
+  if (setHtml) imgEl.insertAdjacentHTML('afterend', setHtml);
 
-  // Update finish overlay
+  // Update finish overlay / badges
   const oldFinish = card.querySelector('.finish-overlay');
   if (oldFinish) oldFinish.remove();
-  if (finishHtml) card.querySelector('img').insertAdjacentHTML('afterend', finishHtml);
+  const oldBadges = card.querySelector('.finish-badges');
+  if (oldBadges) oldBadges.remove();
+  if (finishHtml) imgEl.insertAdjacentHTML('afterend', finishHtml);
 
   // Update card title
   const oldTitle = card.querySelector('.card-title');
@@ -1209,6 +1311,43 @@ async function batchIngest() {
     updateSummaryFromGrid();
   }
 }
+
+// ── Finish badge click delegation ─────────────────────────────────────────────
+
+document.getElementById('grid').addEventListener('click', async (e) => {
+  const badge = e.target.closest('.finish-badge');
+  if (!badge) return;
+  e.stopPropagation();
+
+  const imgId = Number(badge.dataset.imgId);
+  const scryfallId = badge.dataset.scryfallId;
+  const finish = badge.dataset.finish;
+
+  // Determine if already done (correct) or pending (confirm)
+  const card = badge.closest('.img-card');
+  const isDone = card && card.classList.contains('done');
+  const endpoint = isDone ? '/api/ingest2/correct' : '/api/ingest2/confirm';
+
+  await fetch(endpoint, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ image_id: imgId, card_idx: 0, scryfall_id: scryfallId, finish }),
+  });
+
+  // Refresh the single card
+  const resp = await fetch(`/api/ingest2/recent?hours=${currentHours}&id=${imgId}`);
+  const images = await resp.json();
+  if (images.length && card) updateCardEl(card, images[0]);
+
+  // Refresh accordion if open for this card
+  invalidateDetailCache(imgId);
+  if (accordionPanel.dataset.imgId === String(imgId) && accordionPanel.classList.contains('open')) {
+    const detail = await loadAccordionDetail(imgId);
+    renderAccordionContent(imgId, detail);
+  }
+
+  updateSummaryFromGrid();
+});
 
 loadRecent();
 loadUsageStats();

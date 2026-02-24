@@ -1,0 +1,24 @@
+# Scenario: Accordion pop-down shows card data on Recent Images
+#
+# Related:
+#   issues: []
+#   pull_requests: []
+
+description: >
+  Navigate to the Recent Images page.
+  There should be four cards visible. We are looking at the card Arenson's Aura.
+  Arenson's Aura:
+    Has a red border
+    No set icon
+    "Nonfoil" is in the lower right corner and is selected
+  Click the photo
+    The Accordion panel appears
+    Two candidates are shown. Both candidates
+      have no border
+      show Nonfoil bagges
+  Click the Ice Age candidate
+    The Ice Age logo appears on the user-provided photo
+    The border of the Ice Age candidate turns green.
+  Click on the photo again
+    The accordion panel disappears
+    The photo border turns green

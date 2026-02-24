@@ -804,6 +804,7 @@ def _migrate_v9_to_v10(conn: sqlite3.Connection):
             names_data TEXT,
             names_disambiguated TEXT,
             user_card_edits TEXT,
+            confirmed_finishes TEXT,
             error_message TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -1403,6 +1404,14 @@ def _migrate_v22_to_v23(conn: sqlite3.Connection):
     conn.execute("DROP TABLE ingest_images")
     conn.execute("ALTER TABLE ingest_images_new RENAME TO ingest_images")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_ingest_images_status ON ingest_images(status)")
+
+
+def _migrate_v22_to_v23(conn: sqlite3.Connection):
+    """Add confirmed_finishes column to ingest_images."""
+    cursor = conn.execute("PRAGMA table_info(ingest_images)")
+    cols = [r[1] for r in cursor.fetchall()]
+    if "confirmed_finishes" not in cols:
+        conn.execute("ALTER TABLE ingest_images ADD COLUMN confirmed_finishes TEXT")
 
 
 def drop_all_tables(conn: sqlite3.Connection):

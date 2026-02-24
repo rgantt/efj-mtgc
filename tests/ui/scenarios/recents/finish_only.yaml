@@ -1,0 +1,35 @@
+# Scenario: Accordion pop-down shows card data on Recent Images
+#
+# Related:
+#   issues: []
+#   pull_requests: []
+
+description: >
+  Navigate to the Recent Images page. Click the 24h pill.
+  There should be four cards visible. We are looking at the card Armed Response.
+  Armed Response should:
+    show the Fifth Dawn set symbol in the lower
+    show Foil and Nonfoil badges in the left right corner
+    Nonfoil should be Green (selected)
+    have a green border
+  Click on Foil
+    Nonfoil should turn grey
+    Foil should turn green, with a green border
+    The border of the user photo should remain green
+    The photo should now have style class "foil", as from the Crack-a-Pack page
+  Click the photo
+    The Accordion panel should appear
+    Two candidates should be shown
+    Both candidates should be
+      Fifth Dawn
+      Set number 2
+    One candidate should be
+      Nonfoil
+      Unselected (no border)
+    The other candidate should be
+      Foil
+      Selected (green border)
+    Click Nonfoil on the user-provided photo
+      The selected should swap
+      The style class "foil" should be removed
+  

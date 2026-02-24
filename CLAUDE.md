@@ -53,19 +53,20 @@ Each module has `register(subparsers)` and `run(args)`.
 
 | File | Lines | Purpose |
 |------|------:|---------|
-| `crack_pack_server.py` | 4576 | **Web server**: all HTTP routes, API handlers, SSE endpoints |
+| `crack_pack_server.py` | 4668 | **Web server**: all HTTP routes, API handlers, SSE endpoints |
 | `data_cmd.py` | 915 | MTGJSON + price data import/export commands |
 | `ingest_ocr.py` | 411 | CLI image-based card ingestion via EasyOCR + Claude |
 | `ingest_corners.py` | 340 | CLI corner-photo card ingestion via Claude Vision |
 | `demo_data.py` | 300 | Load demo collection for testing |
 | `ingest_ids.py` | 286 | Manual card entry by rarity/collector-number/set |
+| `sample_ingest.py` | 234 |  |
 
 ### `mtg_collector/db/` — SQLite layer
 
 | File | Lines | Purpose |
 |------|------:|---------|
 | `models.py` | 1543 | Dataclasses + repository classes (CRUD for every table) |
-| `schema.py` | 1305 | Schema DDL, all migrations, `init_db()` |
+| `schema.py` | 1316 | Schema DDL, all migrations, `init_db()` |
 
 Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingRepository`, `CollectionRepository`, `OrderRepository`, `WishlistRepository`.
 
@@ -87,7 +88,7 @@ Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingR
 |------|------:|---------|
 | `collection.html` | 3302 | **Collection browser**: filters, sorting, card grid, inline editing. Canonical card display. |
 | `sealed.html` | 2116 |  |
-| `recent.html` | 1219 | Recently ingested images gallery |
+| `recent.html` | 1358 | Recently ingested images gallery |
 | `correct.html` | 1048 | Fix misidentified cards in ingest pipeline |
 | `crack_pack.html` | 1007 | Booster pack simulator with rarity borders and badge system |
 | `explore_sheets.html` | 824 | Browse MTGJSON booster sheet layouts |
