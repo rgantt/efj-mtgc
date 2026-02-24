@@ -1,0 +1,32 @@
+# Scenario: Accordion pop-down shows card data on Recent Images
+#
+# Related:
+#   issues: []
+#   pull_requests: []
+
+description: >
+  Navigate to the Recent Images page.
+  A grid of user-provided card photos should be displayed.
+  Photos should be displayed as follows:
+    Red or green border
+    Set icon in the lower left
+    Finish badge in the lower right
+    Card title below the card, centered, bold white text
+  Click on any image card.
+  Verify that a full-width accordion panel appears below that row of cards
+  with the clicked card and the accordian panel highlighted in white.
+  The accordion panel should show, from left to right:
+  A box with the following stacked vertically, top to bottom:
+    Identified card title (if any)
+    A Reprocess button
+    A Delete button
+    Text field with text "Replace with..." in it
+    Other buttons are an error.
+  Then to the right of that:
+    All the candidate cards returned by the agent
+    Candidate cards are shown:
+      The top half of the card 150px wide
+      A badge showing the set symbol
+      A badge showing a single Finish for this card
+    One candidate card per card/set/finish combination are shown.
+  The test passes when all the above conditions are met.

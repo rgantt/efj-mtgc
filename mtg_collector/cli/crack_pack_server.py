@@ -447,31 +447,17 @@ def _process_image_core(conn, image_id, img, log_fn):
     # Merge cards whose fragment bboxes heavily overlap (e.g. ghost artist-only card)
     claude_cards = _merge_overlapping_cards(claude_cards, ocr_fragments)
 
-    # Group by fragment_indices: Claude returns multiple entries for one physical card
-    # when uncertain about printing (per the DISAMBIGUATION RULE). Consolidate these
-    # into one slot so we don't ingest the same card twice.
-    _frag_groups: dict[tuple, list] = {}
-    _frag_key_order: list[tuple] = []
-    for _card in claude_cards:
-        _key = tuple(sorted(_card.get("fragment_indices") or []))
-        if _key not in _frag_groups:
-            _frag_groups[_key] = []
-            _frag_key_order.append(_key)
-        _frag_groups[_key].append(_card)
-
+    # Single-card assumption: all Claude entries are printing candidates for one card.
+    # Pick the highest-confidence entry as the representative.
     _CONF = {"high": 0, "medium": 1, "low": 2}
-    # One representative per physical card (highest confidence); extras resolved separately
-    claude_cards = [
-        min(_frag_groups[k], key=lambda c: _CONF.get(c.get("confidence", "low"), 2))
-        for k in _frag_key_order
-    ]
-    _group_extras = {
-        ci: [c for c in _frag_groups[k] if c is not claude_cards[ci]]
-        for ci, k in enumerate(_frag_key_order)
-    }
-    n_extras = sum(len(v) for v in _group_extras.values())
-    if n_extras:
-        _log_ingest(f"Grouped {len(claude_cards) + n_extras} agent entries -> {len(claude_cards)} physical card(s) ({n_extras} disambiguation candidate(s) merged)")
+    all_entries = list(claude_cards)
+    if all_entries:
+        best = min(all_entries, key=lambda c: _CONF.get(c.get("confidence", "low"), 2))
+        extras = [c for c in all_entries if c is not best]
+    else:
+        best = None
+        extras = []
+    claude_cards = [best] if best else []
 
     # Save to cache
     conn.execute(
@@ -485,11 +471,8 @@ def _process_image_core(conn, image_id, img, log_fn):
     conn.commit()
 
     # Step 3: Local DB resolution
-    log_fn("status", {"message": "Resolving cards..."})
+    log_fn("status", {"message": "Resolving card..."})
     printing_repo = PrintingRepository(conn)
-
-    all_matches = []
-    all_crops = []
 
     def _resolve_candidate(card_info) -> list:
         """Resolve one agent card_info to a list of raw card dicts."""
@@ -505,9 +488,6 @@ def _process_image_core(conn, image_id, img, log_fn):
                 card_data = printing.get_card_data()
                 if card_data:
                     candidates = [card_data]
-                    # If the set+CN lookup returned a different card name than
-                    # Claude extracted, also do a name search so the correct card
-                    # appears in disambiguation.
                     extracted_name = card_info.get("name", "")
                     returned_name = card_data.get("name", "")
                     if extracted_name and extracted_name.lower() != returned_name.lower():
@@ -524,25 +504,19 @@ def _process_image_core(conn, image_id, img, log_fn):
                 candidates = _local_name_search(conn, name, set_code=search_set)
         return candidates
 
-    for ci, card_info in enumerate(claude_cards):
-        # Skip cards with no identifying info (empty name + no fragments)
-        if not card_info.get("name") and not card_info.get("fragment_indices"):
-            all_matches.append([])
-            all_crops.append(None)
-            _log_ingest(f"Resolve card {ci}: skipped (no identifying info)")
-            continue
+    all_matches = []
+    all_crops = []
 
-        candidates = _resolve_candidate(card_info)
-
+    if best:
+        candidates = _resolve_candidate(best)
         if not candidates:
-            set_code, cn_or_query = _build_scryfall_query(card_info, {})
+            set_code, cn_or_query = _build_scryfall_query(best, {})
             if cn_or_query and not set_code:
                 candidates = _local_name_search(conn, cn_or_query)
 
-        # Resolve extra candidates (same physical card, different printing guesses)
-        # and merge into this slot's results, deduplicating by printing ID.
+        # Resolve extra entries (different printing guesses) and merge
         seen_ids = {c.get("id") for c in candidates}
-        for extra_info in _group_extras.get(ci, []):
+        for extra_info in extras:
             for r in _resolve_candidate(extra_info):
                 if r.get("id") not in seen_ids:
                     candidates.append(r)
@@ -550,79 +524,23 @@ def _process_image_core(conn, image_id, img, log_fn):
 
         formatted = _format_candidates(candidates)
         all_matches.append(formatted)
-        _log_ingest(f"Resolve card {ci}: {len(formatted)} candidates for '{card_info.get('name', '???')}'")
+        _log_ingest(f"Resolved {len(formatted)} candidates for '{best.get('name', '???')}'")
 
-        frag_indices = card_info.get("fragment_indices", [])
-        crop = _compute_card_crop(ocr_fragments, frag_indices)
-        all_crops.append(crop)
+        frag_indices = best.get("fragment_indices", [])
+        all_crops.append(_compute_card_crop(ocr_fragments, frag_indices))
+    else:
+        all_matches.append([])
+        all_crops.append(None)
 
-    # Check lineage for already-ingested cards
-    lineage_rows = conn.execute(
-        "SELECT card_index FROM ingest_lineage WHERE image_md5 = ?",
+    # Check lineage for already-ingested card
+    lineage_row = conn.execute(
+        "SELECT card_index FROM ingest_lineage WHERE image_md5 = ? AND card_index = 0",
         (md5,),
-    ).fetchall()
-    already_ingested = {row["card_index"] for row in lineage_rows}
-
-    disambiguated = []
-    for ci in range(len(claude_cards)):
-        if ci in already_ingested:
-            disambiguated.append("already_ingested")
-        else:
-            disambiguated.append(None)
+    ).fetchone()
+    disambiguated = ["already_ingested" if lineage_row else None]
 
     return ocr_fragments, claude_cards, all_matches, all_crops, disambiguated, agent_trace, api_usage
 
-
-def _auto_ingest_single_candidates(conn, img, disambiguated, scryfall_matches):
-    """Auto-ingest cards with exactly one candidate. Returns count of auto-ingested cards."""
-    from mtg_collector.db.models import (
-        CollectionEntry,
-        CollectionRepository,
-        PrintingRepository,
-    )
-    from mtg_collector.utils import now_iso
-
-    auto_count = 0
-    printing_repo = PrintingRepository(conn)
-    collection_repo = CollectionRepository(conn)
-
-    for card_idx, status in enumerate(disambiguated):
-        if status is not None:
-            continue
-        candidates = scryfall_matches[card_idx] if card_idx < len(scryfall_matches) else []
-        if len(candidates) != 1:
-            continue
-
-        c = candidates[0]
-        printing_id = c["printing_id"]
-
-        printing = printing_repo.get(printing_id)
-        if not printing:
-            continue
-
-        entry = CollectionEntry(
-            id=None,
-            printing_id=printing_id,
-            finish="nonfoil",
-            condition="Near Mint",
-            source="ocr_ingest",
-        )
-        entry_id = collection_repo.add(entry)
-
-        md5 = img["md5"]
-        conn.execute(
-            """INSERT INTO ingest_lineage (collection_id, image_md5, image_path, card_index, created_at)
-               VALUES (?, ?, ?, ?, ?)""",
-            (entry_id, md5, img["stored_name"], card_idx, now_iso()),
-        )
-
-        disambiguated[card_idx] = printing_id
-        conn.commit()
-
-        _log_ingest(f"Auto-confirmed: {printing.printing_id} ({c.get('set_code', '???').upper()} #{c.get('collector_number', '???')})")
-        auto_count += 1
-
-    return auto_count
 
 
 def _reset_ingest_image(conn, image_id, md5, now):
@@ -701,16 +619,7 @@ def _process_image_background(db_path, image_id):
             conn, image_id, img, log_fn,
         )
 
-        # Auto-ingest single-candidate cards
-        auto_count = _auto_ingest_single_candidates(conn, img, disambiguated, all_matches)
-        if auto_count:
-            _log_ingest(f"[bg:{image_id}] Auto-ingested {auto_count} single-candidate card(s)")
-
-        # Determine final status
-        if all(d is not None for d in disambiguated):
-            final_status = "DONE"
-        else:
-            final_status = "READY_FOR_DISAMBIGUATION"
+        final_status = "READY_FOR_DISAMBIGUATION"
 
         # Save state
         conn.execute(
@@ -939,6 +848,8 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             self._api_ingest2_delete()
         elif path == "/api/ingest2/reset":
             self._api_ingest2_reset()
+        elif path == "/api/ingest2/batch-ingest":
+            self._api_ingest2_batch_ingest()
         elif path == "/api/wishlist":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
@@ -1757,13 +1668,13 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         hours = float(params.get("hours", ["2"])[0])
         image_id = params.get("id", [None])[0]
         conn = self._ingest2_db()
-        where = "WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)"
+        where = "WHERE created_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?) AND status != 'INGESTED'"
         args = [f"-{int(hours * 3600)} seconds"]
         if image_id is not None:
             where += " AND id = ?"
             args.append(int(image_id))
         rows = conn.execute(
-            f"""SELECT id, filename, stored_name, status, error_message,
+            f"""SELECT id, filename, stored_name, md5, status, error_message,
                       ocr_result, claude_result, scryfall_matches, disambiguated,
                       created_at, updated_at
                FROM ingest_images
@@ -1771,11 +1682,30 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                ORDER BY id DESC""",
             args,
         ).fetchall()
+
+        # Build lookup of confirmed finishes from ingest_lineage → collection
+        md5s = [dict(r)["stored_name"] for r in rows]
+        confirmed_finishes = {}  # (md5, card_index) → finish
+        if md5s:
+            for r in rows:
+                d = dict(r)
+                md5_val = d.get("md5") or d.get("stored_name", "")
+                lineage_rows = conn.execute(
+                    """SELECT il.card_index, c.finish
+                       FROM ingest_lineage il
+                       JOIN collection c ON c.id = il.collection_id
+                       WHERE il.image_md5 = ?""",
+                    (md5_val,),
+                ).fetchall()
+                for lr in lineage_rows:
+                    confirmed_finishes[(md5_val, lr["card_index"])] = lr["finish"]
+
         conn.close()
 
         result = []
         for r in rows:
             d = dict(r)
+            md5_val = d.get("md5") or d.get("stored_name", "")
             # Compute card counts
             claude_result = json.loads(d["claude_result"]) if d.get("claude_result") else []
             disambiguated = json.loads(d["disambiguated"]) if d.get("disambiguated") else []
@@ -1807,14 +1737,25 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 if sid and sid != "skipped" and idx < len(scryfall_matches):
                     resolved = next((c for c in scryfall_matches[idx] if c.get("printing_id") == sid), None)
                 if resolved:
+                    # Use confirmed finish from collection if available
+                    coll_finish = confirmed_finishes.get((md5_val, idx))
+                    if not coll_finish:
+                        finishes = resolved.get("finishes", [])
+                        coll_finish = finishes[0] if finishes else "nonfoil"
                     entry = {
                         "name": resolved.get("name", card.get("name", "")),
                         "set_code": (resolved.get("set_code") or card.get("set_code") or "").upper(),
+                        "collector_number": resolved.get("collector_number", ""),
+                        "finish": coll_finish,
                     }
                 else:
+                    # Use top candidate for set_code/finish when available
+                    top = scryfall_matches[idx][0] if idx < len(scryfall_matches) and scryfall_matches[idx] else {}
+                    top_finishes = top.get("finishes", [])
                     entry = {
                         "name": card.get("name", ""),
-                        "set_code": (card.get("set_code") or "").upper(),
+                        "set_code": (card.get("set_code") or top.get("set_code") or "").upper(),
+                        "finish": top_finishes[0] if top_finishes else "nonfoil",
                     }
                 # OCR name: topmost fragments for this card, merging nearby bboxes
                 entry["ocr_name"] = _extract_ocr_name(ocr_fragments, card.get("fragment_indices", []))
@@ -1948,6 +1889,20 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         """Get full state for one image."""
         conn = self._ingest2_db()
         img = self._ingest2_load_image(conn, image_id)
+        # Look up confirmed finishes from collection via ingest_lineage
+        confirmed_finishes = []
+        if img and img.get("md5"):
+            lineage_rows = conn.execute(
+                """SELECT il.card_index, c.finish
+                   FROM ingest_lineage il
+                   JOIN collection c ON c.id = il.collection_id
+                   WHERE il.image_md5 = ?
+                   ORDER BY il.card_index""",
+                (img["md5"],),
+            ).fetchall()
+            fin_map = {lr["card_index"]: lr["finish"] for lr in lineage_rows}
+            disamb = json.loads(img["disambiguated"]) if img.get("disambiguated") else []
+            confirmed_finishes = [fin_map.get(i) for i in range(len(disamb))]
         conn.close()
         if not img:
             self._send_json({"error": "Not found"}, 404)
@@ -1967,6 +1922,7 @@ class CrackPackHandler(BaseHTTPRequestHandler):
                 "claude_name": card.get("name", ""),
             })
         img["card_names"] = card_names
+        img["confirmed_finishes"] = confirmed_finishes
         self._send_json(img)
 
     def _api_ingest2_upload(self):
@@ -2735,6 +2691,79 @@ class CrackPackHandler(BaseHTTPRequestHandler):
             _ingest_executor.submit(_process_image_background, self.db_path, image_id)
 
         self._send_json({"ok": True})
+
+    def _api_ingest2_batch_ingest(self):
+        """Ensure all DONE images have collection entries, then mark INGESTED."""
+        from mtg_collector.db.models import (
+            CollectionEntry,
+            CollectionRepository,
+            PrintingRepository,
+        )
+        from mtg_collector.utils import now_iso
+
+        data = self._read_json_body()
+        if data is None:
+            return
+
+        hours = float(data.get("hours", 24))
+        conn = self._ingest2_db()
+        rows = conn.execute(
+            """SELECT id, md5, stored_name, disambiguated, claude_result
+               FROM ingest_images
+               WHERE status = 'DONE'
+               AND created_at >= strftime('%Y-%m-%dT%H:%M:%S', 'now', ?)""",
+            (f"-{int(hours * 3600)} seconds",),
+        ).fetchall()
+
+        printing_repo = PrintingRepository(conn)
+        collection_repo = CollectionRepository(conn)
+        count = 0
+
+        for row in rows:
+            img = dict(row)
+            disambiguated = json.loads(img["disambiguated"]) if img.get("disambiguated") else []
+
+            for card_idx, sid in enumerate(disambiguated):
+                if not sid or sid in ("skipped", "already_ingested"):
+                    continue
+                # Check if already has a lineage entry (already confirmed)
+                existing = conn.execute(
+                    "SELECT 1 FROM ingest_lineage WHERE image_md5 = ? AND card_index = ?",
+                    (img["md5"], card_idx),
+                ).fetchone()
+                if existing:
+                    continue
+                # Create collection entry
+                printing = printing_repo.get(sid)
+                if not printing:
+                    continue
+                finishes = json.loads(printing.raw_json).get("finishes", ["nonfoil"]) if printing.raw_json else ["nonfoil"]
+                finish = finishes[0] if finishes else "nonfoil"
+                entry = CollectionEntry(
+                    id=None,
+                    scryfall_id=sid,
+                    finish=finish,
+                    condition="Near Mint",
+                    source="ocr_ingest",
+                )
+                entry_id = collection_repo.add(entry)
+                conn.execute(
+                    """INSERT INTO ingest_lineage (collection_id, image_md5, image_path, card_index, created_at)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (entry_id, img["md5"], img["stored_name"], card_idx, now_iso()),
+                )
+
+            conn.execute(
+                "UPDATE ingest_images SET status = 'INGESTED' WHERE id = ?",
+                (img["id"],),
+            )
+            count += 1
+
+        conn.commit()
+        conn.close()
+
+        _log_ingest(f"Batch ingest: processed {count} image(s)")
+        self._send_json({"ok": True, "count": count})
 
     def _api_ingest2_delete(self):
         """Delete an image and its file."""
@@ -4224,7 +4253,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
     def _api_sealed_collection_add(self, data: dict):
         """Add a sealed product to the collection."""
-        from mtg_collector.db.models import SealedCollectionEntry, SealedCollectionRepository, SealedProductRepository
+        from mtg_collector.db.models import (
+            SealedCollectionEntry,
+            SealedCollectionRepository,
+            SealedProductRepository,
+        )
         from mtg_collector.db.schema import init_db
 
         uuid = data.get("sealed_product_uuid")

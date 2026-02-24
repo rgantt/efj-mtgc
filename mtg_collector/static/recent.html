@@ -86,17 +86,30 @@ header a:hover { color: #e94560; }
   justify-content: center;
 }
 
-.disambig-link {
+.right-controls {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#batch-msg {
+  font-size: 0.8rem;
+  color: #4caf50;
+}
+#batch-msg a { color: #e94560; }
+#batch-btn {
   padding: 6px 16px;
-  background: #e94560;
+  background: #4caf50;
   color: #fff;
-  text-decoration: none;
+  border: none;
   border-radius: 6px;
   font-weight: 600;
   font-size: 0.85rem;
+  cursor: pointer;
+  display: none;
 }
-.disambig-link:hover { background: #c73651; }
+#batch-btn:hover { background: #3d8b40; }
+#batch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .summary {
   margin: 0 12px 8px;
@@ -125,7 +138,7 @@ header a:hover { color: #e94560; }
 .img-card.processing { border-color: #888; }
 .img-card.done { border-color: #4caf50; }
 .img-card.needs_disambiguation { border-color: #e94560; }
-.img-card.error { border-color: #c62828; }
+.img-card.error { border-color: #e94560; }
 
 .img-card img {
   width: 100%;
@@ -133,39 +146,40 @@ header a:hover { color: #e94560; }
   object-fit: cover;
   display: block;
 }
-.img-card .info-strip {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 6px;
-  min-width: 0;
+.img-card .set-overlay {
+  position: absolute;
+  bottom: 30px;
+  left: 6px;
+  font-size: 2rem;
+  color: #fff;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
+  pointer-events: none;
+  z-index: 1;
 }
-.img-card .info-strip i {
-  font-size: 1rem;
-  color: #bbb;
-  flex-shrink: 0;
+.img-card .finish-overlay {
+  position: absolute;
+  bottom: 30px;
+  right: 6px;
+  background: rgba(0,0,0,0.7);
+  color: #ddd;
+  font-size: 0.55rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 1;
+  text-transform: capitalize;
 }
-.img-card .info-strip .names {
-  font-size: 0.7rem;
-  color: #ccc;
+.img-card .card-title {
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 5px 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.img-card .badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  padding: 2px 6px;
-  border-radius: 8px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: #fff;
-}
-.img-card.processing .badge { background: rgba(136,136,136,0.8); }
-.img-card.done .badge { background: rgba(76,175,80,0.8); }
-.img-card.needs_disambiguation .badge { background: rgba(233,69,96,0.8); }
-.img-card.error .badge { background: rgba(198,40,40,0.8); }
 
 .img-card .error-icon {
   position: absolute;
@@ -216,9 +230,10 @@ header a:hover { color: #e94560; }
 .img-card { cursor: pointer; }
 .img-card.done:hover { border-color: #66bb6a; }
 .img-card.needs_disambiguation:hover { border-color: #f06080; }
+.img-card.error:hover { border-color: #f06080; }
 .img-card.selected {
-  border-color: #e94560;
-  box-shadow: 0 0 12px rgba(233, 69, 96, 0.6);
+  border-color: #fff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.4);
   overflow: visible;
   z-index: 1;
 }
@@ -230,7 +245,7 @@ header a:hover { color: #e94560; }
   transform: translateX(-50%);
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
-  border-top: 10px solid #e94560;
+  border-top: 10px solid #fff;
   z-index: 2;
 }
 
@@ -238,7 +253,7 @@ header a:hover { color: #e94560; }
   display: none;
   grid-column: 1 / -1;
   background: #1a2744;
-  border: 2px solid #e94560;
+  border: 2px solid #fff;
   border-radius: 8px;
   padding: 12px;
   min-height: 60px;
@@ -265,42 +280,46 @@ header a:hover { color: #e94560; }
 .accordion-content button.danger { background: #c62828; border-color: #c62828; }
 .accordion-content button.danger:hover { background: #a31515; }
 
-.acc-toolbar {
+.acc-layout {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 8px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid #0f3460;
+  gap: 16px;
+  align-items: flex-start;
   flex-wrap: wrap;
 }
-.acc-toolbar .filename { color: #888; font-size: 0.8rem; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.acc-card-header {
+.acc-sidebar {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
+  flex-shrink: 0;
+  min-width: 160px;
 }
-.acc-card-header .card-name { font-weight: 600; color: #e94560; font-size: 0.9rem; }
-.acc-card-status {
-  padding: 2px 8px;
-  border-radius: 8px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: #fff;
+.acc-sidebar .card-title {
+  font-weight: 600;
+  color: #e94560;
+  font-size: 0.95rem;
 }
-.acc-card-status.confirmed { background: #4caf50; }
-.acc-card-status.pending { background: #e94560; }
-.acc-card-status.skipped { background: #555; }
+.acc-sidebar input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid #0f3460;
+  background: #0d1117;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+}
+.acc-main {
+  flex: 1;
+  min-width: 0;
+}
 
 .acc-candidates {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 4px;
-  margin-bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .acc-candidate {
+  width: 150px;
+  flex-shrink: 0;
   border: 2px solid transparent;
   border-radius: 5px;
   cursor: pointer;
@@ -309,65 +328,87 @@ header a:hover { color: #e94560; }
   padding: 2px;
 }
 .acc-candidate:hover { background: #1a1a3e; border-color: #0f3460; }
-.acc-candidate.selected { border-color: #e94560; background: #1a1a3e; }
+.acc-candidate.selected { border-color: #4caf50; background: #1a1a3e; }
 .acc-candidate img {
   width: 100%;
-  aspect-ratio: 63 / 88;
+  aspect-ratio: 63 / 44;
   object-fit: cover;
   object-position: top center;
   border-radius: 3px;
   display: block;
 }
-.acc-candidate .set-icon {
+.acc-candidate .card-img-wrap {
+  position: relative;
+}
+.acc-candidate .set-overlay {
   position: absolute;
-  top: 4px;
+  bottom: 4px;
   left: 4px;
   font-size: 1.4rem;
-  width: 28px; height: 28px; line-height: 28px;
-  text-align: center;
-  background: #efefef;
+  color: #fff;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.8));
+  pointer-events: none;
+  -webkit-text-stroke: 2px rgba(0,0,0,0.85);
+  paint-order: stroke fill;
+}
+.acc-candidate .set-overlay.ss-grad::before {
+  -webkit-text-fill-color: currentColor;
+}
+.acc-candidate .set-overlay.ss-common {
+  -webkit-text-stroke: 2px rgba(255,255,255,0.9);
+}
+.acc-candidate .cn-overlay {
+  position: absolute;
+  bottom: 4px;
+  left: 28px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  color: #ddd;
+  background: rgba(0,0,0,0.7);
+  padding: 1px 4px;
   border-radius: 3px;
-  border: 1px solid #0f3460;
-  z-index: 1;
+  pointer-events: none;
+}
+.acc-candidate .finish-overlay {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.7);
+  color: #ddd;
+  font-size: 0.55rem;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 3px;
+  pointer-events: none;
+  text-transform: capitalize;
 }
 
-.acc-search-row {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-.acc-search-row input {
-  flex: 1;
-  padding: 5px 8px;
-  border-radius: 4px;
-  border: 1px solid #0f3460;
-  background: #0d1117;
-  color: #e0e0e0;
-  font-size: 0.8rem;
-}
-
-.acc-actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 8px;
-}
-
-.accordion-content details.agent-trace {
+.accordion-content .agent-trace {
+  display: none;
   margin-top: 10px;
   border: 1px solid #0f3460;
   border-radius: 6px;
   overflow: hidden;
 }
-.accordion-content details.agent-trace summary {
-  padding: 6px 10px;
-  background: #0d1117;
-  cursor: pointer;
-  font-size: 0.7rem;
-  color: #888;
-  user-select: none;
+.accordion-content .agent-trace.visible {
+  display: block;
 }
-.accordion-content details.agent-trace summary:hover { color: #e0e0e0; }
+.acc-sidebar .btn-row {
+  display: flex;
+  gap: 6px;
+}
+.acc-sidebar .btn-row > button { flex: 1; }
+.acc-sidebar .trace-toggle {
+  background: #333;
+  border: 1px solid #555;
+  color: #888;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+.acc-sidebar .trace-toggle:hover { background: #444; color: #e0e0e0; }
 .accordion-content .trace-lines {
   padding: 6px 10px;
   background: #0a0a14;
@@ -385,12 +426,6 @@ header a:hover { color: #e94560; }
 .accordion-content .trace-lines .tl-result { color: #888; }
 .accordion-content .trace-lines .tl-final  { color: #4caf50; }
 
-.acc-multi-link {
-  display: block;
-  color: #e94560;
-  font-size: 0.85rem;
-  margin-top: 6px;
-}
 
 #usage-box {
   margin-left: auto;
@@ -432,7 +467,10 @@ header a:hover { color: #e94560; }
     <div class="col-count" id="col-count"></div>
     <button class="col-btn" id="col-plus">+</button>
   </div>
-  <a id="disambig-btn" class="disambig-link" href="/disambiguate" style="display:none">Disambiguate</a>
+  <div class="right-controls">
+    <span id="batch-msg"></span>
+    <button id="batch-btn" onclick="batchIngest()">Batch Ingest</button>
+  </div>
 </div>
 
 <div class="summary" id="summary"></div>
@@ -483,14 +521,6 @@ document.querySelectorAll('#time-pills .pill').forEach(pill => {
 
 // ── Rendering helpers ────────────────────────────────────────────────────────
 
-function buildCardBadge(img) {
-  if (img.border_status === 'processing') return '<span class="spinner-icon"></span>';
-  if (img.border_status === 'done') return `${img.total_cards}`;
-  if (img.border_status === 'needs_disambiguation') return `${img.pending_count}/${img.total_cards}`;
-  if (img.border_status === 'error') return '!';
-  return '';
-}
-
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp', pspm: 'spm', cst: 'csp',
 };
@@ -499,22 +529,27 @@ function keyruneSetCode(code) {
   return KEYRUNE_FALLBACKS[lc] || lc;
 }
 
-function buildInfoStrip(img) {
+function buildCardOverlays(img) {
   const cards = img.cards || [];
-  const seen = new Set();
-  const icons = [];
-  for (const c of cards) {
-    if (!c.set_code) continue;
-    const lc = c.set_code.toLowerCase();
-    if (seen.has(lc)) continue;
-    seen.add(lc);
-    icons.push(`<i class="ss ss-${keyruneSetCode(lc)}" title="${escapeHtml(c.set_code)}"></i>`);
+  let setHtml = '';
+  let finishHtml = '';
+  let titleHtml = '';
+  if (cards.length) {
+    const c = cards[0];
+    const resolved = img.border_status === 'done';
+    if (resolved && c.set_code) {
+      const sc = keyruneSetCode(c.set_code.toLowerCase());
+      setHtml = `<i class="ss ss-${sc} set-overlay" title="${escapeHtml(c.set_code)}"></i>`;
+    }
+    if (resolved) {
+      const finish = c.finish || 'nonfoil';
+      finishHtml = `<span class="finish-overlay">${escapeHtml(finish)}</span>`;
+    }
+    const name = c.name || '';
+    const cn = resolved && c.collector_number ? ` #${c.collector_number}` : '';
+    if (name) titleHtml = `<div class="card-title">${escapeHtml(name)}${escapeHtml(cn)}</div>`;
   }
-  const names = cards.map(c => c.name).filter(Boolean);
-  if (!icons.length && !names.length) return '';
-  const iconsHtml = icons.join('');
-  const namesHtml = names.length ? `<span class="names">${escapeHtml(names.join(' · '))}</span>` : '';
-  return `<div class="info-strip">${iconsHtml}${namesHtml}</div>`;
+  return { setHtml, finishHtml, titleHtml };
 }
 
 function createCardEl(img) {
@@ -524,12 +559,14 @@ function createCardEl(img) {
   const errorIcon = img.border_status === 'error' ? '<div class="error-icon">&times;</div>' : '';
   const errorTooltip = img.border_status === 'error' && img.error_message
     ? `<div class="error-tooltip">${escapeHtml(img.error_message.substring(0, 200))}</div>` : '';
+  const { setHtml, finishHtml, titleHtml } = buildCardOverlays(img);
   card.innerHTML = `
     <img src="/api/ingest/image/${img.stored_name}" alt="${escapeHtml(img.filename)}" loading="lazy">
-    <div class="badge">${buildCardBadge(img)}</div>
     ${errorIcon}
     ${errorTooltip}
-    ${buildInfoStrip(img)}
+    ${setHtml}
+    ${finishHtml}
+    ${titleHtml}
   `;
   card.addEventListener('click', () => toggleAccordion(img.id));
   return card;
@@ -579,25 +616,41 @@ function narrowCandidates(candidates, cardInfo) {
   return result;
 }
 
-function renderAccCandidates(containerEl, candidates, currentSid, onSelect) {
+function _expandByFinish(candidates) {
+  const expanded = [];
+  for (const c of candidates) {
+    const finishes = c.finishes && c.finishes.length ? c.finishes : ['nonfoil'];
+    for (const f of finishes) {
+      expanded.push({...c, _finish: f});
+    }
+  }
+  return expanded;
+}
+
+function renderAccCandidates(containerEl, candidates, currentSid, onSelect, currentFinish) {
   containerEl.innerHTML = '';
-  if (!candidates.length) {
+  const expanded = _expandByFinish(candidates);
+  if (!expanded.length) {
     containerEl.innerHTML = '<div style="padding:8px;color:#888;text-align:center;font-size:0.8rem;">No candidates found. Try searching.</div>';
     return;
   }
   containerEl.className = 'acc-candidates';
-  for (const c of candidates) {
+  for (const c of expanded) {
     const el = document.createElement('div');
     el.className = 'acc-candidate';
     el.dataset.scryfallId = c.scryfall_id;
     const setCode = keyruneSetCode(c.set_code);
     const rarityClass = `ss-${c.rarity || 'common'}`;
     el.innerHTML = `
-      <i class="ss ss-${setCode} ${rarityClass} ss-grad ss-fw set-icon"></i>
-      ${c.image_uri ? `<img src="${c.image_uri}" loading="lazy" title="${escapeHtml(c.name)} — ${escapeHtml(c.set_name || '')}">` : `<div style="width:100%;aspect-ratio:63/88;background:#0d1117;border-radius:3px;"></div>`}
+      <div class="card-img-wrap">
+        ${c.image_uri ? `<img src="${c.image_uri}" loading="lazy" title="${escapeHtml(c.name)} — ${escapeHtml(c.set_name || '')}">` : `<div style="width:100%;aspect-ratio:63/44;background:#0d1117;border-radius:3px;"></div>`}
+        <i class="ss ss-${setCode} ${rarityClass} ss-grad set-overlay"></i>
+        <span class="cn-overlay">#${escapeHtml(c.collector_number || '')}</span>
+        <span class="finish-overlay">${escapeHtml(c._finish)}</span>
+      </div>
     `;
     el.title = `${c.name} — ${c.set_name || ''}`;
-    if (currentSid && c.scryfall_id === currentSid) el.classList.add('selected');
+    if (currentSid && c.scryfall_id === currentSid && (!currentFinish || c._finish === currentFinish)) el.classList.add('selected');
     el.addEventListener('click', () => {
       containerEl.querySelectorAll('.acc-candidate').forEach(r => r.classList.remove('selected'));
       el.classList.add('selected');
@@ -640,9 +693,9 @@ function buildAccTraceEl(detail) {
   const traceHtml = allLines.map(l =>
     `<span class="${traceClass(l)}">${escapeHtml(l)}</span>`
   ).join('\n');
-  const details = document.createElement('details');
+  const details = document.createElement('div');
   details.className = 'agent-trace';
-  details.innerHTML = `<summary>Ingest trace (${ocrFragments.length} OCR \u00b7 ${agentLines.length} agent)</summary><div class="trace-lines">${traceHtml}</div>`;
+  details.innerHTML = `<div class="trace-lines">${traceHtml}</div>`;
   return details;
 }
 
@@ -654,32 +707,34 @@ function renderAccordionContent(imgId, detail) {
   const matches = detail.scryfall_matches || [];
   const claude = detail.claude_result || [];
   const cardNames = detail.card_names || [];
-  const filename = detail.filename || detail.stored_name || '';
+  const confirmedFinishes = detail.confirmed_finishes || [];
 
   let html = '';
 
-  // Toolbar: filename + reprocess/delete
-  html += `<div class="acc-toolbar">`;
-  html += `<span class="filename">${escapeHtml(filename)}</span>`;
-  html += `<button class="secondary" onclick="accReprocess(${imgId})">\u21ba Reprocess</button>`;
-  html += `<button class="danger" onclick="accDeleteImage(${imgId})">Delete Image</button>`;
-  html += `</div>`;
-
-  // Multi-card fallback
-  if (disambiguated.length > 1) {
-    html += `<div style="font-size:0.85rem;color:#888;">${disambiguated.length} cards detected</div>`;
-    html += `<a class="acc-multi-link" href="/correct?image_id=${imgId}">Open in Correct page \u2192</a>`;
-    accordionPanel.innerHTML = html;
-    // Still show trace
-    const traceEl = buildAccTraceEl(detail);
-    if (traceEl) accordionPanel.appendChild(traceEl);
-    return;
-  }
-
-  // Single card (or zero cards)
+  // Zero cards
   if (disambiguated.length === 0) {
-    html += `<div style="font-size:0.85rem;color:#888;">No cards detected.</div>`;
+    html += `<div class="acc-layout">`;
+    html += `<div class="acc-sidebar">`;
+    html += `<div class="card-title">No cards detected</div>`;
+    html += `<button class="secondary" onclick="accReprocess(${imgId})">\u21ba Reprocess</button>`;
+    html += `<div class="btn-row">`;
+    html += `<button class="trace-toggle" onclick="accToggleTrace()">\u{1f41b}</button>`;
+    html += `<button class="danger" onclick="accDeleteImage(${imgId})">Delete</button>`;
+    html += `</div>`;
+    html += `<input type="text" id="acc-search-input-${imgId}" placeholder="Replace with...">`;
+    html += `</div>`;
+    html += `<div class="acc-main">`;
+    html += `<div id="acc-candidates-${imgId}" class="acc-candidates"></div>`;
+    html += `</div></div>`;
     accordionPanel.innerHTML = html;
+
+    const searchInput = document.getElementById(`acc-search-input-${imgId}`);
+    if (searchInput) {
+      searchInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') accSearchCard(imgId);
+      });
+    }
+
     const traceEl = buildAccTraceEl(detail);
     if (traceEl) accordionPanel.appendChild(traceEl);
     return;
@@ -692,44 +747,38 @@ function renderAccordionContent(imgId, detail) {
   const cardName = cardInfo.name || (cardNames[0] || {}).claude_name || '(Unknown)';
   const isPending = sid === null || sid === 'skipped';
 
-  // Card header with name + status
-  const statusLabel = sid === 'already_ingested' ? 'Already ingested'
-    : isPending ? (sid === 'skipped' ? 'Skipped' : 'Pending')
-    : 'Confirmed';
-  const statusClass = sid === 'already_ingested' ? 'confirmed'
-    : isPending ? (sid === 'skipped' ? 'skipped' : 'pending')
-    : 'confirmed';
-  html += `<div class="acc-card-header">`;
-  html += `<span class="card-name">${escapeHtml(cardName)}</span>`;
-  html += `<span class="acc-card-status ${statusClass}">${statusLabel}</span>`;
+  // Sidebar: title, reprocess, delete, search field
+  html += `<div class="acc-layout">`;
+  html += `<div class="acc-sidebar">`;
+  html += `<div class="card-title">${escapeHtml(cardName)}</div>`;
+  html += `<button class="secondary" onclick="accReprocess(${imgId})">\u21ba Reprocess</button>`;
+  html += `<div class="btn-row">`;
+  html += `<button class="trace-toggle" onclick="accToggleTrace()">\u{1f41b}</button>`;
+  html += `<button class="danger" onclick="accDeleteImage(${imgId})">Delete</button>`;
   html += `</div>`;
 
+  if (sid !== 'already_ingested') {
+    html += `<input type="text" id="acc-search-input-${imgId}" placeholder="Replace with..." value="${escapeHtml(cardInfo.name || '')}">`;
+  }
+
+  html += `</div>`;
+
+  // Main: candidates
+  html += `<div class="acc-main">`;
+  if (sid !== 'already_ingested') {
+    html += `<div id="acc-candidates-${imgId}" class="acc-candidates"></div>`;
+  } else {
+    html += `<div style="color:#888;font-size:0.85rem;">Already ingested</div>`;
+  }
+  html += `</div></div>`;
+
+  accordionPanel.innerHTML = html;
+
   if (sid === 'already_ingested') {
-    accordionPanel.innerHTML = html;
     const traceEl = buildAccTraceEl(detail);
     if (traceEl) accordionPanel.appendChild(traceEl);
     return;
   }
-
-  // Search row
-  html += `<div class="acc-search-row">`;
-  html += `<input type="text" id="acc-search-input-${imgId}" placeholder="Search by card name..." value="${escapeHtml(cardInfo.name || '')}">`;
-  html += `<button class="secondary" onclick="accSearchCard(${imgId})">Search</button>`;
-  html += `</div>`;
-
-  // Candidates container
-  html += `<div id="acc-candidates-${imgId}" class="acc-candidates"></div>`;
-
-  // Actions
-  const actionBtn = isPending
-    ? `<button id="acc-confirm-${imgId}" disabled onclick="accConfirmCard(${imgId})">Confirm</button>`
-    : `<button id="acc-correct-${imgId}" disabled onclick="accCorrectCard(${imgId})">Correct</button>`;
-  html += `<div class="acc-actions">`;
-  html += actionBtn;
-  html += `<button class="danger" onclick="accDeleteCard(${imgId}, '${sid || ''}')">Delete Card</button>`;
-  html += `</div>`;
-
-  accordionPanel.innerHTML = html;
 
   // Wire up enter key on search
   const searchInput = document.getElementById(`acc-search-input-${imgId}`);
@@ -744,29 +793,29 @@ function renderAccordionContent(imgId, detail) {
   const narrowed = isPending ? narrowCandidates(candidates, cardInfo) : candidates;
   const containerEl = document.getElementById(`acc-candidates-${imgId}`);
 
-  // Store selected candidate on the panel
-  accordionPanel._selectedCandidate = null;
-
-  const onSelect = (c) => {
-    accordionPanel._selectedCandidate = c;
-    const confirmBtn = document.getElementById(`acc-confirm-${imgId}`);
-    const correctBtn = document.getElementById(`acc-correct-${imgId}`);
-    if (confirmBtn) confirmBtn.disabled = false;
-    if (correctBtn) correctBtn.disabled = false;
+  const onSelect = async (c) => {
+    const endpoint = isPending ? '/api/ingest2/confirm' : '/api/ingest2/correct';
+    await fetch(endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ image_id: imgId, card_idx: 0, scryfall_id: c.scryfall_id, finish: c._finish || 'nonfoil' }),
+    });
+    await accRefresh(imgId);
   };
 
-  renderAccCandidates(containerEl, narrowed, highlightSid, onSelect);
+  const highlightFinish = isPending ? null : (confirmedFinishes[0] || null);
+  renderAccCandidates(containerEl, narrowed, highlightSid, onSelect, highlightFinish);
 
   // Show all button if narrowed
   if (narrowed.length < candidates.length) {
     const showAllDiv = document.createElement('div');
-    showAllDiv.style.cssText = 'padding:6px;text-align:center;grid-column:1/-1;';
+    showAllDiv.style.cssText = 'padding:6px;text-align:center;';
     const btn = document.createElement('button');
     btn.className = 'secondary';
     btn.style.cssText = 'font-size:0.75rem;padding:3px 10px;';
     btn.textContent = `Show all ${candidates.length} candidates`;
     btn.addEventListener('click', () => {
-      renderAccCandidates(containerEl, candidates, highlightSid, onSelect);
+      renderAccCandidates(containerEl, candidates, highlightSid, onSelect, highlightFinish);
     });
     showAllDiv.appendChild(btn);
     containerEl.appendChild(showAllDiv);
@@ -802,32 +851,6 @@ function updateSummaryFromGrid() {
     .then(images => updateSummary(images));
 }
 
-async function accConfirmCard(imgId) {
-  const candidate = accordionPanel._selectedCandidate;
-  if (!candidate) return;
-  const btn = document.getElementById(`acc-confirm-${imgId}`);
-  if (btn) { btn.disabled = true; btn.textContent = '...'; }
-  await fetch('/api/ingest2/confirm', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ image_id: imgId, card_idx: 0, scryfall_id: candidate.scryfall_id, finish: 'nonfoil' }),
-  });
-  await accRefresh(imgId);
-}
-
-async function accCorrectCard(imgId) {
-  const candidate = accordionPanel._selectedCandidate;
-  if (!candidate) return;
-  const btn = document.getElementById(`acc-correct-${imgId}`);
-  if (btn) { btn.disabled = true; btn.textContent = '...'; }
-  await fetch('/api/ingest2/correct', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ image_id: imgId, card_idx: 0, scryfall_id: candidate.scryfall_id, finish: 'nonfoil' }),
-  });
-  await accRefresh(imgId);
-}
-
 async function accDeleteCard(imgId, sid) {
   const isConfirmed = sid && sid !== 'null' && sid !== 'skipped' && sid !== 'already_ingested';
   const msg = isConfirmed
@@ -852,17 +875,18 @@ async function accSearchCard(imgId) {
     body: JSON.stringify({ image_id: imgId, card_idx: 0, query }),
   });
   const data = await resp.json();
-  accordionPanel._selectedCandidate = null;
-  const confirmBtn = document.getElementById(`acc-confirm-${imgId}`);
-  const correctBtn = document.getElementById(`acc-correct-${imgId}`);
-  if (confirmBtn) confirmBtn.disabled = true;
-  if (correctBtn) correctBtn.disabled = true;
   const containerEl = document.getElementById(`acc-candidates-${imgId}`);
   if (containerEl) {
-    renderAccCandidates(containerEl, data.candidates || [], null, (c) => {
-      accordionPanel._selectedCandidate = c;
-      if (confirmBtn) confirmBtn.disabled = false;
-      if (correctBtn) correctBtn.disabled = false;
+    const detail = detailCache.get(String(imgId));
+    const searchIsPending = detail && (detail.disambiguated || [])[0] == null;
+    renderAccCandidates(containerEl, data.candidates || [], null, async (c) => {
+      const endpoint = searchIsPending ? '/api/ingest2/confirm' : '/api/ingest2/correct';
+      await fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ image_id: imgId, card_idx: 0, scryfall_id: c.scryfall_id, finish: c._finish || 'nonfoil' }),
+      });
+      await accRefresh(imgId);
     });
   }
 }
@@ -880,6 +904,11 @@ async function accReprocess(imgId) {
   if (card) card.classList.remove('selected');
 
   await loadRecent();
+}
+
+function accToggleTrace() {
+  const trace = accordionPanel.querySelector('.agent-trace');
+  if (trace) trace.classList.toggle('visible');
 }
 
 async function accDeleteImage(imgId) {
@@ -948,7 +977,6 @@ function updateCardEl(card, img) {
   const wasSelected = card.classList.contains('selected');
   card.className = `img-card ${img.border_status}`;
   if (wasSelected) card.classList.add('selected');
-  card.querySelector('.badge').innerHTML = buildCardBadge(img);
 
   let errorIcon = card.querySelector('.error-icon');
   if (img.border_status === 'error') {
@@ -974,29 +1002,35 @@ function updateCardEl(card, img) {
     tooltip.remove();
   }
 
-  const stripHtml = buildInfoStrip(img);
-  const stripEl = card.querySelector('.info-strip');
-  if (stripHtml) {
-    if (stripEl) stripEl.outerHTML = stripHtml;
-    else card.insertAdjacentHTML('beforeend', stripHtml);
-  } else if (stripEl) {
-    stripEl.remove();
-  }
+  const { setHtml, finishHtml, titleHtml } = buildCardOverlays(img);
+
+  // Update set overlay
+  const oldSet = card.querySelector('.set-overlay');
+  if (oldSet) oldSet.remove();
+  if (setHtml) card.querySelector('img').insertAdjacentHTML('afterend', setHtml);
+
+  // Update finish overlay
+  const oldFinish = card.querySelector('.finish-overlay');
+  if (oldFinish) oldFinish.remove();
+  if (finishHtml) card.querySelector('img').insertAdjacentHTML('afterend', finishHtml);
+
+  // Update card title
+  const oldTitle = card.querySelector('.card-title');
+  if (oldTitle) oldTitle.remove();
+  if (titleHtml) card.insertAdjacentHTML('beforeend', titleHtml);
 }
 
 function updateSummary(images) {
   const summary = document.getElementById('summary');
-  const disambigBtn = document.getElementById('disambig-btn');
+  const batchBtn = document.getElementById('batch-btn');
   if (images.length === 0) {
     summary.textContent = '';
-    disambigBtn.style.display = 'none';
+    batchBtn.style.display = 'none';
     return;
   }
   const counts = { processing: 0, done: 0, needs_disambiguation: 0, error: 0 };
-  let totalPending = 0;
   for (const img of images) {
     counts[img.border_status] = (counts[img.border_status] || 0) + 1;
-    totalPending += img.pending_count;
   }
   const parts = [];
   if (counts.processing > 0) parts.push(`${counts.processing} processing`);
@@ -1004,12 +1038,7 @@ function updateSummary(images) {
   if (counts.needs_disambiguation > 0) parts.push(`${counts.needs_disambiguation} need disambiguation`);
   if (counts.error > 0) parts.push(`${counts.error} error`);
   summary.textContent = `${images.length} image(s): ${parts.join(', ')}`;
-  if (totalPending > 0) {
-    disambigBtn.style.display = '';
-    disambigBtn.textContent = `Disambiguate ${totalPending} card(s)`;
-  } else {
-    disambigBtn.style.display = 'none';
-  }
+  batchBtn.style.display = counts.done > 0 ? 'inline-block' : 'none';
 }
 
 // ── Full render (initial load + time-pill changes) ───────────────────────────
@@ -1153,6 +1182,32 @@ async function loadUsageStats() {
     return;
   }
   box.innerHTML = `<span class="usage-cost">~$${cost.toFixed(4)}</span><br>${parts.join(' · ')}`;
+}
+
+async function batchIngest() {
+  const btn = document.getElementById('batch-btn');
+  const msg = document.getElementById('batch-msg');
+  btn.disabled = true;
+  const resp = await fetch('/api/ingest2/batch-ingest', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ hours: currentHours }),
+  });
+  const data = await resp.json();
+  btn.disabled = false;
+  if (data.ok) {
+    // Remove done cards from the grid
+    const grid = document.getElementById('grid');
+    grid.querySelectorAll('.img-card.done').forEach(el => el.remove());
+    // Close accordion if open
+    accordionPanel.classList.remove('open');
+    const sel = grid.querySelector('.img-card.selected');
+    if (sel) sel.classList.remove('selected');
+    // Show message
+    msg.innerHTML = `${data.count} photo${data.count !== 1 ? 's' : ''} inserted: See them in <a href="/collection">Collection</a>.`;
+    // Update summary from remaining images
+    updateSummaryFromGrid();
+  }
 }
 
 loadRecent();

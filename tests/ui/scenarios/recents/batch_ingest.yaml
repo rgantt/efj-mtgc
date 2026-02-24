@@ -1,0 +1,40 @@
+# Scenario: Accordion pop-down shows card data on Recent Images
+#
+# Related:
+#   issues: []
+#   pull_requests: []
+
+description: >
+  Navigate to the Recent Images page. Click the 24h pill.
+  There should be two cards visible, a green-bordered Mox Emerald
+  and a red-bordered Archenemy's Charm. One green button in the upper right
+  corner should be visible, Batch Ingest.
+  The red-bordered Archenemy's charm should:
+    Have no set icon in the lower left corner
+    Show no Finish in the lower right corner
+  Click on a red-bordered Archenemy's Charm.
+  The Accordion drawer should open. It will show four candidates in any order.
+    Set icon, card name, collection number, and a badge for finish are visible for each, same styling as the user photos.
+    Set icons should be styled as they are on the Collection page.
+    A full-bordered card, EOE, set number 0307, nonfoil
+    A full-bordered card, EOE, set number 0307, foil
+    A normally-bordered card, EOE, set number 0088, nonfoil
+    A normally-bordered card, EOE, set number 0088, foil
+  Click on a Foil candidate.
+    The border of the selected card should turn green
+    Only one card should be selected.
+    The card name below the photo should be appended with the set number
+    The user-provided photo associated with the accordion should be updated with the set icon (lower left corner) and the finish (lower right corner)
+  Click the red-bordered Archenemy photo again. The accordion should collapse.
+  There should be 2 Green-bordered photos visible.
+  Click Batch Ingest in the upper right corner.
+    The green-bordered photos should disappear.
+    A message to the left of the Batch Ingest button should show "2 photos inserted: See them in Collection."
+    The word "Collection" should be a link to /collection.
+  Click on Collection.
+  Search for Mox Emerald.
+  Verify that it is shown in the Collection.
+  Search for Archenemy.
+  Verify that Archenemy's Charm is in the Collection.
+  
+    

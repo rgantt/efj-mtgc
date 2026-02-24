@@ -19,30 +19,28 @@ CONTEXT_UPGRADE_THRESHOLD = 8_000  # input tokens; switch Haiku → Sonnet if co
 
 SYSTEM_PROMPT = """\
 You are an expert Magic: The Gathering card identifier.
-You have OCR text fragments from a photo of MTG cards indicating position (bounding boxes),
-text at that position, and confidence scores from OCR.
+You have OCR text fragments from a photo of a single MTG card. The text
+fragments indicate position via bounding boxes,
+text in those boxes, and confidence scores from OCR.
 
 YOUR JOB:
-Do your best to identify every card in the image that is cleary visible. Cards that are
-partially visible or are obviously in the background do not need to be identified.
+Narrow down what card the image may be, and return all potential printings and finishes so the user
+can select the correct one. OCR may have detected partial text fragments other card or sources
+in the background that you should ignore.
 
-Repeat this strategy for all cards in the image:
-1. Interpret OCR fragments to find card data. The most important indicators are name, set code, and collector number
+Strategy:
+1. Interpret OCR fragments to find card data. The most important indicators are name, set code, and collector number.
 2. Search to verify using query_local_db — when disambiguating printings, JOIN sets to get
    set_name and released_at so you can reason about which sets are plausible
 3. If you still cannot determine which printing after 4 search attempts, call analyze_image —
    it can identify border color (black/white/silver), card frame era, set icon shape, and other
    visual details that OCR misses, especially useful for older cards. It is quite expensive.
 4. Continue searching until no further disambiguation is possible
-5. Stop calling tools and list candidate cards.
+5. Stop calling tools and list candidate card matches.
 
 OCR BOUNDING BOXES
 
-Start by identifying how many cards are in the image, then use your knowledge to identify each one.
-
-If the photo contains multiple cards side by side, use horizontal position (x coordinates)
-to determine which fragments belong to which card. Cards will ALWAYS be positioned vertically
-in an image. The aspect ratio of a Magic card is 63:88 (wide:tall).
+Cards will ALWAYS be positioned vertically in an image. The aspect ratio of a Magic card is 63:88 (wide:tall).
 
 CARD LAYOUT (top to bottom):
   - Title (top left of card)
@@ -53,15 +51,17 @@ CARD LAYOUT (top to bottom):
   - Bottom-left corner: collector number, set code, artist name (on newer cards: see Collector Numbers below)
   - Bottom-right corner: power/toughness (creatures only)
 
+Some cards have wildly different faces, like titles at the bottom or rules text directly below the title.
+Usually if text appears directly below the title of a card, it is rules text. Use your judgment
+and knowledge as an expert.
+
 Rules text is about effect to the game state. It will mention things that the card does to other entities.
 Some cards have no rules text, some cards have no flavor text, but all cards have one or both.
 You can search by flavor text or rules text, which can be a powerful aid.
 
 There may be large vertical gaps between the title and the type line — that is the card art.
 Cards with no rules text will have another gap between the type line and the collector info.
-All of these text regions belong to the SAME card. Do NOT split them into separate cards.
-Some cards hae wildly different faces. Usually if text appears directly below the title of a card,
-it is rules text. Use your judgment and knowledge as an expert.
+All of these text regions belong to the SAME card.
 
 Collector numbers — the printed format has changed over Magic's history:
   - Pre-1998 (before Exodus): NO collector number printed on card at all.
@@ -80,11 +80,15 @@ Card text can be used also, but older card rules text wording may not match the 
 DISAMBIGUATION RULE — this is critical:
 If you cannot distinguish between printings of a card, you MUST return one entry for EVERY
 plausible printing with confidence "low" or "medium". This is not a failure, this is success!
+In particular, you can NEVER tell "foil" from "nonfoil" from OCR text alone. In these
+cases, return both options and let the user decide rather than using analyze_image.
+
 Do NOT pick one and declare confidence "high" based solely on artist name or rules text match
 unless you have other reasons to be certain (such as a high-confidence date stamp from OCR).
 
 Example: OCR shows card name "Grizzly Bears" with artist "Jeff A. Menges" and no date.
-DB query returns many printings, all with identical features: Unlimited (2ed), Revised (3ed) both do not have dates, and on several sets, dates are extremely small: OCR may have just missed it.
+DB query returns many printings, all with identical features: Unlimited (2ed), Revised (3ed)
+both do not have dates, and on several sets, dates are extremely small: OCR may have just missed it.
 CORRECT: return ALL the separate printings, each with confidence "low".
 WRONG: return a single entry with set_code="sum", confidence="high".
 
@@ -103,7 +107,7 @@ The DISAMBIGUATION RULE applies in these cases: Return all reasonable candidates
   text on cards (aka Oracle text). These can be very different, so have caution when doing
   rules text matching.
 * Sometimes photos contain cards that are clearly visible in the foreground, and others that are
-  in the background, partly visible. The user is ONLY concernd with foreground cards. 
+  in the background, partly visible. The user is ONLY concernd with foreground cards.
 """
 
 SYSTEM_CONTENT = [
@@ -274,8 +278,8 @@ def _tool_analyze_image(image_path: str, client: anthropic.Anthropic) -> tuple[s
                     {
                         "type": "text",
                         "text": (
-                            "This is a photo of one or more Magic: The Gathering cards. "
-                            "For each card, describe everything clearly visible that would help "
+                            "This is a photo of a single Magic: The Gathering card. "
+                            "Describe everything clearly visible that would help "
                             "identify it and its specific printing — card text, border color, frame "
                             "style, set symbol, any numbers or codes, artist line, and anything else "
                             "you notice. Only describe what you can clearly see; if something is "
@@ -380,7 +384,7 @@ def run_agent(
         f"I have run OCR on the image `{image_path}`. "
         f"Here are the {len(ocr_fragments)} text fragments found:\n\n"
         + _format_fragments(ocr_fragments)
-        + "\n\nPlease identify all MTG cards in this image."
+        + "\n\nPlease identify the MTG card in this image."
     )
     messages = [{"role": "user", "content": initial_content}]
 
@@ -479,8 +483,8 @@ def run_agent(
 
     FINAL_PROMPT = (
         "Output your final identification now. "
-        "Exhaustively list every card candidate visible in this image. "
-        "If you are uncertain which printing a card is, include one entry per plausible printing "
+        "List all candidate printings for the card in this image. "
+        "If you are uncertain which printing it is, include one entry per plausible printing "
         "(same name, different set_code/collector_number), all with confidence 'low' or 'medium'. "
         "Do not collapse uncertain printings into a single guess."
     )

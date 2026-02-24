@@ -53,7 +53,7 @@ Each module has `register(subparsers)` and `run(args)`.
 
 | File | Lines | Purpose |
 |------|------:|---------|
-| `crack_pack_server.py` | 4543 | **Web server**: all HTTP routes, API handlers, SSE endpoints |
+| `crack_pack_server.py` | 4576 | **Web server**: all HTTP routes, API handlers, SSE endpoints |
 | `data_cmd.py` | 915 | MTGJSON + price data import/export commands |
 | `ingest_ocr.py` | 411 | CLI image-based card ingestion via EasyOCR + Claude |
 | `ingest_corners.py` | 340 | CLI corner-photo card ingestion via Claude Vision |
@@ -64,8 +64,8 @@ Each module has `register(subparsers)` and `run(args)`.
 
 | File | Lines | Purpose |
 |------|------:|---------|
-| `models.py` | 1574 | Dataclasses + repository classes (CRUD for every table) |
-| `schema.py` | 1279 | Schema DDL, all migrations, `init_db()` |
+| `models.py` | 1543 | Dataclasses + repository classes (CRUD for every table) |
+| `schema.py` | 1305 | Schema DDL, all migrations, `init_db()` |
 
 Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingRepository`, `CollectionRepository`, `OrderRepository`, `WishlistRepository`.
 
@@ -73,7 +73,7 @@ Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingR
 
 | File | Lines | Purpose |
 |------|------:|---------|
-| `agent.py` | 528 | Agentic OCR: Claude tool-use loop with `query_local_db` and `analyze_image` tools |
+| `agent.py` | 532 | Agentic OCR: Claude tool-use loop with `query_local_db` and `analyze_image` tools |
 | `claude.py` | 504 | Claude Vision API: corner reading, card identification |
 | `bulk_import.py` | 350 | `ScryfallBulkClient` class (bulk cache only), `cache_card_data()`, `ensure_set_populated()` |
 | `scryfall.py` | 10 | Compatibility wrapper re-exporting from `bulk_import.py` |
@@ -87,7 +87,7 @@ Repository classes in `models.py`: `CardRepository`, `SetRepository`, `PrintingR
 |------|------:|---------|
 | `collection.html` | 3302 | **Collection browser**: filters, sorting, card grid, inline editing. Canonical card display. |
 | `sealed.html` | 2116 |  |
-| `recent.html` | 1164 | Recently ingested images gallery |
+| `recent.html` | 1219 | Recently ingested images gallery |
 | `correct.html` | 1048 | Fix misidentified cards in ingest pipeline |
 | `crack_pack.html` | 1007 | Booster pack simulator with rarity borders and badge system |
 | `explore_sheets.html` | 824 | Browse MTGJSON booster sheet layouts |

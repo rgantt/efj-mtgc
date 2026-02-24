@@ -22,7 +22,7 @@ def discover_scenarios():
     """Yield (id, path) for every .yaml scenario file."""
     if not SCENARIOS_DIR.exists():
         return
-    for f in sorted(SCENARIOS_DIR.glob("*.yaml")):
+    for f in sorted(SCENARIOS_DIR.rglob("*.yaml")):
         yield f.stem, f
 
 

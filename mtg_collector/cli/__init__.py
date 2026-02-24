@@ -62,8 +62,9 @@ def main():
         # easyocr not installed - ingest-ocr won't be available
         pass
 
-    from mtg_collector.cli import debug_ingest
+    from mtg_collector.cli import debug_ingest, sample_ingest
     modules.append(debug_ingest)
+    modules.append(sample_ingest)
 
     try:
         from mtg_collector.cli import import_cmd
