@@ -12,10 +12,13 @@ Screenshots are saved after every action:
 
 import base64
 import json
+import logging
 import os
 from pathlib import Path
 
 import anthropic
+
+log = logging.getLogger(__name__)
 
 MODEL = os.environ.get("UI_TEST_MODEL", "claude-sonnet-4-6")
 MAX_STEPS = 20
@@ -226,16 +229,22 @@ class UIHarness:
 
     def run(self, goal: str, max_steps: int = MAX_STEPS) -> dict:
         """Run the agent loop.  Returns ``{status, summary|reason, steps}``."""
+        log.info("[%s] Goal: %s", self.scenario_name, goal.strip()[:120])
         self.page.goto(f"{self.base_url}/", wait_until="networkidle")
 
         for _ in range(max_steps):
             screenshot_b64, elements = self._observe()
+            log.info(
+                "[%s] Step %d — %d interactive elements visible",
+                self.scenario_name, self._step, len(elements),
+            )
             action = self._decide(goal, screenshot_b64, elements)
 
             name = action["name"]
             inputs = action["input"]
 
             if name == "done":
+                log.info("[%s] DONE: %s", self.scenario_name, inputs["summary"])
                 self._snap("done")
                 return {
                     "status": "done",
@@ -244,6 +253,7 @@ class UIHarness:
                 }
 
             if name == "fail":
+                log.warning("[%s] FAIL: %s", self.scenario_name, inputs["reason"])
                 self._snap("fail")
                 return {
                     "status": "fail",
@@ -251,7 +261,12 @@ class UIHarness:
                     "steps": self._history,
                 }
 
+            log.info(
+                "[%s] Step %d → %s(%s)",
+                self.scenario_name, self._step, name, json.dumps(inputs),
+            )
             result = self._execute(name, inputs)
+            log.info("[%s] Step %d result: %s", self.scenario_name, self._step, result)
             self._history.append({
                 "step": self._step,
                 "action": name,
@@ -261,6 +276,7 @@ class UIHarness:
             self._settle()
 
         self._snap("max_steps")
+        log.warning("[%s] Exceeded %d steps", self.scenario_name, max_steps)
         return {
             "status": "fail",
             "reason": f"Exceeded {max_steps} steps",
@@ -309,13 +325,17 @@ class UIHarness:
             messages=[{"role": "user", "content": user_content}],
         )
 
+        # Log any reasoning text before the tool call
+        reasoning = "".join(b.text for b in response.content if b.type == "text")
+        if reasoning:
+            log.info("[%s] Reasoning: %s", self.scenario_name, reasoning.strip()[:200])
+
         for block in response.content:
             if block.type == "tool_use":
                 return {"name": block.name, "input": block.input}
 
         # No tool call — treat as failure.
-        text = "".join(b.text for b in response.content if b.type == "text")
-        return {"name": "fail", "input": {"reason": f"No action chosen: {text[:200]}"}}
+        return {"name": "fail", "input": {"reason": f"No action chosen: {reasoning[:200]}"}}
 
     def _execute(self, action, inputs):
         """Dispatch an action to Playwright.  Returns a short result string."""
@@ -365,10 +385,10 @@ class UIHarness:
             pass
 
     def _snap(self, label: str) -> Path:
-        """Take a full-page screenshot and return the file path."""
+        """Take a viewport screenshot and return the file path."""
         name = f"{self.scenario_name}_{self._step:02d}_{label}.png"
         path = self.screenshot_dir / name
-        self.page.screenshot(path=str(path), full_page=True)
+        self.page.screenshot(path=str(path), full_page=False)
         return path
 
     @staticmethod

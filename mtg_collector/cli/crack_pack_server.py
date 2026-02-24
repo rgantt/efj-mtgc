@@ -980,6 +980,11 @@ class CrackPackHandler(BaseHTTPRequestHandler):
         elif path.startswith("/api/wishlist/") and path.endswith("/fulfill"):
             wid = path[len("/api/wishlist/"):-len("/fulfill")]
             self._api_wishlist_fulfill(int(wid))
+        elif path == "/api/collection":
+            data = self._read_json_body()
+            if data is None:
+                return
+            self._api_collection_add(data)
         elif path == "/api/collection/bulk-delete":
             content_length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(content_length)
@@ -3868,6 +3873,75 @@ class CrackPackHandler(BaseHTTPRequestHandler):
 
         conn.close()
         self._send_json(results)
+
+    def _api_collection_add(self, data: dict):
+        """Add a card to the collection manually."""
+        from mtg_collector.db.models import (
+            CollectionEntry,
+            CollectionRepository,
+            WishlistRepository,
+        )
+        from mtg_collector.db.schema import init_db
+
+        printing_id = data.get("printing_id", "").strip()
+        if not printing_id:
+            self._send_json({"error": "printing_id is required"}, 400)
+            return
+
+        finish = data.get("finish", "nonfoil")
+        acquired_at = data.get("acquired_at")
+        purchase_price = data.get("purchase_price")
+        source = data.get("source", "manual")
+
+        if purchase_price is not None:
+            purchase_price = float(purchase_price)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        init_db(conn)
+
+        collection_repo = CollectionRepository(conn)
+        entry = CollectionEntry(
+            id=None,
+            printing_id=printing_id,
+            finish=finish,
+            acquired_at=acquired_at,
+            purchase_price=purchase_price,
+            source=source,
+        )
+        new_id = collection_repo.add(entry)
+
+        # Auto-fulfill matching wishlist entry
+        fulfilled_wishlist_id = None
+        wishlist_repo = WishlistRepository(conn)
+        # Check for a printing-specific wishlist entry first
+        row = conn.execute(
+            "SELECT id FROM wishlist WHERE printing_id = ? AND fulfilled_at IS NULL LIMIT 1",
+            (printing_id,),
+        ).fetchone()
+        if row:
+            wishlist_repo.fulfill(row["id"])
+            fulfilled_wishlist_id = row["id"]
+        else:
+            # Check for an oracle-level wishlist entry
+            row = conn.execute(
+                """SELECT w.id FROM wishlist w
+                   JOIN printings p ON p.oracle_id = w.oracle_id
+                   WHERE p.printing_id = ? AND w.printing_id IS NULL
+                     AND w.fulfilled_at IS NULL LIMIT 1""",
+                (printing_id,),
+            ).fetchone()
+            if row:
+                wishlist_repo.fulfill(row["id"])
+                fulfilled_wishlist_id = row["id"]
+
+        conn.commit()
+        conn.close()
+
+        result = {"id": new_id}
+        if fulfilled_wishlist_id is not None:
+            result["fulfilled_wishlist_id"] = fulfilled_wishlist_id
+        self._send_json(result)
 
     def _api_collection_copies(self, params: dict):
         """Return per-copy data for a card (by printing_id + optional filters)."""

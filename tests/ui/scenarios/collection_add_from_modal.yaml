@@ -1,0 +1,13 @@
+# Scenario: Add a card to the collection from the card modal
+#
+# Related:
+#   issues: []
+#   pull_requests: []
+
+description: >
+  Navigate to the collection page. Switch to grid view by clicking the
+  grid toggle button. Click on any card image to open its detail modal.
+  In the modal, click the "Add" button. An inline form should appear
+  with a date field, a price field, and a source field. Fill in a price
+  of 1.50 and a source of "test", then click Confirm. Verify the form
+  disappears and a Copies section is shown in the modal.
