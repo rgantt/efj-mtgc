@@ -228,6 +228,8 @@ class UIHarness:
         self.client = anthropic.Anthropic()
         self._step = 0
         self._history: list[dict] = []
+        self._messages: list[dict] = []
+        self._pending_tool_result: dict | None = None
 
     # ── public API ────────────────────────────────────────────────────────
 
@@ -300,42 +302,58 @@ class UIHarness:
     def _decide(self, goal, screenshot_b64, elements):
         """Send current state to Claude and get back a tool-use action."""
         elements_text = self._format_elements(elements)
-        history_text = self._format_history()
 
-        user_content = [
-            {
-                "type": "text",
-                "text": (
-                    f"Goal: {goal}\n\n"
-                    f"{history_text}"
-                    f"Current page elements:\n{elements_text}"
-                ),
+        user_content = []
+
+        # Include pending tool_result from previous turn.
+        if self._pending_tool_result:
+            user_content.append(self._pending_tool_result)
+            self._pending_tool_result = None
+
+        user_content.append({
+            "type": "text",
+            "text": (
+                f"Goal: {goal}\n\n"
+                f"Current page elements:\n{elements_text}"
+            ) if not self._messages else (
+                f"Current page elements:\n{elements_text}"
+            ),
+        })
+        user_content.append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": "image/png",
+                "data": screenshot_b64,
             },
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/png",
-                    "data": screenshot_b64,
-                },
-            },
-        ]
+        })
+
+        self._messages.append({"role": "user", "content": user_content})
 
         response = self.client.messages.create(
             model=MODEL,
             max_tokens=1024,
             system=SYSTEM,
             tools=TOOLS,
-            messages=[{"role": "user", "content": user_content}],
+            messages=self._messages,
         )
 
-        # Log any reasoning text before the tool call
+        # Append the full assistant response to maintain conversation history.
+        self._messages.append({"role": "assistant", "content": response.content})
+
+        # Log any reasoning text before the tool call.
         reasoning = "".join(b.text for b in response.content if b.type == "text")
         if reasoning:
             log.info("[%s] Reasoning: %s", self.scenario_name, reasoning.strip()[:200])
 
         for block in response.content:
             if block.type == "tool_use":
+                # Stash the tool_result to prepend to the next user turn.
+                self._pending_tool_result = {
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": "OK",
+                }
                 return {"name": block.name, "input": block.input}
 
         # No tool call — treat as failure.
@@ -392,7 +410,7 @@ class UIHarness:
         """Take a viewport screenshot and return the file path."""
         name = f"{self.scenario_name}_{self._step:02d}_{label}.png"
         path = self.screenshot_dir / name
-        self.page.screenshot(path=str(path), full_page=False)
+        self.page.screenshot(path=str(path))
         return path
 
     @staticmethod
@@ -415,13 +433,3 @@ class UIHarness:
             lines.append(" ".join(parts))
         return "\n".join(lines)
 
-    def _format_history(self):
-        if not self._history:
-            return ""
-        lines = ["Actions taken so far:"]
-        for h in self._history:
-            lines.append(
-                f"  Step {h['step']}: {h['action']}"
-                f"({json.dumps(h['input'])}) -> {h['result']}"
-            )
-        return "\n".join(lines) + "\n\n"
