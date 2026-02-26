@@ -172,8 +172,8 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .pack-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 5), 1fr);
   gap: 12px;
   align-content: flex-start;
   flex: 1;
@@ -183,21 +183,49 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
   position: relative;
   cursor: pointer;
   transition: transform 0.15s, box-shadow 0.15s;
-  height: var(--card-height, 280px);
   perspective: 800px;
 }
 
-.size-slider-wrap {
+.col-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: #888;
+  gap: 0;
 }
 
-.size-slider-wrap input[type="range"] {
-  width: 100px;
-  accent-color: #e94560;
+.col-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #0f3460;
+  background: #16213e;
+  color: #888;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.col-btn:first-child { border-radius: 6px 0 0 6px; }
+.col-btn:last-child { border-radius: 0 6px 6px 0; }
+.col-btn + .col-btn { border-left: none; }
+.col-btn:hover { border-color: #e94560; color: #e0e0e0; }
+.col-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.col-count {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #0f3460;
+  border-left: none;
+  border-right: none;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 #zoom-overlay {
@@ -239,7 +267,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 }
 
 .card-img-wrap {
-  height: calc(100% - 20px);
+  width: 100%;
   aspect-ratio: 488 / 680;
   border-radius: 12px;
   position: relative;
@@ -484,7 +512,7 @@ a.badge.link:hover { color: #fff; background: #555; border-color: #777; }
     <div class="product-radios"><input type="checkbox" id="open-mode" checked><label for="open-mode">Surprise</label></div>
     <button id="reveal-all-btn" disabled>Reveal All</button>
     <button id="sheets-btn" disabled style="background:#333;border-color:#555">Explore Sheets</button>
-    <div class="size-slider-wrap"><span>Size</span><input type="range" id="card-size-slider" min="120" max="500" value="280"></div>
+    <div class="col-controls"><button class="col-btn" id="col-minus">&minus;</button><div class="col-count" id="col-count"></div><button class="col-btn" id="col-plus">+</button></div>
   </div>
   <div id="status">
     <span class="prices-status" id="prices-status" title="Click to update CK prices"></span>
@@ -534,21 +562,26 @@ let currentPackSeed = null;
 let currentPackSetCode = null;
 let _settings = {};
 
-const cardSizeSlider = document.getElementById('card-size-slider');
+// Column count (+/- buttons)
+const COL_MIN = 1, COL_MAX = 12;
+let gridCols = parseInt(localStorage.getItem('crackPackGridCols')) || (window.innerWidth < 600 ? 3 : 5);
 
-function applyCardSize(h) {
-  packGrid.style.setProperty('--card-height', h + 'px');
-  localStorage.setItem('crackPackCardSize', h);
+function applyGridCols() {
+  packGrid.style.setProperty('--grid-cols', gridCols);
+  document.getElementById('col-count').textContent = gridCols;
+  document.getElementById('col-minus').disabled = gridCols <= COL_MIN;
+  document.getElementById('col-plus').disabled = gridCols >= COL_MAX;
+  localStorage.setItem('crackPackGridCols', gridCols);
 }
 
-// Restore saved size
-const savedSize = localStorage.getItem('crackPackCardSize');
-if (savedSize) {
-  cardSizeSlider.value = savedSize;
-  applyCardSize(savedSize);
-}
+document.getElementById('col-minus').addEventListener('click', () => {
+  if (gridCols > COL_MIN) { gridCols--; applyGridCols(); }
+});
+document.getElementById('col-plus').addEventListener('click', () => {
+  if (gridCols < COL_MAX) { gridCols++; applyGridCols(); }
+});
 
-cardSizeSlider.addEventListener('input', () => applyCardSize(cardSizeSlider.value));
+applyGridCols();
 
 // --- Prices status ---
 

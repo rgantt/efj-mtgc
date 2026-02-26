@@ -394,13 +394,12 @@ button.secondary.active { background: #0f3460; border-color: #e94560; }
 }
 
 .sheet-card {
-  width: var(--grid-card-width, 264px);
   position: relative;
   cursor: pointer;
 }
 
 .sheet-card-img-wrap {
-  width: var(--grid-card-width, 264px);
+  width: 100%;
   aspect-ratio: 488 / 680;
   border-radius: 8px;
   position: relative;
@@ -760,17 +759,46 @@ a.lineage-link {
 .sort-btn:hover { color: #e94560; border-color: #e94560; }
 .sort-btn.active { color: #e94560; border-color: #e94560; background: #1a1a2e; }
 
-.size-slider-wrap {
+.col-controls {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.8rem;
-  color: #888;
+  gap: 0;
 }
 
-.size-slider-wrap input[type="range"] {
-  width: 100px;
-  accent-color: #e94560;
+.col-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #0f3460;
+  background: #16213e;
+  color: #888;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+}
+
+.col-btn:first-child { border-radius: 6px 0 0 6px; }
+.col-btn:last-child { border-radius: 0 6px 6px 0; }
+.col-btn + .col-btn { border-left: none; }
+.col-btn:hover { border-color: #e94560; color: #e0e0e0; }
+.col-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.col-count {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #0f3460;
+  border-left: none;
+  border-right: none;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .filterable { cursor: pointer; }
@@ -1290,7 +1318,7 @@ tr.ordered td:first-child { border-left: 3px solid #f0a030; }
         </div>
       </div>
     </div>
-    <div class="size-slider-wrap" id="grid-size-wrap" style="display:none"><span>Size</span><input type="range" id="grid-size-slider" min="100" max="500" value="264"></div>
+    <div class="col-controls" id="grid-size-wrap" style="display:none"><button class="col-btn" id="col-minus">&minus;</button><div class="col-count" id="col-count"></div><button class="col-btn" id="col-plus">+</button></div>
   </div>
   <div id="status"></div>
 </header>
@@ -1490,7 +1518,6 @@ const dateMinEl = document.getElementById('date-min');
 const dateMaxEl = document.getElementById('date-max');
 
 const gridSizeWrap = document.getElementById('grid-size-wrap');
-const gridSizeSlider = document.getElementById('grid-size-slider');
 
 const includeUnownedBtn = document.getElementById('include-unowned-btn');
 let includeUnowned = '';  // '' | 'base' | 'full'
@@ -1530,18 +1557,25 @@ function getWishlistEntry(card) {
   return wishlistByPrinting[card.printing_id] || wishlistByOracle[card.oracle_id] || null;
 }
 
-// Grid size slider
-const savedGridSize = localStorage.getItem('collectionGridCardSize');
-if (savedGridSize) {
-  gridSizeSlider.value = savedGridSize;
-  document.documentElement.style.setProperty('--grid-card-width', savedGridSize + 'px');
+// Grid column count (+/- buttons)
+const COL_MIN = 1, COL_MAX = 12;
+let gridCols = parseInt(localStorage.getItem('collectionGridCols')) || (window.innerWidth < 600 ? 2 : 6);
+
+function applyGridCols() {
+  document.getElementById('col-count').textContent = gridCols;
+  document.getElementById('col-minus').disabled = gridCols <= COL_MIN;
+  document.getElementById('col-plus').disabled = gridCols >= COL_MAX;
+  localStorage.setItem('collectionGridCols', gridCols);
 }
 
-gridSizeSlider.addEventListener('input', () => {
-  const w = gridSizeSlider.value;
-  document.documentElement.style.setProperty('--grid-card-width', w + 'px');
-  localStorage.setItem('collectionGridCardSize', w);
+document.getElementById('col-minus').addEventListener('click', () => {
+  if (gridCols > COL_MIN) { gridCols--; applyGridCols(); if (currentView === 'grid') renderGrid(); }
 });
+document.getElementById('col-plus').addEventListener('click', () => {
+  if (gridCols < COL_MAX) { gridCols++; applyGridCols(); if (currentView === 'grid') renderGrid(); }
+});
+
+applyGridCols();
 
 const KEYRUNE_FALLBACKS = {
   tsb: 'tsp',
@@ -3151,10 +3185,10 @@ function renderGrid() {
   }
 
   // Grid dimensions for virtual scrolling
-  const cardWidth = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--grid-card-width')) || 264;
   const gap = 10;
   const viewportWidth = main.clientWidth || window.innerWidth;
-  const cols = Math.max(1, Math.floor((viewportWidth + gap) / (cardWidth + gap)));
+  const cols = gridCols;
+  const cardWidth = Math.floor((viewportWidth - (cols - 1) * gap) / cols);
   const cardHeight = Math.round(cardWidth * (680 / 488)) + gap; // aspect ratio + gap
   const totalRows = Math.ceil(allCards.length / cols);
   const totalHeight = totalRows * cardHeight;
